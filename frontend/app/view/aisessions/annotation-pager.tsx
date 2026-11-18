@@ -4,7 +4,7 @@
 // 会话详情的**分页控件**（design/plans/aisessions-annotation-timeline-v2.md §4.2c / §4.2c-1）。
 //
 // 三件东西：
-//  1. `AnnotationViewChip` —— 详情头右侧的视图 chip（`▦ 全部 / 按日 / N 轮 / 6h / 20 条`），
+//  1. `AnnotationViewChip` —— 详情头右侧的视图 chip（`▦ 全部 / 按日 / 按问答 / 6h / 20 条`），
 //     点开是分页方式弹层（5 模式 + interval 档 1/6/12/24h + count 档 20/50/100 + 跟随默认）。
 //  2. `AnnotationPagerBar` —— 非 all 模式浮在消息流顶部的翻页条
 //     `‹ 今天 · 11-11 · 2/2 · 7 条消息 ›`，中间文字是**上下文入口**（就地改模式）。
@@ -23,9 +23,9 @@
 import { i18n } from "@/i18n/config";
 import { cn } from "@/util/util";
 import {
+    FloatingPortal,
     autoUpdate,
     flip,
-    FloatingPortal,
     offset,
     shift,
     useDismiss,
@@ -74,20 +74,21 @@ export type ChipLabelSpec = {
 };
 
 /**
- * chip 文案随模式变化（§4.2c-1）：`全部 / 按日 / N 轮 / 6h / 20 条`。
- * turn 模式的 N = 总页数（= 轮数，由 computePages 决定）。
+ * chip 文案随模式变化（§4.2c-1）：`全部 / 按日 / 按问答 / 6h / 20 条`。
+ * 每个 chip 都只显示“能唯一确定这个模式的最小信息”：interval/count 用参数（6h / 20 条）就够，
+ * turn 没有参数，只能给模式名（`按问答`）——页数（N 页）是结果不是模式，且与翻页条的 `1/3` 重复。
  */
 export function pageModeChipLabelSpec(
     pageMode: PageMode,
     intervalHours: number,
     countSize: number,
-    totalPages: number
+    _totalPages: number
 ): ChipLabelSpec {
     switch (pageMode) {
         case "day":
             return { key: "aisessions:annotationPager.mode.day" };
         case "turn":
-            return { key: "aisessions:annotationPager.mode.turn", params: { count: Math.max(totalPages, 0) } };
+            return { key: "aisessions:annotationPager.mode.turnName" };
         case "interval":
             return { key: "aisessions:annotationPager.mode.interval", params: { count: intervalHours } };
         case "count":
@@ -416,8 +417,7 @@ export function AnnotationViewChip({
         (checked ?? menu.querySelector<HTMLElement>("[data-pager-menu-item]"))?.focus();
     }, [open]);
 
-    const menuItems = () =>
-        Array.from(menuRef.current?.querySelectorAll<HTMLElement>("[data-pager-menu-item]") ?? []);
+    const menuItems = () => Array.from(menuRef.current?.querySelectorAll<HTMLElement>("[data-pager-menu-item]") ?? []);
 
     const moveFocus = (delta: number) => {
         const items = menuItems();
@@ -539,11 +539,15 @@ export function AnnotationViewChip({
                         </div>
                         {modeRow("all", i18n.t("aisessions:annotationPager.mode.all"), { mode: "all" })}
                         {modeRow("day", i18n.t("aisessions:annotationPager.mode.day"), { mode: "day" })}
-                        {modeRow("turn", i18n.t("aisessions:annotationPager.mode.turn", { count: totalPages }), { mode: "turn" })}
-                        {modeRow("interval", i18n.t("aisessions:annotationPager.mode.interval", { count: intervalHours }), {
-                            mode: "interval",
-                            intervalHours,
-                        })}
+                        {modeRow("turn", i18n.t("aisessions:annotationPager.mode.turnName"), { mode: "turn" })}
+                        {modeRow(
+                            "interval",
+                            i18n.t("aisessions:annotationPager.mode.interval", { count: intervalHours }),
+                            {
+                                mode: "interval",
+                                intervalHours,
+                            }
+                        )}
                         <div className="flex flex-wrap items-center gap-1 px-2 pb-1">
                             <span className="w-14 shrink-0 text-[10px] text-muted">
                                 {i18n.t("aisessions:annotationPager.intervalLabel")}
@@ -617,8 +621,9 @@ export type AnnotationPagerBarProps = {
     now?: number;
 };
 
-/** 翻页条主文案（结构化字段 → 本地化片段）：相对日期 chip 用 accent 微调（§4.2 规格）。 */
-function PageBarPrimary({ label, now }: { label: PageLabelData; now: number }) {
+/** 翻页条主文案（结构化字段 → 本地化片段）：相对日期 chip 用 accent 微调（§4.2 规格）。
+ *  返回 null = 该模式无主文案（turn / count）：调用方据此省掉前导分隔点。 */
+function pageBarPrimary(label: PageLabelData, now: number): React.ReactNode {
     if (label.mode === "day") {
         if (label.relative != null) {
             return (
@@ -638,16 +643,7 @@ function PageBarPrimary({ label, now }: { label: PageLabelData; now: number }) {
     }
     if (label.mode === "interval" && label.windowStartTs != null) {
         return (
-            <span className="shrink-0 tabular-nums">
-                {formatSessionDateCompact(label.windowStartTs, now, true)}
-            </span>
-        );
-    }
-    if (label.mode === "turn" && label.turnStartSeq != null) {
-        return (
-            <span className="shrink-0 tabular-nums">
-                {i18n.t("aisessions:annotationPager.turnLabel", { seq: label.turnStartSeq })}
-            </span>
+            <span className="shrink-0 tabular-nums">{formatSessionDateCompact(label.windowStartTs, now, true)}</span>
         );
     }
     return null;
@@ -680,6 +676,31 @@ export function AnnotationPagerBar({
           : i18n.t("aisessions:annotationPager.prev");
     // day 模式同时给出「今天 · 11-11」两档（§4.2 规格的原型文案）。
     const showAbsoluteDate = label.relative != null && label.dateKey != null && label.dateKey !== UnknownDateKey;
+    const primary = pageBarPrimary(label, referenceNow);
+    // 主文案 / 绝对日期 / 页码 / 消息数：只渲染存在的那几段，段间自动补分隔点
+    // （turn / count 模式没有主文案，直接以页码开头，不泄漏前导「·」）。
+    const barParts: React.ReactNode[] = [
+        primary,
+        showAbsoluteDate ? (
+            <span key="date" className="shrink-0 tabular-nums text-secondary">
+                {formatDateKeyLabel(label.dateKey as string, referenceNow)}
+            </span>
+        ) : null,
+        <span
+            key="pos"
+            className="shrink-0 tabular-nums text-secondary"
+            aria-label={
+                label.index != null && label.total != null
+                    ? i18n.t("aisessions:annotationPager.position", { index: label.index, total: label.total })
+                    : undefined
+            }
+        >
+            {label.index ?? 1}/{label.total ?? 1}
+        </span>,
+        <span key="count" className="shrink-0 text-secondary">
+            {i18n.t("aisessions:annotationPager.messageCount", { count: label.messageCount })}
+        </span>,
+    ].filter((part) => part != null);
 
     return (
         <div
@@ -713,36 +734,16 @@ export function AnnotationPagerBar({
                 aria-label={i18n.t("aisessions:annotationPager.modeEntryTitle")}
                 className="flex min-w-0 cursor-pointer items-center gap-1 rounded-full px-1.5 py-[1px] hover:bg-hover"
             >
-                <PageBarPrimary label={label} now={referenceNow} />
-                {showAbsoluteDate ? (
-                    <>
-                        <span aria-hidden="true" className="text-secondary/60">
-                            ·
-                        </span>
-                        <span className="shrink-0 tabular-nums text-secondary">
-                            {formatDateKeyLabel(label.dateKey as string, referenceNow)}
-                        </span>
-                    </>
-                ) : null}
-                <span aria-hidden="true" className="text-secondary/60">
-                    ·
-                </span>
-                <span
-                    className="shrink-0 tabular-nums text-secondary"
-                    aria-label={
-                        label.index != null && label.total != null
-                            ? i18n.t("aisessions:annotationPager.position", { index: label.index, total: label.total })
-                            : undefined
-                    }
-                >
-                    {label.index ?? 1}/{label.total ?? 1}
-                </span>
-                <span aria-hidden="true" className="text-secondary/60">
-                    ·
-                </span>
-                <span className="shrink-0 text-secondary">
-                    {i18n.t("aisessions:annotationPager.messageCount", { count: label.messageCount })}
-                </span>
+                {barParts.map((part, index) => (
+                    <React.Fragment key={index}>
+                        {index > 0 ? (
+                            <span aria-hidden="true" className="text-secondary/60">
+                                ·
+                            </span>
+                        ) : null}
+                        {part}
+                    </React.Fragment>
+                ))}
             </button>
             <button
                 type="button"
@@ -763,4 +764,3 @@ export function AnnotationPagerBar({
         </div>
     );
 }
-

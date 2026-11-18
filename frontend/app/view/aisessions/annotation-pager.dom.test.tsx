@@ -4,7 +4,7 @@
 // 分页控件（annotation-pager）DOM 契约测试（主文档 §4.2c / §4.2c-1）。
 //
 // 覆盖：
-//  - chip 文案随 pageMode 变化（全部 / 按日 / N 轮 / 6h / 20 条），值与 i18n 实例同源（锁死 key）
+//  - chip 文案随 pageMode 变化（全部 / 按日 / 按问答 / 6h / 20 条），值与 i18n 实例同源（锁死 key）
 //  - 菜单档位：5 模式行 + interval 1/6/12/24h + count 20/50/100 + 跟随默认
 //  - 「跟随默认」点击回调 + 菜单关闭
 //  - 翻页条边界：首页 ‹ 禁用（无 onLoadOlder 时）/ 接线后可点；末页 › 禁用
@@ -14,10 +14,10 @@
 
 // @vitest-environment jsdom
 
+import { i18n, initI18n } from "@/i18n/config";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { i18n, initI18n } from "@/i18n/config";
 import { computePages, type PagingRow } from "./annotation-model";
 import {
     AnnotationPagerBar,
@@ -26,7 +26,7 @@ import {
     usePageModeState,
     type PageModeStorage,
 } from "./annotation-pager";
-import { type PersistedPageModeMap, pageModeStateKey, parsePageModeMeta, buildPageModeMeta } from "./page-mode-persist";
+import { buildPageModeMeta, pageModeStateKey, parsePageModeMeta, type PersistedPageModeMap } from "./page-mode-persist";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -76,6 +76,11 @@ function dayPages() {
     return computePages(rows, (seq) => timestamps.get(seq), { mode: "day" });
 }
 
+function turnPages() {
+    const { rows, timestamps } = makeRows();
+    return computePages(rows, (seq) => timestamps.get(seq), { mode: "turn" });
+}
+
 beforeEach(async () => {
     await initI18n("en");
     Element.prototype.getBoundingClientRect = () => new DOMRect(0, 0, 200, 30);
@@ -110,8 +115,9 @@ describe("AnnotationViewChip label", () => {
     const cases: Array<[ReturnType<typeof pageModeChipLabelSpec>["key"], string, string, number, string, string?]> = [
         ["aisessions:annotationPager.mode.all", "all", "all", 3, "All"],
         ["aisessions:annotationPager.mode.day", "day", "day", 3, "By day"],
-        ["aisessions:annotationPager.mode.turn", "turn", "turn", 3, "3 turns"],
-        ["aisessions:annotationPager.mode.turn", "turn", "turn", 1, "1 turn"],
+        ["aisessions:annotationPager.mode.turnName", "turn", "turn", 3, "By Q&A"],
+        // turn 的 chip 不随页数变化：结果摘要属于翻页条的 1/3，不属于模式入口
+        ["aisessions:annotationPager.mode.turnName", "turn", "turn", 1, "By Q&A"],
         ["aisessions:annotationPager.mode.interval", "interval", "interval", 3, "6h", "6"],
         ["aisessions:annotationPager.mode.count", "count", "count", 3, "20 msgs", "20"],
     ];
@@ -136,6 +142,23 @@ describe("AnnotationViewChip label", () => {
         );
         expect(chipButton().textContent).toBe("50 msgs");
         expect(chipButton().getAttribute("data-pager-mode")).toBe("count");
+    });
+
+    it("turn chip shows the mode name, not a page count", () => {
+        mount(
+            <AnnotationViewChip
+                pageMode="turn"
+                intervalHours={6}
+                countSize={50}
+                totalPages={3}
+                open={false}
+                onOpenChange={vi.fn()}
+                onSelect={vi.fn()}
+                onFollowDefault={vi.fn()}
+            />
+        );
+        expect(chipButton().textContent).toBe("By Q&A");
+        expect(chipButton().getAttribute("data-pager-mode")).toBe("turn");
     });
 });
 
@@ -186,6 +209,12 @@ describe("AnnotationViewChip menu", () => {
         mountChip("day");
         const checked = menuRoot()!.querySelector<HTMLElement>('[aria-checked="true"]');
         expect(checked?.getAttribute("data-pager-mode")).toBe("day");
+    });
+
+    it("turn mode row shows the mode name without a count (菜单行是模式名，chip 才是页数)", () => {
+        mountChip("all");
+        const turnRow = menuRoot()!.querySelector<HTMLElement>('[data-pager-mode="turn"]')!;
+        expect(turnRow.textContent).toBe("By Q&A");
     });
 
     it("selecting an interval choice reports mode + intervalHours and closes", () => {
@@ -324,6 +353,25 @@ describe("AnnotationPagerBar", () => {
             />
         );
         expect(pagerBar()).toBeNull();
+    });
+
+    it("turn mode has no primary text: starts at the position, no leading separator or Turn #", () => {
+        const pages = turnPages();
+        mount(
+            <AnnotationPagerBar
+                pages={pages}
+                activePageIndex={pages.length - 1}
+                onPrev={vi.fn()}
+                onNext={vi.fn()}
+                onOpenModeMenu={vi.fn()}
+                now={NOW}
+            />
+        );
+        const entry = pagerBar()!.querySelector("[data-pager-mode-entry]")!;
+        const text = entry.textContent ?? "";
+        expect(text).not.toContain("Turn #");
+        expect(text.trimStart().startsWith("·")).toBe(false);
+        expect(text.replace(/\s+/g, "")).toBe(`${pages.length}/${pages.length}·2messages`);
     });
 });
 

@@ -239,8 +239,7 @@
         "mode": {
             "all": "全部",
             "day": "按日",
-            "turn_one": "{{count}} 轮",
-            "turn_other": "{{count}} 轮",
+            "turnName": "按问答",
             "interval": "{{count}}小时",
             "count": "{{count}} 条"
         },
@@ -254,7 +253,6 @@
         "position": "第 {{index}} / {{total}} 页",
         "messageCount_one": "{{count}} 条消息",
         "messageCount_other": "{{count}} 条消息",
-        "turnLabel": "第 {{seq}} 轮",
         "unknownDate": "未知时间",
         "barAria": "消息分页"
     },

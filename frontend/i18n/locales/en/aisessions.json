@@ -239,8 +239,7 @@
         "mode": {
             "all": "All",
             "day": "By day",
-            "turn_one": "{{count}} turn",
-            "turn_other": "{{count}} turns",
+            "turnName": "By Q&A",
             "interval": "{{count}}h",
             "count": "{{count}} msgs"
         },
@@ -254,7 +253,6 @@
         "position": "Page {{index}} of {{total}}",
         "messageCount_one": "{{count}} message",
         "messageCount_other": "{{count}} messages",
-        "turnLabel": "Turn #{{seq}}",
         "unknownDate": "Unknown time",
         "barAria": "Message paging"
     },
