@@ -93,6 +93,49 @@ func TestDecodeGitPathTokenKeepsPlainPaths(t *testing.T) {
 	}
 }
 
+func TestDecodeSvnUrlPath(t *testing.T) {
+	tests := []struct {
+		name  string
+		value string
+		want  string
+	}{
+		{
+			name:  "encoded cjk relative url",
+			value: "^/%E6%95%B0%E6%8D%AE%E5%AF%BC%E5%85%A5%E5%B7%A5%E5%85%B7",
+			want:  "^/数据导入工具",
+		},
+		{
+			name:  "encoded cjk full url",
+			value: "https://svn.example.com/repos/%E6%95%B0%E6%8D%AE/trunk",
+			want:  "https://svn.example.com/repos/数据/trunk",
+		},
+		{
+			name:  "plain path is unchanged",
+			value: "^/trunk",
+			want:  "^/trunk",
+		},
+		{
+			name:  "encoded percent sign",
+			value: "^/a%25b",
+			want:  "^/a%b",
+		},
+		{
+			name:  "broken escape is unchanged",
+			value: "^/a%2",
+			want:  "^/a%2",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got := decodeSvnUrlPath(test.value)
+			if got != test.want {
+				t.Fatalf("expected %q, got %q", test.want, got)
+			}
+		})
+	}
+}
+
 func TestSplitGitRenamePathIgnoresSeparatorInsideQuotes(t *testing.T) {
 	tests := []struct {
 		name      string

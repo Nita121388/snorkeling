@@ -1022,6 +1022,23 @@ func parseSvnRemoteStatusXML(statusOut string, statusLimit int) []wshrpc.VcsFile
 	return statuses
 }
 
+// decodeSvnUrlPath decodes percent-encoded bytes in svn URL paths.
+//
+// svn prints URL paths with RFC 3986 percent-encoding, so a repository under a
+// non-ASCII directory yields e.g. "^/%E6%95%B0%E6%8D%AE" for "^/数据". Branch
+// labels must show the decoded form; inputs without escapes (or with broken
+// escapes) are returned unchanged.
+func decodeSvnUrlPath(value string) string {
+	if !strings.Contains(value, "%") {
+		return value
+	}
+	decoded, err := url.PathUnescape(value)
+	if err != nil || decoded == "" {
+		return value
+	}
+	return decoded
+}
+
 func loadSvnRepoState(ctx context.Context, repoPath string, statusLimit int) (string, []wshrpc.VcsFileStatus, error) {
 	branch, branchErr := runVcsCommand(ctx, repoPath, "svn", "info", "--show-item", "relative-url")
 	if branchErr != nil || branch == "" {
@@ -1030,6 +1047,7 @@ func loadSvnRepoState(ctx context.Context, repoPath string, statusLimit int) (st
 			return "", nil, branchErr
 		}
 	}
+	branch = decodeSvnUrlPath(branch)
 	statusOut, statusErr := runSvnStatusXMLCommand(ctx, repoPath)
 	if statusErr != nil {
 		return branch, nil, statusErr
