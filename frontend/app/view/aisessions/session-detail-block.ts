@@ -6,6 +6,7 @@ import { newLayoutNode } from "@/layout/lib/layoutNode";
 import { LayoutTreeActionType, LayoutTreeSplitHorizontalAction } from "@/layout/lib/types";
 import { atoms, createBlock, createBlockSplitHorizontally, globalStore, refocusNode, WOS } from "@/store/global";
 import { ObjectService } from "@/store/services";
+import { buildOriginMeta, OriginMetaKey } from "./origin-state";
 
 // 会话详情「分离到独立块」。
 //
@@ -16,6 +17,10 @@ import { ObjectService } from "@/store/services";
 export type SessionDetailOpenOptions = {
     connection?: string;
     cwd?: string;
+    /** 会话所属 origin（外部 dump）。
+     * 不写进 block meta 的话，新块的 AISessionsModel 会恢复成 local，
+     * Detail 落到本机 manager（session not found 或取到本机同名会话）。 */
+    origin?: string;
     /** Ctrl/Cmd+点击：即使已有详情块也强制单开。 */
     forceNewBlock?: boolean;
 };
@@ -28,24 +33,50 @@ export type SessionDetailOpenPlan =
 /** 该 tab 里记住的「详情块宿主」，用于把后续详情并成 Tab。 */
 const detailHostBlockByTab = new Map<string, string>();
 
-function makeSessionDetailBlockDef(sessionId: string, connection?: string, cwd?: string): BlockDef {
+/** "" / "local" 归一成本机（后端按 local 路由）；其余原样作为 origin id。 */
+export function normalizeDetailOrigin(origin?: string | null): string {
+    const trimmed = (origin ?? "").trim();
+    return trimmed === "" || trimmed === "local" ? "" : trimmed;
+}
+
+export type SessionDetailBlockMetaInput = {
+    sessionId: string;
+    connection?: string;
+    cwd?: string;
+    origin?: string;
+};
+
+/** 详情块的 meta（纯函数，便于单测）。origin 只写非本机的值。 */
+export function sessionDetailBlockMeta(input: SessionDetailBlockMetaInput): MetaType & Record<string, unknown> {
     const meta: MetaType & Record<string, unknown> = {
         view: "aisessions",
         "frame:title": "Session Details",
-        "aisessions:sessionid": sessionId,
+        "aisessions:sessionid": input.sessionId,
         "aisessions:sessionlistcollapsed": true,
         icon: "comments",
     };
-    const blockDef: BlockDef = { meta };
-    const trimmedConnection = connection?.trim() ?? "";
-    if (trimmedConnection !== "") {
-        blockDef.meta.connection = trimmedConnection;
+    const connection = input.connection?.trim() ?? "";
+    if (connection !== "") {
+        meta.connection = connection;
     }
-    const trimmedCwd = cwd?.trim() ?? "";
-    if (trimmedCwd !== "") {
-        blockDef.meta["cmd:cwd"] = trimmedCwd;
+    const cwd = input.cwd?.trim() ?? "";
+    if (cwd !== "") {
+        meta["cmd:cwd"] = cwd;
     }
-    return blockDef;
+    const origin = normalizeDetailOrigin(input.origin);
+    if (origin !== "") {
+        meta[OriginMetaKey] = buildOriginMeta(origin);
+    }
+    return meta;
+}
+
+function makeSessionDetailBlockDef(
+    sessionId: string,
+    connection?: string,
+    cwd?: string,
+    origin?: string
+): BlockDef {
+    return { meta: sessionDetailBlockMeta({ sessionId, connection, cwd, origin }) };
 }
 
 function staticTabId(): string | null {
@@ -140,7 +171,7 @@ export async function openAISessionDetailFromList(
         refocusNode(plan.blockId);
         return plan.blockId;
     }
-    const blockDef = makeSessionDetailBlockDef(trimmedSessionId, options.connection, options.cwd);
+    const blockDef = makeSessionDetailBlockDef(trimmedSessionId, options.connection, options.cwd, options.origin);
     if (plan.kind === "tab") {
         const hostNodeId = layoutModel.getNodeByBlockId(plan.hostBlockId)?.id;
         if (hostNodeId != null) {
@@ -206,13 +237,14 @@ export async function openAISessionDetailBlock(
     sessionId: string,
     sourceBlockId?: string,
     connection?: string,
-    cwd?: string
+    cwd?: string,
+    origin?: string
 ): Promise<void> {
     const trimmedSessionId = sessionId.trim();
     if (trimmedSessionId === "") {
         return;
     }
-    const blockDef = makeSessionDetailBlockDef(trimmedSessionId, connection, cwd);
+    const blockDef = makeSessionDetailBlockDef(trimmedSessionId, connection, cwd, origin);
     if (sourceBlockId) {
         try {
             await createBlockSplitHorizontally(blockDef, sourceBlockId, "after");

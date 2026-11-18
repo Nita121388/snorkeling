@@ -82,7 +82,7 @@ import { GenActionButton } from "./gen-action-button";
 import { MessageQueueStore, useMessageQueueStore } from "./message-queue-store";
 import { NoteAIButton, NoteAISuggestionBar, useNoteAIGenerate } from "./note-ai-controls";
 import { useSessionOpenEntry } from "./open-sessions-store";
-import { openAISessionDetailFromList } from "./session-detail-block";
+import { normalizeDetailOrigin, openAISessionDetailFromList } from "./session-detail-block";
 import {
     PageModeMetaKey,
     buildPageModeMeta,
@@ -2262,6 +2262,8 @@ export function SessionDetailPane({
                                                       // 不强制单开：同一子会话已开着就聚焦，避免重复堆块。
                                                       void openAISessionDetailFromList(sessionKey, model.blockId, {
                                                           cwd: subagentTabCwd || undefined,
+                                                          // 子会话与父会话同 origin：不传就会回落到本机 manager。
+                                                          origin: normalizeDetailOrigin(summary?.origin),
                                                       });
                                                   }
                                               }}
@@ -2317,6 +2319,7 @@ export function SessionDetailPane({
                                     // 不强制单开：同一子会话已开着就聚焦，避免重复堆块。
                                     void openAISessionDetailFromList(sessionKey, model.blockId, {
                                         cwd: subagentTabCwd || undefined,
+                                        origin: normalizeDetailOrigin(summary?.origin),
                                     });
                                 }
                             }}

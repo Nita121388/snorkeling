@@ -2687,15 +2687,17 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
     const openSessionDetail = useCallback(
         (session: SessionSummary, forceNew = false) => {
             if (!session.key) return;
-            // cwd 只用于 tab 分层标题（项目文件夹 basename），不参与会话加载。
+            // cwd 只用于 tab 分层标题（项目文件夹 basename），不参与会话加载；
+            // origin 必须传：外部 dump 会话不写进 meta 的话新块会回落到本机 manager。
             fireAndForget(() =>
                 openAISessionDetailFromList(session.key, model.blockId, {
                     forceNewBlock: forceNew,
                     cwd: session.projectPath,
+                    origin: model.originForSession(session),
                 })
             );
         },
-        [model.blockId]
+        [model.blockId, model.originForSession]
     );
 
     const gridTemplateColumns = !showsDetailPane

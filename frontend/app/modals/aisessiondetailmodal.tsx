@@ -19,9 +19,48 @@ function originOf(session: SessionSummary | null | undefined): string {
 
 type AISessionDetailModalProps = {
     sessionId: string;
+    /** 打开方的连接（远端块）。缺省时 Detail 会按 key 的 remote 段路由。 */
+    connection?: string;
+    /** 打开方的 origin（外部 dump）。不传就可能落到本机 manager。 */
+    origin?: string;
 };
 
-function AISessionDetailModal({ sessionId }: AISessionDetailModalProps) {
+/** Detail / DetailDelta / DetailTools 的查询范围。 */
+export type SessionDetailRequestScope = {
+    id: string;
+    connection?: string;
+    origin?: string;
+};
+
+function normalizeScopeOrigin(value?: string | null): string {
+    const trimmed = (value ?? "").trim();
+    return trimmed === "" || trimmed === "local" ? "" : trimmed;
+}
+
+/**
+ * 统一算一次查询的 scope：已加载 summary 的 origin 标签优先（后端在外部 origin 下回填），
+ * 没有标签时用打开方传入的 scope。connection 只能来自打开方（summary 不带 connection）。
+ */
+export function detailRequestScope(
+    session: SessionSummary | null | undefined,
+    fallback?: { connection?: string | null; origin?: string | null }
+): SessionDetailRequestScope {
+    const id = (session?.key ?? "").trim();
+    const summaryOrigin = (session?.origin ?? "").trim();
+    const origin =
+        summaryOrigin !== "" ? normalizeScopeOrigin(summaryOrigin) : normalizeScopeOrigin(fallback?.origin);
+    const connection = (fallback?.connection ?? "").trim();
+    const scope: SessionDetailRequestScope = { id };
+    if (connection !== "") {
+        scope.connection = connection;
+    }
+    if (origin !== "") {
+        scope.origin = origin;
+    }
+    return scope;
+}
+
+function AISessionDetailModal({ sessionId, connection, origin }: AISessionDetailModalProps) {
     const service = useMemo(() => new AISessionsServiceType(), []);
     const [detail, setDetail] = useState<SessionDetail | null>(null);
     const [loading, setLoading] = useState(true);
@@ -33,6 +72,8 @@ function AISessionDetailModal({ sessionId }: AISessionDetailModalProps) {
     const detailRef = useRef<SessionDetail | null>(null);
     const detailLoadSeqRef = useRef(0);
     const selectedKeyRef = useRef("");
+    // 打开方传入的查询范围：summary 还没有 origin 标签时靠它兜底。
+    const openerScope = useMemo(() => ({ connection, origin }), [connection, origin]);
 
     const closeModal = useCallback(() => {
         modalsModel.popModal();
@@ -96,7 +137,11 @@ function AISessionDetailModal({ sessionId }: AISessionDetailModalProps) {
             setLoading(true);
             setError("");
             try {
-                const nextDetail = await service.Detail({ id: session.key, refresh, includeTools: true });
+                const nextDetail = await service.Detail({
+                    ...detailRequestScope(session, openerScope),
+                    refresh,
+                    includeTools: true,
+                });
                 if (loadSeq === detailLoadSeqRef.current) {
                     setDetail(nextDetail);
                 }
@@ -134,7 +179,7 @@ function AISessionDetailModal({ sessionId }: AISessionDetailModalProps) {
             setError("");
             try {
                 const delta = await service.DetailDelta({
-                    id: currentSummary.key,
+                    ...detailRequestScope(currentSummary, openerScope),
                     source: currentSummary.source,
                     filePath: currentSummary.filePath,
                     cursor,
@@ -184,7 +229,11 @@ function AISessionDetailModal({ sessionId }: AISessionDetailModalProps) {
                 setToolCallsLoading(true);
                 setError("");
                 try {
-                    const nextDetail = await service.Detail({ id: currentSummary.key, refresh, includeTools: true });
+                    const nextDetail = await service.Detail({
+                        ...detailRequestScope(currentSummary, openerScope),
+                        refresh,
+                        includeTools: true,
+                    });
                     setDetail(nextDetail);
                     return true;
                 } catch (e) {
@@ -307,7 +356,7 @@ function AISessionDetailModal({ sessionId }: AISessionDetailModalProps) {
         setLoading(true);
         setError("");
         service
-            .Detail({ id: trimmedSessionId, includeTools: true })
+            .Detail({ id: trimmedSessionId, connection: connection?.trim() || undefined, origin: origin?.trim() || undefined, includeTools: true })
             .then((nextDetail) => {
                 if (!cancelled && loadSeq === detailLoadSeqRef.current) {
                     setDetail(nextDetail);
@@ -326,7 +375,7 @@ function AISessionDetailModal({ sessionId }: AISessionDetailModalProps) {
         return () => {
             cancelled = true;
         };
-    }, [service, sessionId]);
+    }, [connection, origin, service, sessionId]);
 
     return (
         <Modal

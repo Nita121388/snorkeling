@@ -126,7 +126,11 @@ function AgentCardModal({ blockId, blockData, tabId }: AgentCardModalProps) {
                             event.stopPropagation();
                             if (sessionId === "") return;
                             // 叠在整卡之上：modal 栈天然支持逐层退（详情 ✕ 先退，再退整卡）。
-                            modalsModel.pushModal("AISessionDetailModal", { sessionId });
+                            // connection 必须带：远端 agent 会话的裸 id 不带连接会落到本机 manager。
+                            modalsModel.pushModal("AISessionDetailModal", {
+                                sessionId,
+                                connection: connection !== "" ? connection : undefined,
+                            });
                         }}
                     >
                         <i className="fa-sharp fa-solid fa-arrow-up-right-from-square mr-1" />

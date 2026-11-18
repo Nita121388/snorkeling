@@ -30,6 +30,7 @@ import {
     dispatchAISessionNoteUpdated,
     isAISessionNoteUpdatedEvent,
 } from "@/app/view/aisessions/session-note-events";
+import { OriginMetaKey, parseOriginMeta } from "@/app/view/aisessions/origin-state";
 import { extractSessionTagsFromNote, mergeSessionTags, sessionTagsEqual } from "@/app/view/aisessions/session-tags";
 import { getAgentIcon } from "@/app/view/term/agent-logo";
 import { resolveAgentSessionIdFromMeta } from "@/app/view/term/agent-session";
@@ -240,9 +241,14 @@ function sessionMatchesSummary(sessionId: string, summary: SessionSummary): bool
     return trimmed !== "" && (summary.key === trimmed || summary.id === trimmed);
 }
 
-function openSessionDetail(sessionId: string): void {
+function openSessionDetail(sessionId: string, connection?: string): void {
     if (!sessionId) return;
-    modalsModel.pushModal("AISessionDetailModal", { sessionId });
+    const trimmed = connection?.trim() ?? "";
+    // connection 必须传：远端块的会话 id 是裸 id，不传 connection 时后端会落到本机 manager。
+    modalsModel.pushModal("AISessionDetailModal", {
+        sessionId,
+        connection: trimmed !== "" ? trimmed : undefined,
+    });
 }
 
 export { planBlockRemoval };
@@ -2413,6 +2419,14 @@ function SessionOverviewPanel({ blockId, model }: ViewComponentProps<SessionOver
      * 首帧被 long task 压住，弹窗入场兹画就掉帧。见 11-10-overview-board-click-perf。
      * 下文 OverviewBoard 只能传这四个引用，不要再写内联箭头函数。
      */
+    const blockConnectionOf = React.useCallback(
+        (blockId: string): string => {
+            const found = blocks.find((b) => b.blockId === blockId);
+            const value = found?.block?.meta?.connection;
+            return typeof value === "string" ? value.trim() : "";
+        },
+        [blocks]
+    );
     const handleOpenBoardCard = React.useCallback(
         (card: OverviewBoardCard) => {
             // agent 卡片开弹窗这条路径不写 selectedBlockId：它只被列表视图的
@@ -2427,10 +2441,12 @@ function SessionOverviewPanel({ blockId, model }: ViewComponentProps<SessionOver
                     typeof block.block?.meta?.connection === "string"
                         ? (block.block.meta.connection as string).trim()
                         : "";
+                const blockOrigin = parseOriginMeta(block.block?.meta?.[OriginMetaKey]) ?? "";
                 primeSessionNote(
                     card.sessionId,
                     summaries[card.sessionId]?.summary ?? details[card.sessionId]?.detail?.summary ?? null,
-                    blockConnection
+                    blockConnection,
+                    blockOrigin
                 );
                 modalsModel.pushModal("AgentCardModal", {
                     blockId: card.blockId,
@@ -2858,7 +2874,7 @@ function SessionOverviewPanel({ blockId, model }: ViewComponentProps<SessionOver
                                 setSelectedBlockId(row.blockId);
                                 overviewModel.markBlockViewed(row.blockId);
                                 if (row.sessionId) {
-                                    openSessionDetail(row.sessionId);
+                                    openSessionDetail(row.sessionId, blockConnectionOf(row.blockId));
                                 }
                             }}
                         />
@@ -2914,7 +2930,7 @@ function SessionOverviewPanel({ blockId, model }: ViewComponentProps<SessionOver
                                     if (!nextBlock.sessionId) return;
                                     setSelectedBlockId(nextBlock.blockId);
                                     overviewModel.markBlockViewed(nextBlock.blockId);
-                                    openSessionDetail(nextBlock.sessionId);
+                                    openSessionDetail(nextBlock.sessionId, blockConnectionOf(nextBlock.blockId));
                                 }}
                                 onDeleteSession={(nextBlock) => {
                                     if (!nextBlock.sessionId || sessionAction.deletingSessionId) return;

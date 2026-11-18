@@ -1,0 +1,6 @@
+{
+  "g2": {
+    "redProof": "vitest detail-scope.test.ts → 5 failed (sessionDetailBlockMeta/detailRequestScope is not a function：origin 不落 meta、Detail 请求不带 scope) @ detail-scope.test.ts",
+    "at": "2026-11-18T05:27:18Z"
+  }
+}

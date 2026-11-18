@@ -1,0 +1,2 @@
+{"file": ".trellis/spec/snorkeling-docs/frontend/quality-guidelines.md", "reason": "前端质量硬约束：跨面一致性 + 可机器判定判据"}
+{"file": ".trellis/spec/snorkeling-docs/backend/aisessions-scan-contract.md", "reason": "origin 路由后端语义"}
