@@ -1625,15 +1625,22 @@
     gap: 6px;
 }
 
+/* 动作组默认零占位：标题吃满整行宽度。hover / focus-within 时 max-width 展开，
+   标题与 age 平滑收缩让位（3×20 + 2×4 = 68px，留 4px 余量）。 */
 .session-overview-board-card-actions {
     display: inline-flex;
     flex: 0 0 auto;
     align-items: center;
     gap: 4px;
-    margin-left: auto;
+    max-width: 0;
+    margin-left: -6px; /* 收回 head gap 的尾部空隙，折叠时零残留 */
+    overflow: hidden;
     opacity: 0;
     pointer-events: none;
-    transition: opacity 120ms ease;
+    transition:
+        max-width 140ms ease,
+        margin-left 140ms ease,
+        opacity 120ms ease;
 }
 
 .session-overview-board-card-action {
@@ -1671,6 +1678,8 @@
 
 .session-overview-board-card:hover .session-overview-board-card-actions,
 .session-overview-board-card:focus-within .session-overview-board-card-actions {
+    max-width: 72px;
+    margin-left: 0;
     opacity: 1;
     pointer-events: auto;
 }
