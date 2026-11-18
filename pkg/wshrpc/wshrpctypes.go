@@ -105,6 +105,8 @@ type WshRpcInterface interface {
 	// agent control surface (session card read/write, used by wsh agent card *)
 	AgentCardGetCommand(ctx context.Context, data AgentCardGetRequest) (*AgentCardResult, error)
 	AgentCardSetCommand(ctx context.Context, data AgentCardSetRequest) (*AgentCardSetResult, error)
+	// agent control surface (session timeline annotation write, used by wsh session annotate)
+	SessionAnnotateCommand(ctx context.Context, data SessionAnnotateRequest) (*SessionAnnotateResult, error)
 	// agent control surface (UI observe + navigate, used by wsh ui/block/tab *)
 	UIActiveCommand(ctx context.Context, data UIActiveRequest) (*UIActiveSnapshot, error)
 	UIStateCommand(ctx context.Context, data UIStateRequest) (*UIStateSnapshot, error)
@@ -930,6 +932,69 @@ type AgentCardSetRequest struct {
 	ExpectedUpdatedAt int64                         `json:"expectedupdatedat,omitempty"`
 	DryRun            bool                          `json:"dryrun,omitempty"`
 	Yes               bool                          `json:"yes,omitempty"`
+}
+
+// ---- Agent Control Surface: session annotate DTOs ----
+
+// SessionAnnotateRequest writes one machine annotation draft onto a session
+// timeline node. Anchors are "tail" (the last anchorable message) or an exact
+// message itemKey; a hallucinated key is refused with E_NOT_FOUND.
+type SessionAnnotateRequest struct {
+	Identifier string   `json:"identifier"`
+	BlockId    string   `json:"blockid,omitempty"`
+	Anchor     string   `json:"anchor"`
+	Kind       string   `json:"kind,omitempty"`
+	Title      string   `json:"title,omitempty"`
+	Body       string   `json:"body,omitempty"`
+	Tags       []string `json:"tags,omitempty"`
+	// Status defaults to draft. accepted requires Force (a machine never claims
+	// acceptance on its own).
+	Status string `json:"status,omitempty"`
+	Force  bool   `json:"force,omitempty"`
+	// ExpectedHash is the card hash from a fresh `session get` / `agent card get`;
+	// a real write (Yes) requires it and a mismatch is E_CONFLICT.
+	ExpectedHash string `json:"expectedhash,omitempty"`
+	// DryRun previews without writing; the effective mode is DryRun || !Yes.
+	DryRun  bool   `json:"dryrun,omitempty"`
+	Yes     bool   `json:"yes,omitempty"`
+	AIModel string `json:"aimodel,omitempty"`
+}
+
+// SessionAnnotateRow is the wire form of the written (or would-be) annotation.
+// It duplicates aisessions.AnnotationRow because aisessions imports wshrpc.
+type SessionAnnotateRow struct {
+	ID         int64    `json:"id"`
+	AnchorKey  string   `json:"anchorKey"`
+	Seq        int      `json:"seq"`
+	Kind       string   `json:"kind"`
+	Title      string   `json:"title"`
+	Body       string   `json:"body"`
+	Tags       []string `json:"tags"`
+	Status     string   `json:"status"`
+	Source     string   `json:"source"`
+	AIModel    string   `json:"aiModel,omitempty"`
+	AnchorHash string   `json:"anchorHash,omitempty"`
+	UpdatedAt  int64    `json:"updatedAt"`
+}
+
+// SessionAnnotatePreview describes the resolved anchor and what a repeat
+// write would replace (ReplacedID is 0 on a fresh create).
+type SessionAnnotatePreview struct {
+	AnchorKey         string `json:"anchorKey"`
+	AnchorPreview     string `json:"anchorPreview,omitempty"`
+	AnchorRole        string `json:"anchorRole,omitempty"`
+	Seq               int    `json:"seq"`
+	ReplacedID        int64  `json:"replacedId,omitempty"`
+	ReplacedUpdatedAt int64  `json:"replacedUpdatedAt,omitempty"`
+}
+
+// SessionAnnotateResult reports the dry-run preview or the written row.
+type SessionAnnotateResult struct {
+	DryRun  bool                   `json:"dryRun"`
+	Written bool                   `json:"written"`
+	Created bool                   `json:"created"`
+	Row     SessionAnnotateRow     `json:"row"`
+	Preview SessionAnnotatePreview `json:"preview"`
 }
 
 // ---- Agent Control Surface: UI observe + navigate DTOs ----

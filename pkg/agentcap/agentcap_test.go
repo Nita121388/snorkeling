@@ -133,3 +133,17 @@ func TestUIAndNavigateCommandsAreDiscoverable(t *testing.T) {
 		}
 	}
 }
+
+// TestSessionAnnotateCommandIsDiscoverable guards the annotate write entry:
+// an agent that cannot discover `session annotate` cannot write timeline
+// conclusions back at all.
+func TestSessionAnnotateCommandIsDiscoverable(t *testing.T) {
+	for name, text := range map[string]string{
+		"guide":  GuideText(),
+		"prompt": ExternalAgentPrompt(),
+	} {
+		if !strings.Contains(text, "wsh session annotate") {
+			t.Fatalf("%s text must advertise %q:\n%s", name, "wsh session annotate", text)
+		}
+	}
+}

@@ -476,6 +476,42 @@ declare global {
         configdir?: string;
     };
 
+    // aisessionsservice.AISessionsSessionAnnotatePreview
+    type AISessionsSessionAnnotatePreview = {
+        anchorKey: string;
+        anchorPreview?: string;
+        anchorRole?: string;
+        seq: number;
+        replacedId?: number;
+        replacedUpdatedAt?: number;
+    };
+
+    // aisessionsservice.AISessionsSessionAnnotateRequest
+    type AISessionsSessionAnnotateRequest = {
+        id: string;
+        anchor: string;
+        kind?: string;
+        title?: string;
+        body?: string;
+        tags?: string[];
+        status?: string;
+        force?: boolean;
+        expectedHash?: string;
+        dryRun?: boolean;
+        connection?: string;
+        origin?: string;
+        aiModel?: string;
+    };
+
+    // aisessionsservice.AISessionsSessionAnnotateResult
+    type AISessionsSessionAnnotateResult = {
+        dryRun: boolean;
+        written: boolean;
+        created: boolean;
+        row?: AnnotationView;
+        preview: AISessionsSessionAnnotatePreview;
+    };
+
     // aisessionsservice.AISessionsSessionInfoRequest
     type AISessionsSessionInfoRequest = {
         id: string;
@@ -2784,17 +2820,17 @@ declare global {
         "waveai:maxoutputtokens"?: number;
     };
 
-    // syncproto.Origin
-    type Origin = {
-        deviceid?: string;
-        devicename?: string;
-        platform?: string;
-    };
-
     // hero.Origin
     type Origin = {
         deviceId?: string;
         deviceName?: string;
+        platform?: string;
+    };
+
+    // syncproto.Origin
+    type Origin = {
+        deviceid?: string;
+        devicename?: string;
         platform?: string;
     };
 
@@ -2890,6 +2926,7 @@ declare global {
         modelflag?: string;
         defaultModel?: string;
         models: ModelInfo[];
+        env?: {[key: string]: string};
         source: string;
         default?: boolean;
     };
@@ -3203,6 +3240,58 @@ declare global {
     type SecretMeta = {
         desc: string;
         optional: boolean;
+    };
+
+    // wshrpc.SessionAnnotatePreview
+    type SessionAnnotatePreview = {
+        anchorKey: string;
+        anchorPreview?: string;
+        anchorRole?: string;
+        seq: number;
+        replacedId?: number;
+        replacedUpdatedAt?: number;
+    };
+
+    // wshrpc.SessionAnnotateRequest
+    type SessionAnnotateRequest = {
+        identifier: string;
+        blockid?: string;
+        anchor: string;
+        kind?: string;
+        title?: string;
+        body?: string;
+        tags?: string[];
+        status?: string;
+        force?: boolean;
+        expectedhash?: string;
+        dryrun?: boolean;
+        yes?: boolean;
+        aimodel?: string;
+    };
+
+    // wshrpc.SessionAnnotateResult
+    type SessionAnnotateResult = {
+        dryRun: boolean;
+        written: boolean;
+        created: boolean;
+        row: SessionAnnotateRow;
+        preview: SessionAnnotatePreview;
+    };
+
+    // wshrpc.SessionAnnotateRow
+    type SessionAnnotateRow = {
+        id: number;
+        anchorKey: string;
+        seq: number;
+        kind: string;
+        title: string;
+        body: string;
+        tags: string[];
+        status: string;
+        source: string;
+        aiModel?: string;
+        anchorHash?: string;
+        updatedAt: number;
     };
 
     // aisessions.SessionDetail

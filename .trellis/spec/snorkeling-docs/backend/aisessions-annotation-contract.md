@@ -96,3 +96,21 @@ ai_session_annotation_ai_state(session_key PK, ...)  -- M3 预埋，只写不读
 - 前端 Block `view: aiaudit`；AI Sessions 头栏提供入口。
 - 失败行可一键 Retry；重试会产生新的审计行，便于对照。
 
+
+## 9. 机器批注写入口（2026-11-18，`11-18-aisessions-annotate-entry`）
+
+外部 agent（守夜人巡检）写批注走 `wsh session annotate` / MCP `snorkeling_session_annotate`，
+进 `UpsertMachineAnnotation`（`annotation_machine.go`），**不走** `AnnotationSave`：
+
+- **覆盖判定**：同一 `(session_key, kind, anchor_key)` 的**全部** `CanReplace` 行一起删（收敛重复），
+  最新行受保护（`source=user` 或 `user_edited=1`）→ `ErrAnnotationProtected` → `E_CONFLICT`，
+  `--force` 也不绕过。查重看**最新行不论 source**，机器宁可失败不并列。
+- **机器身份**：`source` 恒 `ai`（DTO 无该字段）；`status` 缺省 `draft`，store 层只接受
+  `""|draft|accepted`，垃圾值 `E_USAGE`（不得依赖 `normalizeAnnotationStatus` 的缺省归一——
+  它会把垃圾归成 accepted）；`accepted` 需 `force`。
+- **锚点**：`tail` 或 itemKey；itemKey 必须命中 `BuildAnnotationAnchors`，幻觉键 `E_NOT_FOUND` 且零残留。
+- **门禁**：默认 dry-run（只读、不开事务）；真写 = `--yes` + `expectedHash`（`agentdata.HashSession(summary)`，
+  与 `session get` 的 `card.hash` 同源）严格比较。
+- **性能**：单次 = 1 次 Summary + 1 次 `LoadAnnotationDetail`，禁止循环调用；一次只碰一个锚点。
+- 事务内只用 `tx`（单连接池），`UpsertAnnotation` 更新路径会把 `user_edited` 置 1——
+  **机器幂等覆盖禁止走该路径**（第二次写入会被自己的第一次写入锁死）。

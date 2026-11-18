@@ -11,7 +11,11 @@
 
 package aisessions
 
-import "strings"
+import (
+	"context"
+	"fmt"
+	"strings"
+)
 
 // AnnotationAnchorPreviewChars 是锚点原文预览的最大长度（卡片悬浮时展示）。
 const AnnotationAnchorPreviewChars = 200
@@ -87,6 +91,55 @@ func AnnotationAnchorTextByKey(messages []Message, toolCalls []ToolCall) map[str
 		texts[key] = truncateAnnotationText(annotationAnchorHashText(message), AnnotationAnchorPreviewChars)
 	}
 	return texts
+}
+
+// ResolveAnnotationAnchorTarget turns a write request anchor ("tail" or an
+// exact itemKey) into a live anchor plus its preview text.
+//
+// "tail" means the last anchorable message of the session. An unknown itemKey
+// is refused with ErrAnnotationAnchorNotFound: a hallucinated key must never
+// reach storage.
+func ResolveAnnotationAnchorTarget(messages []Message, toolCalls []ToolCall, anchor string) (AnnotationAnchor, string, error) {
+	anchor = strings.TrimSpace(anchor)
+	anchors := BuildAnnotationAnchors(messages, toolCalls)
+	previews := AnnotationAnchorTextByKey(messages, toolCalls)
+	if strings.EqualFold(anchor, "tail") {
+		if len(anchors) == 0 {
+			return AnnotationAnchor{}, "", fmt.Errorf("%w: session has no anchorable messages", ErrAnnotationAnchorNotFound)
+		}
+		chosen := anchors[len(anchors)-1]
+		return chosen, previews[chosen.AnchorKey], nil
+	}
+	if anchor == "" {
+		return AnnotationAnchor{}, "", fmt.Errorf("%w: empty anchor", ErrAnnotationAnchorNotFound)
+	}
+	for _, candidate := range anchors {
+		if candidate.AnchorKey == anchor {
+			return candidate, previews[candidate.AnchorKey], nil
+		}
+	}
+	return AnnotationAnchor{}, "", fmt.Errorf("%w: %q", ErrAnnotationAnchorNotFound, anchor)
+}
+
+// LoadAnnotationDetail loads a session detail and guarantees annotation anchors
+// are available.
+//
+// 坑：会话消息是从 SQLite 缓存的（ai_session_messages 没有 item_key 列），缓存命中时
+// Message.ItemKey 恒为空 —— 于是 BuildAnnotationAnchors 返回 0 条，写库时 seq 只能是 0。
+// 这里在「锚点为空」时用 Refresh 重解析一次会话文件（单会话解析，代价可接受）。
+func LoadAnnotationDetail(ctx context.Context, manager *Manager, sessionKey string) (SessionDetail, error) {
+	detail, err := manager.Load(ctx, sessionKey, LoadOptions{IncludeTools: true})
+	if err != nil {
+		return detail, err
+	}
+	if len(BuildAnnotationAnchors(detail.Messages, detail.ToolCalls)) > 0 {
+		return detail, nil
+	}
+	refreshed, refreshErr := manager.Load(ctx, sessionKey, LoadOptions{IncludeTools: true, Refresh: true})
+	if refreshErr != nil {
+		return detail, nil
+	}
+	return refreshed, nil
 }
 
 // ResolveAnnotationRowAnchors 按 anchorKey 给待写库的批注行补齐 seq / hash / preview。

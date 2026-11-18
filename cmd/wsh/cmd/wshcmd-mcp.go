@@ -123,6 +123,10 @@ func (b rpcBackend) AgentCardSet(ctx context.Context, req wshrpc.AgentCardSetReq
 	return wshclient.AgentCardSetCommand(RpcClient, req, b.opts())
 }
 
+func (b rpcBackend) SessionAnnotate(ctx context.Context, req wshrpc.SessionAnnotateRequest) (*wshrpc.SessionAnnotateResult, error) {
+	return wshclient.SessionAnnotateCommand(RpcClient, req, b.opts())
+}
+
 func mcpServeRun(cmd *cobra.Command, args []string) (rtnErr error) {
 	defer func() { sendActivity("mcp serve", rtnErr == nil) }()
 

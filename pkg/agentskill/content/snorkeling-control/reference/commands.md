@@ -176,6 +176,19 @@ Flags: `--note`, `--title`, `--tags-add`, `--tags-set`, `--tags-remove`, `--prop
 - E_CONFLICT means someone else edited: re-read, do not pass --force.
 - titleSource=user is refused without --force.
 
+### `wsh session annotate`
+
+Write one AI annotation draft onto a session timeline node (note/milestone/decision/question).
+
+Flags: `<key|id|this>`, `--anchor tail|<itemKey>`, `--kind note|milestone|decision|question`, `--title`, `--body`, `--tags a,b`, `--status draft|accepted`, `--force`, `--dry-run`, `--yes`, `--expected-hash <h>`, `--ai-model`, `--json`
+
+- source is always ai and status defaults to draft; accepted needs --force, so a machine cannot accept its own annotation.
+- Dry-run unless --yes; a real write needs --expected-hash from a fresh session get.
+- A hallucinated --anchor is E_NOT_FOUND and writes nothing; --anchor tail picks the last anchorable message.
+- Repeating the same (session, kind, anchor) replaces the previous machine annotation; the count does not grow.
+- A human-authored or human-edited annotation is E_CONFLICT and is never overwritten, even with --force.
+- At most ~10 writes per shift: only annotate sessions whose phase clearly advanced.
+
 ### `wsh hero create`
 
 Propose a new hero home base (agents never scaffold directly).

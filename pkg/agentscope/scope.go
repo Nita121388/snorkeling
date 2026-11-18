@@ -2,7 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // Package agentscope is the single source of truth for what an external agent
-// token may do. Design §10.5.3: observe < navigate < data < destructive.
+// token may do. Design §10.5.3: observe < navigate < data < launch < destructive.
+//
+// `launch` sits between data and destructive: it can start a new agent process
+// (an externally visible side effect the user must be able to see happening),
+// but it cannot destroy user data. Sending text to an agent block rides on the
+// same level, because creating a block is strictly stronger than talking to one.
 //
 // It lives in its own package because both the RPC transport (pkg/wshutil) and
 // the capability facades (pkg/agentcontrol, pkg/agentmcp) must agree, and
@@ -14,6 +19,7 @@ const (
 	Observe     = "observe"
 	Navigate    = "navigate"
 	Data        = "data"
+	Launch      = "launch"
 	Destructive = "destructive"
 )
 
@@ -21,7 +27,8 @@ var rank = map[string]int{
 	Observe:     1,
 	Navigate:    2,
 	Data:        3,
-	Destructive: 4,
+	Launch:      4,
+	Destructive: 5,
 }
 
 // Known reports whether name is a valid scope level.

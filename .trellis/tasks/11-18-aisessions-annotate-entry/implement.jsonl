@@ -1,0 +1,2 @@
+{"file": ".trellis/spec/snorkeling-docs/backend/aisessions-annotation-contract.md", "reason": "批注存储契约：CanReplace 冻结规则、锚点、RPC、不变量（单连接池禁 idx.db）"}
+{"file": ".trellis/spec/snorkeling-docs/backend/agent-control-surface-contract.md", "reason": "CLI/MCP 分层、有界截断、错误码冻结"}

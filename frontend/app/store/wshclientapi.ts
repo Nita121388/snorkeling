@@ -1110,6 +1110,12 @@ export class RpcApiType {
         return client.wshRpcCall("sendtelemetry", null, opts);
     }
 
+    // command "sessionannotate" [call]
+    SessionAnnotateCommand(client: WshClient, data: SessionAnnotateRequest, opts?: RpcOpts): Promise<SessionAnnotateResult> {
+        if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "sessionannotate", data, opts);
+        return client.wshRpcCall("sessionannotate", data, opts);
+    }
+
     // command "sessionget" [call]
     SessionGetCommand(client: WshClient, data: SessionGetRequest, opts?: RpcOpts): Promise<SessionLiveRecord> {
         if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "sessionget", data, opts);

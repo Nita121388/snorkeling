@@ -1942,25 +1942,10 @@ func (svc *AISessionsService) AnnotationSave(ctx context.Context, request *AISes
 	return &view, nil
 }
 
-// loadDetailForAnnotations 加载会话详情，并保证拿得到 anchorKey。
-//
-// 坑：会话消息是从 SQLite 缓存的（ai_session_messages 没有 item_key 列），缓存命中时
-// Message.ItemKey 恒为空 —— 于是 BuildAnnotationAnchors 返回 0 条，AI 草稿落库时
-// seq 只能是 0，前端点 Jump 永远跳不动。这里在「锚点为空」时用 Refresh 重解析一次
-// 会话文件（单会话解析，代价可接受），把条目补齐。
+// loadDetailForAnnotations 加载会话详情，并保证拿得到 anchorKey（实现在
+// pkg/aisessions，服务端与 ACS 写入口共用同一套锚点补齐逻辑）。
 func loadDetailForAnnotations(ctx context.Context, manager *aisessions.Manager, sessionKey string) (aisessions.SessionDetail, error) {
-	detail, err := manager.Load(ctx, sessionKey, aisessions.LoadOptions{IncludeTools: true})
-	if err != nil {
-		return detail, err
-	}
-	if len(aisessions.BuildAnnotationAnchors(detail.Messages, detail.ToolCalls)) > 0 {
-		return detail, nil
-	}
-	refreshed, refreshErr := manager.Load(ctx, sessionKey, aisessions.LoadOptions{IncludeTools: true, Refresh: true})
-	if refreshErr != nil {
-		return detail, nil
-	}
-	return refreshed, nil
+	return aisessions.LoadAnnotationDetail(ctx, manager, sessionKey)
 }
 
 // resolveAnnotationAnchorRow 按 anchorKey 在会话当前消息里找出真实 seq。

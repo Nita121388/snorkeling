@@ -18,6 +18,7 @@ const (
 	ScopeObserve  = agentscope.Observe
 	ScopeNavigate = agentscope.Navigate
 	ScopeData     = agentscope.Data
+	ScopeLaunch   = agentscope.Launch
 )
 
 // Backend is the narrow surface the MCP tools need. It is an interface so the
@@ -40,6 +41,7 @@ type Backend interface {
 	TabActivate(ctx context.Context, req wshrpc.TabActivateRequest) (*wshrpc.TabActivateResult, error)
 	AgentCardGet(ctx context.Context, req wshrpc.AgentCardGetRequest) (*wshrpc.AgentCardResult, error)
 	AgentCardSet(ctx context.Context, req wshrpc.AgentCardSetRequest) (*wshrpc.AgentCardSetResult, error)
+	SessionAnnotate(ctx context.Context, req wshrpc.SessionAnnotateRequest) (*wshrpc.SessionAnnotateResult, error)
 }
 
 // toolSpec binds one MCP tool to one Backend call.
@@ -390,7 +392,64 @@ func toolSpecs() []toolSpec {
 				return be.AgentCardSet(ctx, req)
 			},
 		},
+		{
+			Name:        "snorkeling_session_annotate",
+			Description: "Write one AI annotation draft onto a session timeline node. Dry-run unless confirm is true, and a real write requires expectedhash from a fresh session_get. Status defaults to draft; accepted needs force. A repeat write at the same (session, kind, anchor) replaces the previous machine annotation; human-authored or human-edited annotations are never overwritten.",
+			Scope:       ScopeData,
+			Annotations: &Annotations{Title: "Sessions: annotate", DestructiveHint: true},
+			Schema: obj(map[string]any{
+				"identifier":   str("session key / session id / 'this'"),
+				"anchor":       str("'tail' (last anchorable message) or a message itemKey"),
+				"kind":         str("note|milestone|decision|question (default note)"),
+				"title":        str("short title"),
+				"body":         str("body text (truncated at the storage limit)"),
+				"tags":         map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+				"status":       str("draft (default) | accepted (needs force)"),
+				"force":        boolean("allow status=accepted"),
+				"expectedhash": str("card hash from a fresh session_get (required for a real write)"),
+				"confirm":      boolean("confirm the write (same as CLI --yes); default false = dry-run"),
+				"dryrun":       boolean("force a preview, even with confirm"),
+				"aimodel":      str("model that produced this annotation"),
+			}, "identifier", "anchor"),
+			Invoke: func(ctx context.Context, be Backend, args json.RawMessage) (any, error) {
+				raw, err := decode[sessionAnnotateArgs](args)
+				if err != nil {
+					return nil, err
+				}
+				return be.SessionAnnotate(ctx, wshrpc.SessionAnnotateRequest{
+					Identifier:   raw.Identifier,
+					Anchor:       raw.Anchor,
+					Kind:         raw.Kind,
+					Title:        raw.Title,
+					Body:         raw.Body,
+					Tags:         raw.Tags,
+					Status:       raw.Status,
+					Force:        raw.Force,
+					ExpectedHash: raw.ExpectedHash,
+					AIModel:      raw.AIModel,
+					DryRun:       raw.DryRun,
+					Yes:          raw.Confirm,
+				})
+			},
+		},
 	}
+}
+
+// sessionAnnotateArgs is the MCP-side shape. `confirm` is the tool-facing name
+// for the CLI's --yes: it is the only naming difference between the surfaces.
+type sessionAnnotateArgs struct {
+	Identifier   string   `json:"identifier"`
+	Anchor       string   `json:"anchor"`
+	Kind         string   `json:"kind"`
+	Title        string   `json:"title"`
+	Body         string   `json:"body"`
+	Tags         []string `json:"tags"`
+	Status       string   `json:"status"`
+	Force        bool     `json:"force"`
+	ExpectedHash string   `json:"expectedhash"`
+	AIModel      string   `json:"aimodel"`
+	DryRun       bool     `json:"dryrun"`
+	Confirm      bool     `json:"confirm"`
 }
 
 // Tools returns the tool list advertised by `tools/list`.

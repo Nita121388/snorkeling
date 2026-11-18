@@ -170,6 +170,43 @@ state, before applying anything. Per-operation re-validation inside
 earlier operations of the same patch, which makes multi-operation patches
 impossible to apply. Do not reintroduce it.
 
+## Session annotate (`session annotate`, write)
+
+```
+wsh session annotate <sessionKey|sessionId|this>
+    --anchor tail|<itemKey> --kind note|milestone|decision|question
+    --title <s> --body <s> [--tags a,b] [--status draft|accepted] [--force]
+    [--dry-run | --yes --expected-hash <card.hash>] [--ai-model <s>] [--json]
+```
+
+Writes one **AI draft annotation** onto a timeline node (`Message.ItemKey`).
+This is the write side of the progressive read surface: an external agent reads
+turns, then records a milestone/decision it found.
+
+- **Source is always `ai`** (never accepted from the caller); status defaults to
+  `draft`. `--status accepted` is refused with `E_USAGE` unless `--force` — a
+  machine cannot accept its own annotation.
+- **Anchor validation**: `--anchor tail` is the last anchorable message;
+  `--anchor <itemKey>` must exist in the current anchor set. A hallucinated key
+  fails with `E_NOT_FOUND` and writes nothing.
+- **Replacement, not accumulation**: the same `(session_key, kind, anchor_key)`
+  machine row is replaced in one transaction (`UpsertMachineAnnotation`), so the
+  row count does not grow and `updated_at` changes. The frozen `CanReplace` rule
+  still decides: a `source=user` row or an `source=ai` row with `user_edited=1`
+  is refused with `E_CONFLICT` and is never overwritten — `--force` does not
+  bypass that. Unrelated AI drafts are left alone (unlike
+  `ReplaceReplaceableAnnotations`, which wipes every replaceable draft in the
+  session).
+- **Preconditions**: dry-run unless `--yes`; a real write requires
+  `--expected-hash` from a fresh `wsh session get` (`card.hash`), compared
+  against `agentdata.HashSession(summary)`. A stale hash is `E_CONFLICT`.
+- Body is clamped at the storage limit (`AnnotationBodyMaxChars`).
+- MCP: `snorkeling_session_annotate`, same arguments with `confirm` in place of
+  `--yes`; `ScopeData`, `destructiveHint: true`.
+- Budget: the CLI/MCP do not impose a quota; callers (e.g. a watch agent) should
+  cap themselves at ~10 writes per shift and only annotate sessions whose phase
+  clearly advanced.
+
 ## UI observe + navigate (P0.2)
 
 ```

@@ -84,6 +84,14 @@ Reading Live Agent Sessions (read-only)
 - wsh session turn <key|id> --turn N --chars 2000 --json
                               -> that turn's original messages; --chars is REQUIRED (1-8000) and
                               the response reports truncated + totalChars.
+- wsh session annotate <key|id|this> --anchor tail --kind milestone --title "..." --body "..." --json
+                              -> WRITE one AI annotation draft onto the timeline. source is always ai,
+                              status defaults to draft (accepted needs --force), and a real write needs
+                              --yes --expected-hash <card.hash from 'session get'>. Repeating the same
+                              (session, kind, anchor) replaces the previous machine annotation instead
+                              of stacking another. A human-authored/edited annotation is E_CONFLICT and
+                              is never overwritten (even with --force). A hallucinated --anchor is
+                              E_NOT_FOUND and writes nothing. Keep it to <=10 writes per shift.
 - Every read layer is a single-session point read. A stale message index is reported as
   stale=true (empty page) instead of silently answering from old rows; add --refresh to
   re-index just that session, then retry.
@@ -454,6 +462,9 @@ Rules:
 - Use wsh agent card get for a session card, and wsh agent card set to write it;
   writes are dry-run unless --yes and require --expected-hash, and never overwrite
   a user-authored title/property without --force.
+- Use wsh session annotate to write an AI draft (milestone/decision/question/note) onto
+  a session timeline node. It is dry-run unless --yes, requires --expected-hash, defaults
+  to status=draft, and never overwrites a human-authored or human-edited annotation.
 - Export current data before creating a patch.
 - Run a dry-run before any real apply.
 - Apply only after explicit user confirmation.

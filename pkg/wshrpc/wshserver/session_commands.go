@@ -58,3 +58,9 @@ func (ws *WshServer) AgentCardGetCommand(ctx context.Context, data wshrpc.AgentC
 func (ws *WshServer) AgentCardSetCommand(ctx context.Context, data wshrpc.AgentCardSetRequest) (*wshrpc.AgentCardSetResult, error) {
 	return agentcontrol.SetAgentCard(ctx, data)
 }
+
+// SessionAnnotateCommand writes one machine annotation draft onto a session
+// timeline node. Dry-run unless Yes is set; a real write requires ExpectedHash.
+func (ws *WshServer) SessionAnnotateCommand(ctx context.Context, data wshrpc.SessionAnnotateRequest) (*wshrpc.SessionAnnotateResult, error) {
+	return agentcontrol.SessionAnnotate(ctx, data)
+}

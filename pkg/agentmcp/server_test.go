@@ -17,10 +17,12 @@ import (
 // fakeBackend records calls and returns canned values so the protocol can be
 // tested without a running app.
 type fakeBackend struct {
-	uiStateCalls int
-	cardSetCalls int
-	blockOpenErr error
-	lastCardReq  wshrpc.AgentCardSetRequest
+	uiStateCalls    int
+	cardSetCalls    int
+	annotateCalls   int
+	blockOpenErr    error
+	lastCardReq     wshrpc.AgentCardSetRequest
+	lastAnnotateReq wshrpc.SessionAnnotateRequest
 }
 
 func (f *fakeBackend) SessionLive(ctx context.Context, req wshrpc.SessionLiveRequest) (*wshrpc.SessionLiveResult, error) {
@@ -72,6 +74,12 @@ func (f *fakeBackend) TabActivate(ctx context.Context, req wshrpc.TabActivateReq
 func (f *fakeBackend) AgentCardGet(ctx context.Context, req wshrpc.AgentCardGetRequest) (*wshrpc.AgentCardResult, error) {
 	return &wshrpc.AgentCardResult{Version: 1, SessionKey: req.Identifier}, nil
 }
+func (f *fakeBackend) SessionAnnotate(ctx context.Context, req wshrpc.SessionAnnotateRequest) (*wshrpc.SessionAnnotateResult, error) {
+	f.annotateCalls++
+	f.lastAnnotateReq = req
+	return &wshrpc.SessionAnnotateResult{DryRun: !req.Yes, Written: req.Yes}, nil
+}
+
 func (f *fakeBackend) AgentCardSet(ctx context.Context, req wshrpc.AgentCardSetRequest) (*wshrpc.AgentCardSetResult, error) {
 	f.cardSetCalls++
 	f.lastCardReq = req
@@ -131,8 +139,8 @@ func TestToolsListShapeAndScopes(t *testing.T) {
 	s, _ := newServer(nil)
 	res := resultMap(t, mustHandle(t, s, `{"jsonrpc":"2.0","id":2,"method":"tools/list"}`))
 	tools, _ := res["tools"].([]any)
-	if len(tools) != 16 {
-		t.Fatalf("expected 16 tools, got %d", len(tools))
+	if len(tools) != 17 {
+		t.Fatalf("expected 17 tools, got %d", len(tools))
 	}
 	seen := map[string]bool{}
 	for _, raw := range tools {

@@ -253,6 +253,36 @@ export class AISessionsServiceType {
         return callBackendService(this?.waveEnv, "aisessions", "RestoreContext", Array.from(arguments))
     }
 
+    // write one machine annotation draft (source=ai, status=draft by default, accepted needs force, real write needs the card hash)
+    // @returns dry-run preview or the written annotation row plus replaced id
+    SessionAnnotate(request: AISessionsSessionAnnotateRequest): Promise<AISessionsSessionAnnotateResult> {
+        return callBackendService(this?.waveEnv, "aisessions", "SessionAnnotate", Array.from(arguments))
+    }
+
+    // probe one AI session's size (counts/bytes/verdict) without loading content
+    // @returns AI session size info
+    SessionInfo(request: AISessionsSessionInfoRequest): Promise<SessionReadInfo> {
+        return callBackendService(this?.waveEnv, "aisessions", "SessionInfo", Array.from(arguments))
+    }
+
+    // read one AI session turn's original messages under a chars budget (requires explicit chars 1-8000)
+    // @returns AI session turn messages
+    SessionTurn(request: AISessionsSessionTurnRequest): Promise<SessionTurnMessages> {
+        return callBackendService(this?.waveEnv, "aisessions", "SessionTurn", Array.from(arguments))
+    }
+
+    // read one page of AI session turn summaries (requires explicit limit 1-10)
+    // @returns AI session turn page
+    SessionTurns(request: AISessionsSessionTurnsRequest): Promise<SessionTurnPage> {
+        return callBackendService(this?.waveEnv, "aisessions", "SessionTurns", Array.from(arguments))
+    }
+
+    // read one page of user prompts from an AI session
+    // @returns AI session user prompt page
+    SessionUsers(request: AISessionsSessionUsersRequest): Promise<SessionUserPage> {
+        return callBackendService(this?.waveEnv, "aisessions", "SessionUsers", Array.from(arguments))
+    }
+
     // merge custom properties into a local AI session
     // @returns updated AI session summary
     SetProps(request: AISessionsSetPropsRequest): Promise<SessionSummary> {

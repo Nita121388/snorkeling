@@ -36,6 +36,18 @@ var (
 	sessionTurnNumber  int
 	sessionTurnChars   int
 	sessionReadRefresh bool
+
+	sessionAnnotateAnchor       string
+	sessionAnnotateKind         string
+	sessionAnnotateTitle        string
+	sessionAnnotateBody         string
+	sessionAnnotateTags         []string
+	sessionAnnotateStatus       string
+	sessionAnnotateForce        bool
+	sessionAnnotateExpectedHash string
+	sessionAnnotateDryRun       bool
+	sessionAnnotateYes          bool
+	sessionAnnotateAIModel      string
 )
 
 var sessionCmd = &cobra.Command{
@@ -107,11 +119,32 @@ var sessionTurnCmd = &cobra.Command{
 	PreRunE: preRunSetupRpcClient,
 }
 
+var sessionAnnotateCmd = &cobra.Command{
+	Use:   "annotate <sessionKey|sessionId|this>",
+	Short: "Write one machine annotation draft onto a session timeline node",
+	Long: `Write one machine annotation draft (source=ai).
+
+Examples:
+  wsh session annotate this --anchor tail --kind milestone --title "阶段推进" --body "..."
+  wsh session get this --json                 # read .card.hash
+  wsh session annotate this --anchor tail --kind milestone --title "阶段推进" --body "..." \
+      --yes --expected-hash <hash>
+
+Writes are dry-run unless --yes, and a real write requires --expected-hash.
+Status defaults to draft; --status accepted additionally requires --force.
+A repeat write at the same (session, kind, anchor) replaces the previous
+machine annotation instead of adding another one. A human-authored or
+human-edited annotation is never overwritten.`,
+	Args:    cobra.ExactArgs(1),
+	RunE:    sessionAnnotateRun,
+	PreRunE: preRunSetupRpcClient,
+}
+
 func init() {
 	sessionCmd.PersistentFlags().BoolVar(&sessionJSON, "json", false, "output as JSON")
 	sessionCmd.PersistentFlags().Int64Var(&sessionTimeoutMs, "timeout", 8000, "RPC timeout in milliseconds")
 	sessionCmd.AddCommand(sessionLiveCmd, sessionGetCmd, sessionListCmd, sessionForBlockCmd,
-		sessionInfoCmd, sessionUsersCmd, sessionTurnsCmd, sessionTurnCmd)
+		sessionInfoCmd, sessionUsersCmd, sessionTurnsCmd, sessionTurnCmd, sessionAnnotateCmd)
 
 	sessionLiveCmd.Flags().BoolVar(&sessionIncludeIdle, "include-idle", false, "include idle sessions")
 	sessionLiveCmd.Flags().IntVar(&sessionMaxRows, "max-rows", 200, "maximum rows to return")
@@ -140,6 +173,19 @@ func init() {
 	sessionTurnCmd.Flags().IntVar(&sessionTurnNumber, "turn", 0, "turn number (1-based, from 'session turns')")
 	sessionTurnCmd.Flags().IntVar(&sessionTurnChars, "chars", 0, "chars budget: REQUIRED, 1-8000")
 	sessionTurnCmd.Flags().BoolVar(&sessionReadRefresh, "refresh", false, "re-parse this session's messages before reading (single file, no full scan)")
+
+	sessionAnnotateCmd.Flags().StringVar(&sessionBlockId, "block", "", "block id for 'this' resolution (defaults to WAVETERM_BLOCKID)")
+	sessionAnnotateCmd.Flags().StringVar(&sessionAnnotateAnchor, "anchor", "", "anchor: 'tail' or a message itemKey (REQUIRED)")
+	sessionAnnotateCmd.Flags().StringVar(&sessionAnnotateKind, "kind", "note", "annotation kind: note | milestone | decision | question")
+	sessionAnnotateCmd.Flags().StringVar(&sessionAnnotateTitle, "title", "", "short title")
+	sessionAnnotateCmd.Flags().StringVar(&sessionAnnotateBody, "body", "", "body text (truncated at the storage limit)")
+	sessionAnnotateCmd.Flags().StringSliceVar(&sessionAnnotateTags, "tags", nil, "comma-separated tags")
+	sessionAnnotateCmd.Flags().StringVar(&sessionAnnotateStatus, "status", "draft", "status: draft (default) | accepted (needs --force)")
+	sessionAnnotateCmd.Flags().BoolVar(&sessionAnnotateForce, "force", false, "allow --status accepted (a machine never accepts on its own otherwise)")
+	sessionAnnotateCmd.Flags().StringVar(&sessionAnnotateExpectedHash, "expected-hash", "", "card hash from 'session get' (required for --yes)")
+	sessionAnnotateCmd.Flags().BoolVar(&sessionAnnotateDryRun, "dry-run", false, "preview the resolved anchor and write without writing")
+	sessionAnnotateCmd.Flags().BoolVar(&sessionAnnotateYes, "yes", false, "confirm the real write")
+	sessionAnnotateCmd.Flags().StringVar(&sessionAnnotateAIModel, "ai-model", "", "model that produced this annotation (stored in ai_model)")
 
 	rootCmd.AddCommand(sessionCmd)
 }
@@ -528,4 +574,51 @@ func boolMark(flag bool, label string) string {
 		return label
 	}
 	return ""
+}
+
+func sessionAnnotateRun(cmd *cobra.Command, args []string) (rtnErr error) {
+	defer func() { sendActivity("session annotate", rtnErr == nil) }()
+	if !cmd.Flags().Changed("anchor") {
+		return fmt.Errorf("E_USAGE: --anchor is required ('tail' or a message itemKey from 'wsh session turn')")
+	}
+	req := wshrpc.SessionAnnotateRequest{
+		Identifier:   args[0],
+		BlockId:      sessionBlockArg(sessionBlockId),
+		Anchor:       sessionAnnotateAnchor,
+		Kind:         sessionAnnotateKind,
+		Title:        sessionAnnotateTitle,
+		Body:         sessionAnnotateBody,
+		Tags:         sessionAnnotateTags,
+		Status:       sessionAnnotateStatus,
+		Force:        sessionAnnotateForce,
+		ExpectedHash: strings.TrimSpace(sessionAnnotateExpectedHash),
+		DryRun:       sessionAnnotateDryRun,
+		Yes:          sessionAnnotateYes && !sessionAnnotateDryRun,
+		AIModel:      strings.TrimSpace(sessionAnnotateAIModel),
+	}
+	res, err := wshclient.SessionAnnotateCommand(RpcClient, req, sessionRpcOpts())
+	if err != nil {
+		return err
+	}
+	if sessionJSON {
+		return writeJSON(res)
+	}
+	action := "wrote"
+	if res.DryRun {
+		action = "would write"
+	}
+	fmt.Fprintf(WrappedStdout, "%s · %s [%s] · anchor %s (seq %d)\n", action, res.Row.Kind, res.Row.Status, res.Preview.AnchorKey, res.Preview.Seq)
+	if res.Preview.AnchorPreview != "" {
+		fmt.Fprintf(WrappedStdout, "anchor text: %s\n", res.Preview.AnchorPreview)
+	}
+	if res.DryRun {
+		fmt.Fprintf(WrappedStdout, "dry-run: nothing was written; re-run with --yes --expected-hash <hash from 'session get'>\n")
+	} else {
+		if res.Created {
+			fmt.Fprintf(WrappedStdout, "written: id=%d\n", res.Row.ID)
+		} else {
+			fmt.Fprintf(WrappedStdout, "written: id=%d (replaced id=%d)\n", res.Row.ID, res.Preview.ReplacedID)
+		}
+	}
+	return nil
 }

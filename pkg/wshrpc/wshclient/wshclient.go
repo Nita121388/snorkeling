@@ -1107,6 +1107,12 @@ func SendTelemetryCommand(w *wshutil.WshRpc, opts *wshrpc.RpcOpts) error {
 	return err
 }
 
+// command "sessionannotate", wshserver.SessionAnnotateCommand
+func SessionAnnotateCommand(w *wshutil.WshRpc, data wshrpc.SessionAnnotateRequest, opts *wshrpc.RpcOpts) (*wshrpc.SessionAnnotateResult, error) {
+	resp, err := sendRpcRequestCallHelper[*wshrpc.SessionAnnotateResult](w, "sessionannotate", data, opts)
+	return resp, err
+}
+
 // command "sessionget", wshserver.SessionGetCommand
 func SessionGetCommand(w *wshutil.WshRpc, data wshrpc.SessionGetRequest, opts *wshrpc.RpcOpts) (*wshrpc.SessionLiveRecord, error) {
 	resp, err := sendRpcRequestCallHelper[*wshrpc.SessionLiveRecord](w, "sessionget", data, opts)
