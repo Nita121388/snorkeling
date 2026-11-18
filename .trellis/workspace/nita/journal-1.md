@@ -187,3 +187,23 @@ merge 后 go build ./... 通过、四包测试全绿、`task generate` 无 diff�
   5s 超时误红 → 放宽 20s。
 - 已知边界：旧 Hero 块 meta 无 hero:name，仍显示哈希目录名（重新登场即生效）；懒回填（启动时按
   meta.hero 查 roster 补 meta）留后续包。G7 人验收待 nita 真机看 Header。
+
+## 2026-11-18 程序化创建 agent block + 投递文本（agentlaunch / agentsend）
+
+- 需求：昨天 CommonText「一步发布到 agent block」的注入半段是纯前端（隐藏挂载 + xterm paste），
+  外部 agent 调不到 → 要做后端化，且调用方能选 agent / Tab / 路径；块照常展示（后台≠隐藏）。
+- 两个包：`11-09-agent-block-create`（`wsh agent launch`，建块半段）+ 新建 `11-18-agent-block-send`
+  （`wsh agent send` / `launch --send`，发送半段）。提交 `3a2c93831`。
+- 建块：catalog 单一事实源（未知 profile 不兜底同名二进制）、meta 与 GUI createAgentBlockDef 对齐、
+  复用 CreateBlockCommand、新 scope `launch`、MCP `snorkeling_agent_create`、`defwidget@agent` 改走默认 profile。
+- 发送：`blockcontroller.SendInput` 唯一写入口；bracketed paste + 150ms 后单独 `\r`；
+  就绪判定改看块 term 文件 quiet（后端可判，不依赖前端挂载）；controller 未起则 ResyncController。
+- 真机（dev 实例 verify-agent-launch，跑完已关）踩到两个真实缺陷：
+  1) `ShellController` 先报 running 后建 `ShellInputCh` → 首次写入 `no shell input chan`（限时重试 3s）。
+  2) pi 裸模型 id 跨 provider 歧义（目录 18 模型/6 provider，运行时 8 provider 已认证）→
+     目录条目带 provider 时统一展开 `provider/id`。
+- 数字：go build ./... 0；agentcatalog/agentscope/agentmcp/waveobj/wshrpc/cmd:wsh 全绿；
+  真机 7/7（launch pi + --send → pi 回 OK；term 探针 exitcode 0；非 term E_BLOCK_NOT_READY；
+  70KB E_USAGE；bad model 块数 12→12；bad profile E_PROFILE_UNKNOWN）。
+- 待办：G7 人验收（nita 真机看 Tab 里新建 agent 块与消息落地）；`scripts/verify/agent-send` 验证台
+  尚未建（当前证据是 wsh 直连 + filestore 核对，不是 verify 台）。
