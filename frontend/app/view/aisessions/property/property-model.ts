@@ -135,6 +135,16 @@ export function tagToOption(tag: string): SelectOption {
     return { id: clean, name: clean, color };
 }
 
+/**
+ * 读时归一：历史数据里 Notion 词表带来的 `status` 与本仓的 `select` 值形状完全一致
+ * （单值 + 彩色 pill，编辑浮层也共用），且本仓并未实现 Notion 的 status 分组/自动推进，
+ * 留着只会与用户属性名「状态」撞车。统一归一到 select：历史数据零迁移，
+ * 下次编辑值时以 select 写回即自愈；`PropertyType` 仍保留 `"status"` 字面量以描述原始数据形状。
+ */
+export function normalizePropertyType(type: PropertyType): PropertyType {
+    return type === "status" ? "select" : type;
+}
+
 function inferPropertyTypeFor(key: string, value: PropertyValue): PropertyType {
     if (value == null) return "text";
     if (typeof value === "boolean") return "checkbox";
@@ -252,10 +262,11 @@ export function toPropertyDefs(summary: SessionSummary | null | undefined, schem
         if (cell == null) continue;
         usedSchemaKeys.add(key);
         const schemaDef = schemaByKey.get(key);
-        const type: PropertyType =
+        const type: PropertyType = normalizePropertyType(
             (cell.type as PropertyType) ||
-            (schemaDef?.type as PropertyType) ||
-            inferPropertyTypeFor(key, cell.value as PropertyValue);
+                (schemaDef?.type as PropertyType) ||
+                inferPropertyTypeFor(key, cell.value as PropertyValue)
+        );
         let options: SelectOption[] | undefined;
         if (type === "select" || type === "status" || type === "multi_select") {
             const values = Array.isArray(cell.value)
@@ -296,7 +307,7 @@ export function toPropertyDefs(summary: SessionSummary | null | undefined, schem
     let schemaSeq = 0;
     for (const [key, schemaDef] of schemaByKey) {
         if (usedSchemaKeys.has(key)) continue;
-        const type = (schemaDef.type as PropertyType) || "text";
+        const type = normalizePropertyType((schemaDef.type as PropertyType) || "text");
         entries.push({
             def: {
                 key,

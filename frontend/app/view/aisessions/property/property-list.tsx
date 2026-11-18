@@ -112,12 +112,15 @@ export type PropertyListProps = {
     canEdit?: boolean;
 };
 
+// 可创建的类型词表。
+// 注意：`status` 故意不在列表里 —— 本仓没有实现 Notion status 的分组/自动推进，
+// 行为与 select 完全一致，中文标签「状态」还会和用户属性名撞车。历史数据里的
+// status 由 normalizePropertyType 在读取时归一成 select（零迁移）。
 const CreatableTypes: PropertyType[] = [
     "text",
     "number",
     "select",
     "multi_select",
-    "status",
     "date",
     "person",
     "checkbox",
@@ -397,7 +400,6 @@ const AddableTypeIcons: Record<string, string> = {
     number: "fa-hashtag",
     select: "fa-circle-dot",
     multi_select: "fa-tags",
-    status: "fa-circle-half-stroke",
     date: "fa-calendar",
     person: "fa-user",
     checkbox: "fa-square-check",

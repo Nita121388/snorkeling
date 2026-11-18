@@ -75,6 +75,27 @@ describe("toPropertyDefs", () => {
         expect(entries[customIndex].def.name).toBe("Tech Stack");
     });
 
+    it("读时归一：历史 status 类型映射为 select（值/渲染形状一致，零迁移）", () => {
+        const entries = toPropertyDefs(
+            makeSummary({ props: { stage: { value: "done", type: "status", updatedAt: 1 } } }),
+            [{ key: "stage", name: "Stage", type: "status", options: ["todo", "done"], order: 1 }]
+        );
+        const stage = entries.find((entry) => entry.def.key === "stage")!;
+        expect(stage.def.type).toBe("select");
+        expect(stage.cell.type).toBe("select");
+        // 模板 options 照常补全，值不动
+        expect(stage.def.options?.map((o) => o.id)).toEqual(["todo", "done"]);
+        expect(stage.cell.value).toBe("done");
+    });
+
+    it("schema-only 的 status 模板项也归一为 select", () => {
+        const entries = toPropertyDefs(makeSummary({ props: {} }), [
+            { key: "phase", name: "Phase", type: "status", order: 1 },
+        ]);
+        const phase = entries.find((entry) => entry.def.key === "phase")!;
+        expect(phase.def.type).toBe("select");
+    });
+
     it("infers a type when the cell does not carry one", () => {
         const entries = toPropertyDefs(
             makeSummary({
