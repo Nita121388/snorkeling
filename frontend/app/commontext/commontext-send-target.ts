@@ -93,6 +93,12 @@ export type SendTargetSelection = {
     /** 目标 cwd；空字符串表示「跟随聚焦块」 */
     folder: string | null;
     /**
+     * create 路径的目录默认值（跟随所选 Tab 的推荐项）。
+     * 仅在 folder 未显式选择且结果为 create 时生效；existing 判定始终用 folder（null = 跟随聚焦块），
+     * 两者分离避免「Tab 推荐目录 ≠ 聚焦块 cwd」时误判成 create。
+     */
+    folderDefault?: string | null;
+    /**
      * 强制新建：true 时即使三项与聚焦块全等也不落 existing。
      * 面板里的「新建 Agent Block」显式选项靠这个——否则选了与聚焦块同款 agent 时
      * 无法从「聚焦块」切到「新建」（2026-11-11 用户反馈）。
@@ -169,7 +175,12 @@ export function resolveSendTarget(
             block: focusedAgent,
         };
     }
-    const cwd = folder === "" ? (focusedAgent?.cwd ?? "") : folder;
+    const cwd =
+        folder !== ""
+            ? folder
+            : (selection.folderDefault ?? "").trim() !== ""
+              ? (selection.folderDefault ?? "").trim()
+              : (focusedAgent?.cwd ?? "");
     return {
         kind: "create",
         label: `${i18n.t("commontext:send.createLabel", { label, tab: tabLabel(selection.tab) })}${
@@ -227,6 +238,59 @@ export function collectFolderCandidates(input: {
 export function defaultSendFolder(focusedAgent: AgentBlockInfo | null, workspaceCwd?: string | null): string {
     if (focusedAgent?.cwd != null && focusedAgent.cwd !== "") return focusedAgent.cwd;
     return (workspaceCwd ?? "").trim();
+}
+
+// ── 目录候选随所选 Tab（2026-11-18，与 SendTargetPanel 紧凑化同包） ──
+
+/** 目录候选的 cwd 来源（与 agent-launch 的 AgentLaunchSource 对齐，纯逻辑层不反向依赖）。 */
+export type FolderCwdSource = "agent" | "files" | "terminal" | "home";
+
+/**
+ * 目录候选的作用域 Tab id：current → 当前 Tab；existing → 指定 Tab；new → null（不读任何块）。
+ * 纯函数，供 atom 与面板共享同一判定，避免两处各写一份。
+ */
+export function resolveFolderScopeTabId(tab: SendTabSelection, currentTabId: string | null | undefined): string | null {
+    if (tab.kind === "current") {
+        const id = (currentTabId ?? "").trim();
+        return id === "" ? null : id;
+    }
+    if (tab.kind === "existing") {
+        const id = (tab.tabId ?? "").trim();
+        return id === "" ? null : id;
+    }
+    return null;
+}
+
+/**
+ * 按目标 Tab 打开的块收集目录候选：Tab 内块顺序（agent / files / terminal）→ 工作区 → home。
+ * 去重口径与 collectFolderCandidates 一致（normalizeCwd 后比较）；空 cwd 忽略。
+ */
+export function collectFolderCandidatesForTab(input: {
+    cwds: { cwd: string | null | undefined; source: FolderCwdSource }[];
+    workspaceCwd?: string | null;
+    homeDir?: string | null;
+}): FolderCandidate[] {
+    const seen = new Set<string>();
+    const out: FolderCandidate[] = [];
+    const push = (path: string | null | undefined, note: string) => {
+        const normalized = normalizeCwd(path, input.homeDir);
+        if (normalized === "") return;
+        if (seen.has(normalized)) return;
+        seen.add(normalized);
+        out.push({ path: normalized, note });
+    };
+    for (const entry of input.cwds ?? []) {
+        if (entry == null) continue;
+        if (entry.source === "agent") push(entry.cwd, i18n.t("commontext:send.noteTabAgent"));
+        else if (entry.source === "files") push(entry.cwd, i18n.t("commontext:send.noteTabFiles"));
+        else if (entry.source === "home") push(entry.cwd, i18n.t("commontext:send.noteHome"));
+        else push(entry.cwd, i18n.t("commontext:send.noteTabTerminal"));
+    }
+    push(input.workspaceCwd, i18n.t("commontext:send.noteWorkspace"));
+    if (input.homeDir != null) {
+        push(input.homeDir, i18n.t("commontext:send.noteHome"));
+    }
+    return out;
 }
 
 /**

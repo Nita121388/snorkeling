@@ -1,0 +1,907 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>CommonText 发送目标弹窗 · 紧凑化 v2</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+<style>
+  /* ============================================================
+     镜像源：
+       frontend/app/commontext/commontext-send-button.tsx   (SplitButton 弹层 / SendTargetPanel)
+       frontend/app/commontext/commontext-send-target.ts    (resolveSendTarget / collectFolderCandidates)
+       frontend/app/workspace/agent-launch.ts               (collectAgentLaunchTargetsInTab：按 Tab 收集 cwd)
+       frontend/app/element/splitbutton.scss                (弹层面 token)
+     本原型聚焦「弹层内部信息架构 + Tab→目录联动」，不复刻工作区与编辑器。
+     ============================================================ */
+  :root {
+    --bg: #222222;
+    --fg: #f7f7f7;
+    --secondary: rgb(195, 200, 194);
+    --muted: rgb(140, 145, 140);
+    --accent: rgb(88, 193, 66);
+    --accent-hover: rgb(118, 223, 96);
+    --border: rgba(255, 255, 255, 0.16);
+    --border-soft: rgba(255, 255, 255, 0.08);
+    --modal-bg: #2a2a2a;
+    --panel: #141618;
+    --hover-bg: rgba(255, 255, 255, 0.06);
+    --surface-soft: rgba(255, 255, 255, 0.04);
+    --highlight-bg: rgba(88, 193, 66, 0.12);
+    --font-mono: "Hack", "JetBrains Mono", "Consolas", monospace;
+    --font-sans: "Inter", -apple-system, "Segoe UI", "PingFang SC", sans-serif;
+  }
+  [data-theme="light"] {
+    --bg: #ebe5d9;
+    --fg: #4c3924;
+    --secondary: #675033;
+    --muted: #777167;
+    --accent: #a76fca;
+    --accent-hover: #955ab8;
+    --border: #ded8ca;
+    --border-soft: #e6e0d2;
+    --modal-bg: #fffdf8;
+    --panel: #faf7f0;
+    --hover-bg: rgba(167, 111, 202, 0.10);
+    --surface-soft: #f0ede6;
+    --highlight-bg: rgba(167, 111, 202, 0.20);
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font: 14px/1.5 var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    padding: 20px 22px 80px;
+  }
+
+  /* ── 顶栏 ───────────────────────────────── */
+  .topbar {
+    display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+    padding: 0 0 14px; border-bottom: 1px solid var(--border-soft); margin-bottom: 20px;
+  }
+  .brand { display: flex; align-items: baseline; gap: 10px; flex: 1; min-width: 300px; }
+  .brand h1 { font-size: 15px; font-weight: 600; margin: 0; letter-spacing: .2px; }
+  .brand .sub { font-size: 12px; color: var(--muted); }
+  .brand .sub code {
+    font-family: var(--font-mono); font-size: 11px;
+    background: var(--surface-soft); padding: 1px 5px; border-radius: 4px;
+  }
+  .controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .ctrl-label { font-size: 11px; color: var(--muted); }
+  .seg { display: inline-flex; background: var(--surface-soft); border: 1px solid var(--border-soft); border-radius: 7px; padding: 2px; }
+  .seg button {
+    appearance: none; border: 0; background: transparent; color: var(--secondary);
+    font: inherit; font-size: 12px; padding: 5px 10px; border-radius: 5px; cursor: pointer;
+    display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;
+  }
+  .seg button.active { background: var(--modal-bg); color: var(--fg); box-shadow: 0 1px 2px rgba(0,0,0,.25); }
+  .ghost {
+    appearance: none; border: 1px solid var(--border-soft); background: transparent; color: var(--secondary);
+    font: inherit; font-size: 12px; padding: 5px 10px; border-radius: 7px; cursor: pointer;
+  }
+  .ghost:hover { color: var(--fg); border-color: var(--border); }
+
+  /* ── 舞台 ───────────────────────────────── */
+  .stage { display: grid; grid-template-columns: 1fr 1fr; gap: 26px; align-items: start; max-width: 980px; }
+  @media (max-width: 900px) { .stage { grid-template-columns: 1fr; } }
+
+  .col-head { display: flex; align-items: center; gap: 8px; margin: 0 0 10px 2px; }
+  .col-head h2 {
+    font-size: 11px; letter-spacing: .08em; text-transform: uppercase;
+    color: var(--muted); margin: 0; font-weight: 600;
+  }
+  .h-badge {
+    font-family: var(--font-mono); font-size: 10.5px; line-height: 1;
+    padding: 3px 7px; border-radius: 999px; border: 1px solid var(--border-soft);
+    color: var(--secondary); background: var(--surface-soft);
+  }
+  .h-badge.good { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
+  .col-note { font-size: 11.5px; color: var(--muted); margin: 10px 2px 0; line-height: 1.55; }
+  .col-note b { color: var(--secondary); font-weight: 500; }
+
+  .pop-shell {
+    width: 380px; max-width: 100%;
+    border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--modal-bg) 80%, transparent);
+    backdrop-filter: blur(32px);
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, .5);
+    padding: 4px;
+    color: var(--fg);
+  }
+
+  /* ── 通用小件 ───────────────────────────── */
+  .sec-head {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 10px; color: var(--muted); margin-bottom: 6px;
+  }
+  .sec-head .t { display: inline-flex; align-items: center; gap: 6px; }
+  .sec-head .t i { font-size: 9px; }
+  .sec-head .right { margin-left: auto; font-family: var(--font-mono); font-size: 10px; letter-spacing: 0; }
+
+  .agent-row { display: flex; align-items: center; gap: 4px; overflow-x: auto; overflow-y: hidden; padding-bottom: 2px; }
+  .agent-tile {
+    position: relative; flex: 0 0 auto; width: 32px; height: 32px;
+    display: grid; place-items: center; border-radius: 6px;
+    border: 0; background: transparent; color: var(--muted);
+    font-size: 14px; cursor: pointer; transition: background-color .15s, color .15s;
+  }
+  .agent-tile:hover { background: var(--surface-soft); color: var(--secondary); }
+  .agent-tile.on { background: var(--highlight-bg); color: var(--fg); }
+  .agent-tile.on::before {
+    content: ""; position: absolute; left: 0; top: 4px; bottom: 4px; width: 2px;
+    border-radius: 999px; background: var(--accent);
+  }
+  .agent-tile .dot {
+    position: absolute; right: 4px; top: 4px; width: 4px; height: 4px;
+    border-radius: 999px; background: var(--accent);
+  }
+
+  .chip {
+    appearance: none; position: relative; display: inline-flex; align-items: center; gap: 6px;
+    height: 26px; padding: 0 8px; border-radius: 6px; border: 0; cursor: pointer;
+    font: inherit; font-size: 12px; background: transparent; color: var(--muted);
+    transition: background-color .15s, color .15s;
+  }
+  .chip:hover { background: var(--surface-soft); color: var(--secondary); }
+  .chip.on { background: var(--highlight-bg); color: var(--fg); }
+  .chip.on::before {
+    content: ""; position: absolute; left: 0; top: 4px; bottom: 4px; width: 2px;
+    border-radius: 999px; background: var(--accent);
+  }
+  .chip i.ck { font-size: 10px; color: var(--accent); }
+  .chip:not(.on) i.ck { visibility: hidden; }
+
+  .picker {
+    flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px;
+    font-size: 12px; padding: 6px 8px; border-radius: 6px;
+    border: 1px solid var(--border-soft); background: var(--surface-soft);
+    color: var(--fg); cursor: pointer; text-align: left; font-family: inherit;
+  }
+  .picker:hover { border-color: var(--border); }
+  .picker .pi { font-size: 10px; color: var(--secondary); }
+  .picker .pv { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .picker .pv.mono { font-family: var(--font-mono); font-size: 10px; letter-spacing: -.1px; }
+  .picker .note { margin-left: auto; font-size: 10px; color: var(--muted); white-space: nowrap; }
+  .picker .note.auto { color: var(--accent); }
+  .picker .cv { font-size: 9px; color: var(--muted); }
+
+  .sq-btn {
+    flex: 0 0 auto; width: 32px; height: 30px; border-radius: 6px;
+    border: 1px dashed var(--border); background: transparent;
+    display: grid; place-items: center; font-size: 12px; color: var(--secondary); cursor: pointer;
+  }
+  .sq-btn:hover { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, transparent); background: var(--highlight-bg); }
+
+  .switch-row { display: flex; align-items: center; gap: 8px; font-size: 11.5px; color: var(--secondary); }
+  .switch {
+    position: relative; flex: 0 0 auto; width: 28px; height: 16px; border-radius: 999px;
+    border: 0; padding: 0; cursor: pointer; background: var(--accent); transition: background-color .15s;
+  }
+  .switch.off { background: var(--surface-soft); box-shadow: inset 0 0 0 1px var(--border-soft); }
+  .switch::after {
+    content: ""; position: absolute; top: 2px; left: 14px; width: 12px; height: 12px;
+    border-radius: 999px; background: #fff; transition: left .15s;
+  }
+  .switch.off::after { left: 2px; }
+
+  .btn {
+    appearance: none; border: 0; border-radius: 6px; font: inherit; font-size: 12px;
+    padding: 0 12px; height: 28px; display: inline-flex; align-items: center; gap: 6px;
+    cursor: pointer; white-space: nowrap;
+  }
+  .btn.grey { background: var(--surface-soft); color: var(--secondary); box-shadow: inset 0 0 0 1px var(--border-soft); }
+  .btn.grey:hover { background: var(--hover-bg); color: var(--fg); }
+  .btn.primary { background: var(--accent); color: #fff; font-weight: 500; }
+  .btn.primary:hover { background: var(--accent-hover); }
+
+  /* ============================================================
+     现状：逐段复刻 SendTargetPanel
+     ============================================================ */
+  .old .sec { padding: 8px 10px 4px; }
+  .old .sec + .sec { border-top: 1px solid color-mix(in srgb, var(--border) 60%, transparent); }
+  .old .sec .section-head { display: flex; align-items: center; gap: 6px; font-size: 10px; color: var(--muted); margin-bottom: 6px; }
+  .old .sec .section-head i { font-size: 9px; }
+  .old .sec .section-head .hint { margin-left: auto; font-family: var(--font-mono); font-size: 10px; letter-spacing: 0; }
+  .old .chips { display: flex; align-items: center; gap: 4px; }
+  .old .summary { margin-top: 4px; font-size: 10.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .old .pill {
+    font-size: 9.5px; line-height: 1.4; padding: 0 6px; border-radius: 999px;
+    background: var(--surface-soft); color: var(--muted);
+  }
+  .old .pill.accent { background: var(--highlight-bg); color: var(--accent); }
+  .old .row { display: flex; align-items: center; gap: 6px; }
+  .old .bg-row {
+    display: flex; align-items: center; gap: 8px; padding: 6px 10px;
+    border-top: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+    font-size: 11.5px; color: var(--secondary);
+  }
+  .old .bg-row .right { margin-left: auto; font-size: 10px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .old .confirm {
+    display: flex; align-items: center; gap: 8px; padding: 8px 10px;
+    border-top: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+  }
+  .old .confirm .left { min-width: 0; flex: 1; font-size: 10.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .old .confirm .left b { color: var(--secondary); font-weight: 500; }
+
+  /* ============================================================
+     方案
+     ============================================================ */
+  .new .target-sec { padding: 8px 10px 8px; }
+  .new .target-head { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
+  .new .target-head .t { display: inline-flex; align-items: center; gap: 6px; font-size: 10px; color: var(--muted); }
+  .new .target-head .t i { font-size: 9px; }
+  .new .target-head .chips { margin-left: auto; display: flex; gap: 4px; }
+
+  .target-card {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 10px; border-radius: 8px;
+    border: 1px solid var(--border-soft); background: var(--surface-soft);
+  }
+  .target-card .logo {
+    flex: 0 0 auto; width: 30px; height: 30px; border-radius: 8px;
+    display: grid; place-items: center; font-size: 15px;
+    background: var(--highlight-bg); color: var(--accent);
+  }
+  .target-card .main { min-width: 0; flex: 1; }
+  .target-card .name { font-size: 12.5px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .target-card .name .sep { color: var(--muted); font-weight: 400; }
+  .target-card .sub {
+    margin-top: 1px; font-size: 10.5px; color: var(--muted);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .target-card .sub .mono { font-family: var(--font-mono); font-size: 10px; }
+  .target-card .sub .dot { opacity: .55; }
+  .target-card .badge {
+    flex: 0 0 auto; font-size: 9.5px; padding: 1px 6px; border-radius: 999px;
+    background: var(--highlight-bg); color: var(--accent);
+  }
+  .target-card .badge.neutral { background: var(--surface-soft); color: var(--muted); }
+
+  .new .opts { border-top: 1px solid color-mix(in srgb, var(--border) 55%, transparent); }
+
+  .disclosure {
+    display: flex; align-items: center; gap: 6px; width: 100%;
+    padding: 7px 10px; border: 0; background: transparent; cursor: pointer;
+    font: inherit; font-size: 11px; color: var(--secondary); text-align: left;
+  }
+  .disclosure:hover { background: var(--hover-bg); color: var(--fg); }
+  .disclosure .chev { font-size: 9px; color: var(--muted); transition: transform .15s; }
+  .disclosure[aria-expanded="true"] .chev { transform: rotate(90deg); }
+  .disclosure .sum {
+    margin-left: auto; min-width: 0; font-family: var(--font-mono); font-size: 10px; color: var(--muted);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+
+  .opts-body { display: flex; flex-direction: column; gap: 6px; padding: 4px 10px 8px; }
+  .opts-body[hidden] { display: none; }
+  .opt-row { display: flex; align-items: center; gap: 6px; }
+  .opt-row .label {
+    flex: 0 0 32px; font-size: 10px; color: var(--muted); letter-spacing: .02em;
+  }
+  .opt-row .picker { height: 30px; }
+  .opt-row .sq-btn { height: 30px; }
+  .row-hint {
+    margin: 0 0 0 38px; font-size: 9.5px; color: var(--muted);
+    display: flex; align-items: center; gap: 5px;
+  }
+  .row-hint i { font-size: 8.5px; color: var(--accent); }
+  .row-hint b { font-weight: 500; color: var(--secondary); }
+
+  .new .foot {
+    display: flex; align-items: center; gap: 8px; padding: 8px 10px;
+    border-top: 1px solid color-mix(in srgb, var(--border) 55%, transparent);
+  }
+  .new .foot .actions { margin-left: auto; display: flex; gap: 6px; }
+  .new .foot .switch-row { gap: 7px; }
+
+  /* ── 下拉菜单 ───────────────── */
+  .menu {
+    position: fixed; z-index: 50; min-width: 240px; max-width: 340px;
+    border-radius: 10px; border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+    background: color-mix(in srgb, var(--modal-bg) 95%, transparent);
+    backdrop-filter: blur(24px);
+    box-shadow: 0 20px 40px -12px rgba(0, 0, 0, .5);
+    padding: 4px; display: flex; flex-direction: column; gap: 2px;
+  }
+  .menu .mh {
+    padding: 4px 8px 2px; font-size: 9.5px; letter-spacing: .04em;
+    text-transform: uppercase; color: var(--muted);
+  }
+  .menu .mi {
+    display: flex; align-items: center; gap: 8px;
+    padding: 6px 8px; border-radius: 6px; border: 0; background: transparent;
+    font: inherit; font-size: 12px; color: var(--fg); text-align: left; cursor: pointer;
+  }
+  .menu .mi:hover { background: var(--hover-bg); }
+  .menu .mi .ri { margin-left: auto; font-size: 10px; color: var(--muted); white-space: nowrap; }
+  .menu .mi .ri.auto { color: var(--accent); }
+  .menu .mi.mono-p { font-family: var(--font-mono); font-size: 11px; }
+  .menu .mi.is-on { background: var(--highlight-bg); }
+  .menu .sep { height: 1px; background: var(--border-soft); margin: 2px 4px; }
+
+  /* ── 变更点标注 ── */
+  .mark { position: relative; outline: 1px dashed color-mix(in srgb, var(--accent) 40%, transparent); outline-offset: 2px; border-radius: 6px; }
+  .mark::after {
+    content: attr(data-mark); position: absolute; left: -7px; top: -7px;
+    width: 15px; height: 15px; border-radius: 999px;
+    display: grid; place-items: center; font-size: 9px; line-height: 1; font-weight: 600;
+    background: var(--accent); color: #fff;
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--modal-bg) 90%, transparent);
+  }
+  .marks-off .mark { outline: none; }
+  .marks-off .mark::after { display: none; }
+  .legend { margin: 12px 2px 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 5px; }
+  .legend li { font-size: 11px; color: var(--muted); line-height: 1.5; display: flex; gap: 7px; align-items: baseline; }
+  .legend li .n {
+    flex: 0 0 auto; width: 14px; height: 14px; border-radius: 999px;
+    display: grid; place-items: center; font-size: 9px; font-weight: 600;
+    background: color-mix(in srgb, var(--accent) 22%, transparent); color: var(--accent);
+  }
+  .legend li b { color: var(--secondary); font-weight: 500; }
+  .marks-off .legend { display: none; }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <h1>CommonText 发送目标弹窗 · 紧凑化 v2</h1>
+    <span class="sub">三个选择器常显 · 目录候选随所选 Tab</span>
+  </div>
+  <div class="controls">
+    <span class="ctrl-label">状态</span>
+    <div class="seg" id="segMode">
+      <button data-mode="focused" class="active">聚焦 Agent Block</button>
+      <button data-mode="create">新建</button>
+      <button data-mode="none">无 Agent Block</button>
+    </div>
+  </div>
+  <div class="controls">
+    <span class="ctrl-label">档位</span>
+    <div class="seg" id="segScheme">
+      <button data-scheme="a" class="active">A 全平铺</button>
+      <button data-scheme="b">B 可折叠</button>
+    </div>
+  </div>
+  <div class="controls">
+    <button class="ghost" id="btnMarks"><i class="fa-solid fa-highlighter"></i>&nbsp;变更标注</button>
+    <button class="ghost" id="btnTheme"><i class="fa-solid fa-moon"></i>&nbsp;切换主题</button>
+  </div>
+</header>
+
+<main class="stage">
+  <!-- ============ 现状 ============ -->
+  <section class="col">
+    <div class="col-head">
+      <h2>现状</h2>
+      <span class="h-badge" id="hOld">—</span>
+    </div>
+
+    <div class="pop-shell old" id="popOld">
+      <div class="sec">
+        <div class="section-head">
+          <i class="fa-solid fa-crosshairs"></i><span>选择目标</span>
+          <span class="hint">二选一</span>
+        </div>
+        <div class="chips">
+          <button class="chip on" data-old-chip="focused"><i class="fa-solid fa-bullseye" style="font-size:10px"></i>聚焦块<i class="fa-solid fa-check ck"></i></button>
+          <button class="chip" data-old-chip="create"><i class="fa-solid fa-plus" style="font-size:10px"></i>新建<i class="fa-solid fa-check ck"></i></button>
+          <span id="oldNoAgent" style="font-size:10.5px;color:var(--muted);white-space:nowrap;display:none">当前聚焦块不是 Agent Block</span>
+        </div>
+        <div class="summary" id="oldSummary">聚焦块 · Codex · ~/Primary/projects/snorkeling</div>
+      </div>
+
+      <div class="sec">
+        <div class="section-head">
+          <i class="fa-solid fa-robot"></i><span>选择 Agent</span>
+          <span class="hint" id="oldAgentName">Codex</span>
+        </div>
+        <div class="agent-row" data-agent-row></div>
+      </div>
+
+      <div class="sec">
+        <div class="section-head">
+          <i class="fa-solid fa-table-columns"></i><span>选择 Type</span>
+          <span class="hint">默认 = 当前 Tab</span>
+        </div>
+        <div class="row">
+          <button class="picker" style="height:30px">
+            <i class="fa-solid fa-table-columns pi"></i>
+            <span class="pv" id="oldTabVal">T6</span>
+            <span class="pill accent">当前</span>
+            <i class="fa-solid fa-chevron-down cv"></i>
+          </button>
+          <button class="sq-btn" title="新建 Tab"><i class="fa-solid fa-plus"></i></button>
+        </div>
+      </div>
+
+      <div class="sec">
+        <div class="section-head">
+          <i class="fa-solid fa-folder-open"></i><span>选择 Folder</span>
+          <span class="hint">默认 = 聚焦块目录</span>
+        </div>
+        <div class="row">
+          <button class="picker" style="height:30px">
+            <i class="fa-solid fa-folder pi"></i>
+            <span class="pv mono" id="oldDirVal">~/Primary/projects/snorkeling</span>
+            <span class="pill">跟随</span>
+            <i class="fa-solid fa-chevron-down cv"></i>
+          </button>
+          <button class="sq-btn" title="浏览其他目录"><i class="fa-solid fa-ellipsis"></i></button>
+        </div>
+      </div>
+
+      <div class="bg-row">
+        <button class="switch" id="oldSwitch" aria-pressed="true"></button>
+        <span>后台执行</span>
+        <span class="right">不跳转 · 后台注入</span>
+      </div>
+
+      <div class="confirm">
+        <span class="left">目标 = <b id="oldTarget">聚焦块（已存在）</b></span>
+        <button class="btn grey">取消</button>
+        <button class="btn primary"><i class="fa-solid fa-paper-plane"></i>发送</button>
+      </div>
+    </div>
+
+    <p class="col-note">
+      真机实测 <b>379px</b>（本复刻 360–380px）：6 段 / 5 条分割线。同一决策出现三次（chip → 摘要 → 确认行）；
+      段头 hint 与行内徽标语义重复；目录候选只收当前挂载块，<b>不随所选 Tab 变化</b>。
+    </p>
+  </section>
+
+  <!-- ============ 方案 ============ -->
+  <section class="col">
+    <div class="col-head">
+      <h2>方案 v2</h2>
+      <span class="h-badge good" id="hNew">—</span>
+    </div>
+
+    <div class="pop-shell new" id="popNew">
+      <div class="target-sec">
+        <div class="target-head">
+          <span class="t"><i class="fa-solid fa-crosshairs"></i>选择目标</span>
+          <div class="chips">
+            <button class="chip on" data-new-chip="focused"><i class="fa-solid fa-bullseye" style="font-size:10px"></i>聚焦块<i class="fa-solid fa-check ck"></i></button>
+            <button class="chip" data-new-chip="create"><i class="fa-solid fa-plus" style="font-size:10px"></i>新建<i class="fa-solid fa-check ck"></i></button>
+          </div>
+        </div>
+
+        <div class="target-card mark" data-mark="1">
+          <div class="logo" id="newLogo">◻</div>
+          <div class="main">
+            <div class="name" id="newName">聚焦块 <span class="sep">·</span> Codex</div>
+            <div class="sub" id="newSub"></div>
+          </div>
+          <span class="badge" id="newBadge">已存在</span>
+        </div>
+      </div>
+
+      <div class="opts" id="newOpts">
+        <button class="disclosure" id="newDisc" aria-expanded="true">
+          <i class="fa-solid fa-chevron-right chev"></i>
+          <span>选项</span>
+          <span class="sum" id="newDiscSum"></span>
+        </button>
+
+        <div class="opts-body" id="newOptsBody">
+          <div class="opt-row">
+            <span class="label">Agent</span>
+            <div class="agent-row" data-agent-row style="flex:1"></div>
+          </div>
+
+          <div class="opt-row">
+            <span class="label">Tab</span>
+            <button class="picker" id="newTabPicker">
+              <i class="fa-solid fa-table-columns pi"></i>
+              <span class="pv" id="newTabVal">T6</span>
+              <span class="note" id="newTabNote">当前</span>
+              <i class="fa-solid fa-chevron-down cv"></i>
+            </button>
+            <button class="sq-btn" id="newTabNew" title="新建 Tab"><i class="fa-solid fa-plus"></i></button>
+          </div>
+
+          <div class="opt-row mark" data-mark="2">
+            <span class="label">目录</span>
+            <button class="picker" id="newDirPicker">
+              <i class="fa-solid fa-folder pi"></i>
+              <span class="pv mono" id="newDirVal">~/Primary/projects/snorkeling</span>
+              <span class="note auto" id="newDirNote">自动</span>
+              <i class="fa-solid fa-chevron-down cv"></i>
+            </button>
+            <button class="sq-btn" title="浏览其他目录"><i class="fa-solid fa-ellipsis"></i></button>
+          </div>
+
+          <p class="row-hint" id="newDirHint">
+            <i class="fa-solid fa-arrow-turn-up"></i>
+            <span>目录候选来自 <b id="newDirHintTab">T6</b> 打开的块（切 Tab 即换候选）</span>
+          </p>
+        </div>
+      </div>
+
+      <div class="foot">
+        <div class="switch-row mark" data-mark="3">
+          <button class="switch" id="newSwitch" aria-pressed="true"></button>
+          <span>后台执行</span>
+        </div>
+        <div class="actions">
+          <button class="btn grey">取消</button>
+          <button class="btn primary" id="newPrimary"><i class="fa-solid fa-paper-plane"></i><span id="newPrimaryLabel">发送到聚焦 Codex</span></button>
+        </div>
+      </div>
+    </div>
+
+    <p class="col-note" id="newNote">—</p>
+    <ul class="legend" id="newLegend"></ul>
+  </section>
+</main>
+
+<script>
+(function () {
+  "use strict";
+
+  var state = {
+    theme: "dark", mode: "focused", scheme: "a", expanded: true, marks: true, background: true
+  };
+
+  var AGENTS = [
+    { id: "claude", glyph: "✳", label: "Claude Code", def: false },
+    { id: "codex", glyph: "◻", label: "Codex", def: true },
+    { id: "pi", glyph: "π", label: "Pi", def: false },
+    { id: "opencode", glyph: "＞_", label: "OpenCode", def: false },
+    { id: "gemini", glyph: "✦", label: "Gemini", def: false }
+  ];
+
+  // 每个 Tab 的目录候选 = collectAgentLaunchTargetsInTab(tab) 的 cwd 集合（原型内手写数据模拟）
+  var TABS = [
+    {
+      id: "T6", name: "T6", note: "当前",
+      dirs: [
+        { path: "~/Primary/projects/snorkeling", note: "聚焦块 · agent", auto: true },
+        { path: "~/Primary/projects/loop", note: "本 Tab · 终端" },
+        { path: "~/Primary", note: "工作区" }
+      ]
+    },
+    {
+      id: "files", name: "files", note: "已存在",
+      dirs: [
+        { path: "~/Primary/projects/snorkeling", note: "Files 块", auto: true },
+        { path: "~/Primary/obsidians", note: "Files 块" },
+        { path: "~/Primary", note: "工作区" }
+      ]
+    },
+    {
+      id: "vcs", name: "vcs", note: "已存在",
+      dirs: [
+        { path: "~/Primary/projects/snorkeling", note: "VCS 块", auto: true },
+        { path: "~/Primary/projects/loop", note: "VCS 块" }
+      ]
+    }
+  ];
+
+  var WORKSPACE_DIR = { path: "~/Primary", note: "工作区" };
+  var HOME_DIR = { path: "~", note: "主目录" };
+
+  var selectedAgent = "codex";
+  var selectedTab = TABS[0];
+  var tabIsNew = false;
+  var folderPicked = null; // null = 跟随所选 Tab 的推荐目录
+
+  var $ = function (sel, root) { return (root || document).querySelector(sel); };
+  var $$ = function (sel, root) { return Array.prototype.slice.call((root || document).querySelectorAll(sel)); };
+
+  function agentById(id) { for (var i = 0; i < AGENTS.length; i++) if (AGENTS[i].id === id) return AGENTS[i]; return AGENTS[0]; }
+  function tabDirs() {
+    if (tabIsNew) return [{ path: WORKSPACE_DIR.path, note: "工作区", auto: true }, HOME_DIR];
+    return selectedTab.dirs;
+  }
+  function resolvedDir() { return folderPicked || tabDirs()[0]; }
+  function tabLabel() { return tabIsNew ? "新建 Tab" : state.mode === "none" ? "当前 Tab" : selectedTab.name; }
+
+  // ── URL 参数 ──
+  function applyHash() {
+    var opts = {};
+    try {
+      location.hash.replace(/^#/, "").split("&").forEach(function (kv) {
+        if (!kv) return;
+        var pair = kv.split("=");
+        opts[pair[0]] = pair[1] == null ? "1" : pair[1];
+      });
+    } catch (e) {}
+    if (/^(focused|create|none)$/.test(opts.mode || "")) state.mode = opts.mode;
+    if (opts.scheme === "a" || opts.scheme === "b") state.scheme = opts.scheme;
+    if (opts.expand === "0") state.expanded = false;
+    if (opts.expand === "1") state.expanded = true;
+    if (opts.theme === "light" || opts.theme === "dark") state.theme = opts.theme;
+    if (opts.marks === "0") state.marks = false;
+    if (opts.tab) {
+      if (opts.tab === "new") tabIsNew = true;
+      else {
+        TABS.forEach(function (t) { if (t.id === opts.tab) selectedTab = t; });
+      }
+    }
+    if (opts.dir) {
+      tabDirs().forEach(function (d) { if (d.path === opts.dir) folderPicked = d; });
+    }
+  }
+
+  function applyTheme() {
+    document.documentElement.dataset.theme = state.theme;
+    $("#btnTheme").innerHTML = state.theme === "dark"
+      ? '<i class="fa-solid fa-moon"></i>&nbsp;切换主题'
+      : '<i class="fa-solid fa-sun"></i>&nbsp;切换主题';
+  }
+
+  // ── Agent 行 ──
+  function renderAgentRows() {
+    $$("[data-agent-row]").forEach(function (row) {
+      row.innerHTML = "";
+      AGENTS.forEach(function (a) {
+        var b = document.createElement("button");
+        b.className = "agent-tile" + (a.id === selectedAgent ? " on" : "");
+        b.type = "button";
+        b.title = a.label + (a.def ? "（默认）" : "");
+        b.setAttribute("aria-label", a.label);
+        b.setAttribute("aria-pressed", a.id === selectedAgent ? "true" : "false");
+        b.innerHTML = '<span style="font-size:14px;line-height:1">' + a.glyph + "</span>" + (a.def ? '<span class="dot"></span>' : "");
+        b.addEventListener("click", function () {
+          selectedAgent = a.id;
+          if (state.mode === "focused") { state.mode = "create"; syncSeg(); }
+          renderAgentRows();
+          render();
+        });
+        row.appendChild(b);
+      });
+    });
+  }
+
+  function syncSeg() {
+    $$("#segMode button").forEach(function (x) { x.classList.toggle("active", x.dataset.mode === state.mode); });
+    $$("#segScheme button").forEach(function (x) { x.classList.toggle("active", x.dataset.scheme === state.scheme); });
+  }
+
+  // ── 渲染 ──
+  function render() {
+    var agent = agentById(selectedAgent);
+    var isFocused = state.mode === "focused";
+    var hasFocused = state.mode !== "none";
+    var dir = resolvedDir();
+
+    // ---- 旧 ----
+    $$("[data-old-chip]").forEach(function (b) { b.classList.toggle("on", b.dataset.oldChip === (isFocused ? "focused" : "create")); });
+    $("#oldNoAgent").style.display = hasFocused ? "none" : "inline";
+    $$("[data-old-chip]")[0].style.display = state.mode === "none" ? "none" : "";
+    $("#oldSummary").textContent = isFocused
+      ? "聚焦块 · " + agent.label + " · " + dir.path
+      : "新建 · " + agent.label;
+    $("#oldAgentName").textContent = agent.label;
+    $("#oldTarget").textContent = isFocused ? "聚焦块（已存在）" : "新建";
+    $("#oldSwitch").classList.toggle("off", !state.background);
+    $("#oldTabVal").textContent = tabIsNew ? "新建 Tab" : selectedTab.name;
+    $("#oldTabVal").parentElement.querySelector(".pill").textContent = tabIsNew ? "新建" : (selectedTab.id === "T6" ? "当前" : "已存在");
+    $("#oldDirVal").textContent = dir.path;
+
+    // ---- 新：chip ----
+    $$("[data-new-chip]").forEach(function (b) { b.classList.toggle("on", b.dataset.newChip === (isFocused ? "focused" : "create")); });
+    $$("[data-new-chip]")[0].style.display = state.mode === "none" ? "none" : "";
+
+    // ---- 新：目标卡 ----
+    $("#newLogo").textContent = agent.glyph;
+    var badge = $("#newBadge");
+    if (isFocused) {
+      $("#newName").innerHTML = "聚焦块 <span class='sep'>·</span> " + agent.label;
+      $("#newSub").innerHTML =
+        '<span class="mono">' + (tabIsNew ? "新建 Tab" : selectedTab.name) + "</span>" +
+        '<span class="dot">·</span><span class="mono">' + dir.path + "</span>";
+      badge.textContent = "已存在";
+      badge.className = "badge";
+      $("#newPrimaryLabel").textContent = "发送到聚焦 " + agent.label;
+    } else {
+      $("#newName").innerHTML = "新建 <span class='sep'>·</span> " + agent.label;
+      $("#newSub").innerHTML =
+        '<span class="mono">' + tabLabel() + "</span>" +
+        '<span class="dot">·</span><span class="mono">' + dir.path + "</span>";
+      badge.textContent = "将新建";
+      badge.className = "badge neutral";
+      $("#newPrimaryLabel").textContent = "新建 " + agent.label + " 并发送";
+    }
+
+    // ---- 新：选项区 ----
+    $("#newDisc").style.display = state.scheme === "b" ? "" : "none";
+    $("#newOptsBody").hidden = state.scheme === "b" && !state.expanded;
+    $("#newDisc").setAttribute("aria-expanded", state.expanded ? "true" : "false");
+    $("#newDiscSum").textContent = agent.label + " · " + tabLabel() + " · " + dir.path;
+
+    // ---- 新：Tab / 目录 ----
+    $("#newTabVal").textContent = tabIsNew ? "新建 Tab" : selectedTab.name;
+    $("#newTabNote").textContent = tabIsNew ? "将创建" : (selectedTab.id === "T6" ? "当前" : "已存在");
+    $("#newDirVal").textContent = dir.path;
+    var dirNote = $("#newDirNote");
+    if (folderPicked) {
+      dirNote.textContent = "已选";
+      dirNote.className = "note";
+    } else {
+      dirNote.textContent = tabIsNew ? "默认" : "自动";
+      dirNote.className = "note auto";
+    }
+    $("#newDirHintTab").textContent = tabIsNew ? "新 Tab（工作区）" : selectedTab.name;
+
+    // ---- 新：后台 ----
+    $("#newSwitch").classList.toggle("off", !state.background);
+
+    // ---- 标注 ----
+    document.body.classList.toggle("marks-off", !state.marks);
+    $("#btnMarks").style.opacity = state.marks ? "1" : ".55";
+
+    // ---- 高度 + 说明 ----
+    requestAnimationFrame(function () {
+      var oh = Math.round($("#popOld").getBoundingClientRect().height);
+      var nh = Math.round($("#popNew").getBoundingClientRect().height);
+      $("#hOld").textContent = oh + "px";
+      $("#hNew").textContent = nh + "px";
+      var saved = oh - nh;
+
+      var note = $("#newNote");
+      if (state.scheme === "b" && !state.expanded) {
+        note.innerHTML = "B 档收起选项：" + "<b>" + oh + "px → " + nh + "px</b>（折叠行右侧仍显示 " +
+          agent.label + " · " + tabLabel() + " · " + dir.path + "）。";
+      } else {
+        note.innerHTML = "三个选择器常显，减的是重复表达与 hint：" + "<b>" + oh + "px → " + nh + "px</b>（-" +
+          saved + "px）。";
+      }
+
+      $("#newLegend").innerHTML =
+        '<li><span class="n">1</span><span><b>目标只出现一次</b>：chip / 摘要 / 确认行 三处表达合并成一张目标卡</span></li>' +
+        '<li><span class="n">2</span><span><b>目录候选随 Tab 走</b>：切 Tab 即换该 Tab 打开块的 cwd，默认项自动高亮</span></li>' +
+        '<li><span class="n">3</span><span><b>去重复与去 hint</b>：5 条分割线 → 2 条，段头 hint 进 tooltip，按钮文案即目标</span></li>' +
+        (state.scheme === "b"
+          ? '<li><span class="n">B</span><span><b>可选折叠</b>：主动收起才隐藏三段，摘要常显，不丢信息</span></li>'
+          : "");
+    });
+  }
+
+  // ── 下拉菜单 ──
+  var openMenu = null;
+  function closeMenu() {
+    if (openMenu) { openMenu.remove(); openMenu = null; document.removeEventListener("pointerdown", onDocDown, true); }
+  }
+  function onDocDown(e) { if (openMenu && !openMenu.contains(e.target)) closeMenu(); }
+
+  function showMenu(anchor, build) {
+    closeMenu();
+    var m = document.createElement("div");
+    m.className = "menu";
+    build(function (html, opts) {
+      opts = opts || {};
+      var el;
+      if (opts.header) {
+        el = document.createElement("div"); el.className = "mh"; el.textContent = html; m.appendChild(el); return;
+      }
+      if (opts.sep) { el = document.createElement("div"); el.className = "sep"; m.appendChild(el); return; }
+      el = document.createElement("button");
+      el.type = "button";
+      el.className = "mi" + (opts.mono ? " mono-p" : "") + (opts.on ? " is-on" : "");
+      el.innerHTML =
+        (opts.icon ? '<i class="' + opts.icon + '" style="font-size:10px;color:var(--secondary)"></i>' : "") +
+        "<span style='min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap'>" + html + "</span>" +
+        (opts.note ? '<span class="ri' + (opts.auto ? " auto" : "") + '">' + opts.note + "</span>" : "");
+      el.addEventListener("click", function () { closeMenu(); opts.pick && opts.pick(); });
+      m.appendChild(el);
+    });
+    document.body.appendChild(m);
+    var r = anchor.getBoundingClientRect();
+    var mw = Math.min(340, Math.max(250, r.width));
+    m.style.width = mw + "px";
+    m.style.left = Math.min(r.left, window.innerWidth - mw - 12) + "px";
+    m.style.top = (r.bottom + 6) + "px";
+    var mr = m.getBoundingClientRect();
+    if (mr.bottom > window.innerHeight - 12) m.style.top = Math.max(12, r.top - mr.height - 6) + "px";
+    openMenu = m;
+    setTimeout(function () { document.addEventListener("pointerdown", onDocDown, true); }, 0);
+  }
+
+  // ── 事件 ──
+  $("#segMode").addEventListener("click", function (e) {
+    var b = e.target.closest("button[data-mode]"); if (!b) return;
+    state.mode = b.dataset.mode; syncSeg(); render();
+  });
+  $("#segScheme").addEventListener("click", function (e) {
+    var b = e.target.closest("button[data-scheme]"); if (!b) return;
+    state.scheme = b.dataset.scheme;
+    if (state.scheme === "a") state.expanded = true;
+    syncSeg(); render();
+  });
+  $("#btnTheme").addEventListener("click", function () {
+    state.theme = state.theme === "dark" ? "light" : "dark"; applyTheme();
+  });
+  $("#btnMarks").addEventListener("click", function () { state.marks = !state.marks; render(); });
+
+  $$("[data-new-chip]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      state.mode = b.dataset.newChip === "focused" ? "focused" : "create"; syncSeg(); render();
+    });
+  });
+  $$("[data-old-chip]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      state.mode = b.dataset.oldChip === "focused" ? "focused" : "create"; syncSeg(); render();
+    });
+  });
+  $("#newDisc").addEventListener("click", function () { state.expanded = !state.expanded; render(); });
+  $("#newSwitch").addEventListener("click", function () { state.background = !state.background; render(); });
+  $("#oldSwitch").addEventListener("click", function () { state.background = !state.background; render(); });
+
+  // Tab 选择：切换后目录回到「跟随该 Tab」
+  $("#newTabPicker").addEventListener("click", function (e) {
+    showMenu(e.currentTarget, function (add) {
+      add("目标 Tab", { header: true });
+      TABS.forEach(function (t) {
+        add(t.name + "  Tab", {
+          note: t.note, icon: "fa-regular fa-square", mono: true,
+          on: !tabIsNew && selectedTab.id === t.id,
+          pick: function () {
+            tabIsNew = false; selectedTab = t; folderPicked = null;
+            if (state.mode === "focused") { state.mode = "create"; syncSeg(); }
+            render();
+          }
+        });
+      });
+      add(null, { sep: true });
+      add("新建 Tab", {
+        note: tabIsNew ? "已选" : "", icon: "fa-solid fa-plus", on: tabIsNew,
+        pick: function () {
+          tabIsNew = true; folderPicked = null;
+          if (state.mode === "focused") { state.mode = "create"; syncSeg(); }
+          render();
+        }
+      });
+    });
+  });
+  $("#newTabNew").addEventListener("click", function () {
+    tabIsNew = true; folderPicked = null;
+    if (state.mode === "focused") { state.mode = "create"; syncSeg(); }
+    render();
+  });
+
+  // 目录选择：候选来自 tabDirs()，第一项永远「跟随该 Tab」
+  $("#newDirPicker").addEventListener("click", function (e) {
+    showMenu(e.currentTarget, function (add) {
+      add(tabIsNew ? "新 Tab 的默认目录" : "「" + selectedTab.name + "」打开的目录", { header: true });
+      var recommended = tabDirs()[0];
+      add("跟随该 Tab（自动）", {
+        note: recommended.note, icon: "fa-solid fa-wand-magic-sparkles",
+        auto: true, on: !folderPicked,
+        pick: function () { folderPicked = null; render(); }
+      });
+      tabDirs().forEach(function (d) {
+        add(d.path, {
+          note: d.note, icon: "fa-regular fa-folder", mono: true,
+          on: folderPicked && folderPicked.path === d.path,
+          pick: function () {
+            folderPicked = d;
+            if (state.mode === "focused") { state.mode = "create"; syncSeg(); }
+            render();
+          }
+        });
+      });
+      add(null, { sep: true });
+      add("浏览其他目录…", { icon: "fa-solid fa-ellipsis" });
+    });
+  });
+
+  document.addEventListener("keydown", function (e) { if (e.key === "Escape") closeMenu(); });
+
+  // ── 启动 ──
+  applyHash();
+  applyTheme();
+  syncSeg();
+  renderAgentRows();
+  render();
+})();
+</script>
+</body>
+</html>

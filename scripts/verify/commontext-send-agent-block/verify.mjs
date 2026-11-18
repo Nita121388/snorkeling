@@ -6,7 +6,7 @@
 //   1. Send split button（单壳主段 + caret 段 + 分隔线）存在；
 //   2. caret 真实指针点击 → popover 渲染，且 elementFromPoint 命中的确实在 popover 内
 //      （旧版只断言 DOM 存在 → 弹层被 .modal-wrapper 遮住时仍然假绿）；
-//   3. 无 agent block 时聚焦行禁用并显示提示；
+//   3. 无 agent block 时只显示「新建」chip（不再有冗余提示句）；
 //   4. Agents chip 真实点击切换 → 主按钮 hint 跟着变；
 //   5. Type 下拉：真实点击触发行 → 二级菜单可见可命中 → 真实点选「新建 Tab」→ 主行回写；
 //   6. Folder 下拉：同上，真实点选一个候选目录 → 主行回写「已选」；
@@ -109,40 +109,6 @@ const RECT_OF = (selector) => `(() => {
     return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2), rect: [Math.round(r.left), Math.round(r.top), Math.round(r.width), Math.round(r.height)] };
 })()`;
 
-// 面板内按 title 找可点元素（split button 的引用元素在面板外，这里统一从面板里找）
-const RECT_OF_TITLE = (title) => `(() => {
-    const p = document.querySelector(${JSON.stringify(POPOVER)});
-    if (!p) return "no-popover";
-    const b = [...p.querySelectorAll("button")].find((x) => x.getAttribute("title") === ${JSON.stringify(title)});
-    if (!b) return "not-found:" + [...p.querySelectorAll("button")].map((x) => x.getAttribute("title")).join("|");
-    const r = b.getBoundingClientRect();
-    return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2), rect: [Math.round(r.left), Math.round(r.top), Math.round(r.width), Math.round(r.height)] };
-})()`;
-
-// 二级菜单里按文本找可点行
-const ITEM_POINT = (needle, maxLen = 80) => `(() => {
-    const menus = [...document.querySelectorAll(${JSON.stringify(PICKER)})];
-    if (menus.length === 0) return "no-picker";
-    for (const menu of menus) {
-        for (const btn of menu.querySelectorAll("button")) {
-            const t = (btn.textContent || "").replace(/\\s+/g, " ").trim();
-            if (t.includes(${JSON.stringify(needle)}) && t.length <= ${maxLen}) {
-                const r = btn.getBoundingClientRect();
-                return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2), text: t };
-            }
-        }
-    }
-    return "not-found:" + ${JSON.stringify(needle)};
-})()`;
-
-// 可见性命中：断言 elementFromPoint 落点确实在目标容器内
-const HIT_IN = (point, selector) => `(() => {
-    const el = document.querySelector(${JSON.stringify(selector)});
-    const hit = document.elementFromPoint(${point.x}, ${point.y});
-    const desc = hit ? hit.tagName + "." + (hit.className || "").toString().slice(0, 48) : "null";
-    return { exists: el != null, hit: desc, inside: el != null && hit != null && el.contains(hit) };
-})()`;
-
 const POPOVER_TEXT = `(() => {
     const p = document.querySelector(${JSON.stringify(POPOVER)});
     if (!p) return null;
@@ -238,14 +204,47 @@ try {
   const popText = await waitForProbe(client, POPOVER_TEXT, (t) => typeof t === "string" && t.length > 0, {
     timeoutMs: 10000,
   });
-  // 2026-11-11 起第一段改为「发送目标：聚焦块 / 新建」显式二选一
-  const sections = ["选择目标", "新建", "选择 Agent", "选择 Type", "选择 Folder", "取消", "发送"];
+  // 2026-11-18 紧凑化：目标卡 + Agent/Tab/目录三行常显；无 agent block 时只有「新建」chip
+  const sections = ["选择目标", "新建", "Agent", "Tab", "取消"];
   const missingSections = sections.filter((s) => !(popText ?? "").includes(s));
   reporter.check(
     "popover-sections",
     missingSections.length === 0,
     missingSections.length === 0 ? sections.join(" / ") : `missing: ${missingSections.join(", ")}`
   );
+
+  // 紧凑化验收：三个选择器常显（行高 > 0，不因无聚焦块被隐藏）
+  const threeRows = await client.evaluate(`(() => {
+        const q = (sel) => document.querySelector(sel);
+        const r = (el) => (el ? Math.round(el.getBoundingClientRect().height) : 0);
+        return {
+            agent: r(q("[data-commontext-send-popover] [data-commontext-agent-row]")),
+            tab: r(q("[data-commontext-send-popover] [data-commontext-tab-row]")),
+            dir: r(q("[data-commontext-send-popover] [data-commontext-dir-row]")),
+            card: r(q("[data-commontext-send-popover] [data-commontext-send-target-card]")),
+        };
+    })()`);
+  reporter.check(
+    "panel-three-rows",
+    (threeRows?.agent ?? 0) > 0 && (threeRows?.tab ?? 0) > 0 && (threeRows?.dir ?? 0) > 0,
+    JSON.stringify(threeRows ?? {})
+  );
+
+  // 冗余文字验收：UI 已表达的信息不再加描述句（用户原则 2026-11-18）
+  const redundant = ["二选一", "默认 =", "目录候选来自", "不跳转", "目标 =", "均跟随聚焦块"].filter((w) =>
+    (popText ?? "").includes(w)
+  );
+  reporter.check(
+    "panel-no-redundant-text",
+    redundant.length === 0,
+    redundant.length === 0 ? "无冗余描述句" : `redundant: ${redundant.join(" / ")}`
+  );
+
+  // 高度验收：弹层（含 4px 内边距）≤ 320px，基线 379px
+  const menuHeight = await client.evaluate(
+    `(() => { const m = document.querySelector(${JSON.stringify(MENU)}); return m ? Math.round(m.getBoundingClientRect().height) : null; })()`
+  );
+  reporter.check("panel-height", menuHeight != null && menuHeight <= 320, `height=${menuHeight}px (基线 379px)`);
   // 目标模式行（聚焦块 / 新建 二选一）：干净实例无聚焦 agent block → 只有「新建」可选且为选中态
   const modeRows = await client.evaluate(`(() => {
         const p = document.querySelector(${JSON.stringify("[data-commontext-send-popover]")});
@@ -271,11 +270,11 @@ try {
     popHit?.inside === true,
     `menu=${JSON.stringify(popRect?.rect ?? null)} hit=${popHit?.hit} inside=${popHit?.inside}`
   );
-  // 无 agent block 的干净实例：聚焦行禁用 + 提示
+  // 无 agent block 的干净实例：只有「新建」chip（旧版多出的「当前聚焦块不是 Agent Block」提示已按无冗余文字原则删除）
   reporter.check(
-    "non-agent-focused-hint",
-    (popText ?? "").includes("当前聚焦块不是 Agent Block"),
-    (popText ?? "").includes("当前聚焦块不是 Agent Block") ? "禁用提示已显示" : "未找到禁用提示"
+    "non-agent-focused-no-hint",
+    !(popText ?? "").includes("当前聚焦块不是 Agent Block"),
+    "无聚焦块时不显示多余提示，仅隐藏「聚焦块」chip"
   );
   await reporter.shot(client, "02-popover");
 
@@ -297,7 +296,7 @@ try {
   );
 
   // 4. Type 二级下拉：真实点击触发行 → 菜单可见可命中 → 真实点选「新建 Tab」
-  const typeTrigger = await client.evaluate(RECT_OF_TITLE("选择目标 Tab"));
+  const typeTrigger = await client.evaluate(RECT_OF("[data-commontext-tab-trigger]"));
   reporter.check(
     "type-trigger-found",
     typeTrigger != null && typeTrigger.x != null,
@@ -332,12 +331,12 @@ try {
   const rowBadges = await client.evaluate(ROW_BADGES);
   reporter.check(
     "type-picker-new-tab",
-    pickerCountAfter === 0 && JSON.stringify(rowBadges ?? []).includes("新建"),
+    pickerCountAfter === 0 && JSON.stringify(rowBadges ?? []).includes("将创建"),
     `pickerClosed=${pickerCountAfter === 0} rows=${JSON.stringify(rowBadges ?? [])}`
   );
 
   // 5. Folder 二级下拉：同上 + 真实点选一个候选目录
-  const folderTrigger = await client.evaluate(RECT_OF_TITLE("选择项目目录（cwd）"));
+  const folderTrigger = await client.evaluate(RECT_OF("[data-commontext-dir-trigger]"));
   reporter.check(
     "folder-trigger-found",
     folderTrigger != null && folderTrigger.x != null,
@@ -355,10 +354,17 @@ try {
     Array.isArray(folderMenu) && folderMenu.length > 0,
     JSON.stringify(folderMenu ?? [])
   );
+  // 目录候选随 Tab（2026-11-18）：首项固定「跟随该 Tab（自动）」
+  reporter.check(
+    "folder-menu-follow-item",
+    Array.isArray(folderMenu) && folderMenu.some((line) => line.includes("跟随该 Tab")),
+    JSON.stringify(folderMenu ?? [])
+  );
+  // 首项是「跟随该 Tab（自动）」，要验证「已选」必须点一个具体路径项
   const folderItem = await client.evaluate(`(() => {
         const m = document.querySelector(${JSON.stringify(PICKER)});
         if (!m) return "no-picker";
-        const b = [...m.querySelectorAll("button")].find((x) => (x.textContent || "").trim().length > 0);
+        const b = [...m.querySelectorAll("button")].find((x) => (x.textContent || "").includes("/"));
         if (!b) return "no-item";
         const r = b.getBoundingClientRect();
         return { x: Math.round(r.left + r.width/2), y: Math.round(r.top + r.height/2), text: b.textContent.trim() };
@@ -373,7 +379,7 @@ try {
   );
 
   // 5b. Type 切回当前 tab（后续建块落在 current tab，便于断言注入）
-  const typeTrigger2 = await client.evaluate(RECT_OF_TITLE("选择目标 Tab"));
+  const typeTrigger2 = await client.evaluate(RECT_OF("[data-commontext-tab-trigger]"));
   if (typeTrigger2 != null && typeTrigger2.x != null) await realClick(client, typeTrigger2);
   await waitForProbe(client, PICKER_TEXT, (t) => Array.isArray(t) && t.length > 0, { timeoutMs: 8000 });
   const currentTabPoint = await client.evaluate(`(() => {
@@ -429,7 +435,9 @@ try {
   // 7. 写入发送文本并真实点击「发送」→ 弹窗关闭 + 新块出现
   // 编辑器折叠（600ms）会移动工具栏，坐标必须重取
   await realClick(client, await caretPointFn());
-  const readyForSend = await waitForProbe(client, POPOVER_TEXT, (t) => typeof t === "string" && t.length > 0, { timeoutMs: 8000 });
+  const readyForSend = await waitForProbe(client, POPOVER_TEXT, (t) => typeof t === "string" && t.length > 0, {
+    timeoutMs: 8000,
+  });
   if (readyForSend == null) {
     await realClick(client, await caretPointFn());
     await waitForProbe(client, POPOVER_TEXT, (t) => typeof t === "string" && t.length > 0, { timeoutMs: 8000 });
@@ -447,7 +455,7 @@ try {
   const sendPoint = await client.evaluate(`(() => {
         const p = document.querySelector(${JSON.stringify(POPOVER)});
         if (!p) return null;
-        const b = [...p.querySelectorAll("button")].find((x) => (x.textContent || "").trim() === "发送");
+        const b = p.querySelector("[data-commontext-send-submit]");
         if (!b) return null;
         const r = b.getBoundingClientRect();
         return { x: Math.round(r.left + r.width/2), y: Math.round(r.top + r.height/2) };

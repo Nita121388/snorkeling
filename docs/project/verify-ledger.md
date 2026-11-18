@@ -251,3 +251,7 @@
 | 2026-11-17 16:02 | commontext-send-background | ❌ 3/4 | launch(keep-profile) | `20261117T16023-commontext-send-background` | e50b322dc |
 | 2026-11-17 16:03 | commontext-send-background | ✅ 4/4 | launch(keep-profile) | `20261117T16030-commontext-send-background` | e50b322dc |
 | 2026-11-18 10:35 | F-1118 收起激活 Tab（新判据，非 verify 台；真机 skipped：用户本机性能不足） | ✅ 37/37 + Tab 族回归 113/113 | vitest + i18n:check | `loop/red/F-1118-tab-collapse-active.txt` | working-tree |
+| 2026-11-18 10:49 | overview-board | ❌ 64/71 | launch+reset | `20261118T10465-overviewboard` | working-tree |
+| 2026-11-18 11:46 | commontext-send-agent-block | ✅ 1/1 | launch+reset | `20261118T11465-commontext-send-agent-block` | cf81646be |
+| 2026-11-18 11:48 | commontext-send-agent-block | ❌ 28/30 | launch+reset | `20261118T11475-commontext-send-agent-block` | cf81646be |
+| 2026-11-18 11:59 | commontext-send-agent-block | ✅ 30/30 | launch+reset | `20261118T11582-commontext-send-agent-block` | cf81646be |

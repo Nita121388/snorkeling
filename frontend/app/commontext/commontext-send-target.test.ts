@@ -1,15 +1,17 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-import { beforeAll, describe, expect, it } from "vitest";
 import { i18n, initI18n } from "@/i18n/config";
+import { beforeAll, describe, expect, it } from "vitest";
 import {
     collectFolderCandidates,
+    collectFolderCandidatesForTab,
     cwdEqual,
     defaultSendFolder,
     extractAgentBlockInfo,
     normalizeCwd,
     planSendActivation,
+    resolveFolderScopeTabId,
     resolveSendTarget,
     type AgentBlockInfo,
 } from "./commontext-send-target";
@@ -216,6 +218,112 @@ describe("collectFolderCandidates / defaultSendFolder", () => {
         expect(out.map((c) => c.path)).toEqual(["/Users/nita/Primary", "/Users/nita"]);
         expect(defaultSendFolder(null, "/Users/nita/Primary")).toBe("/Users/nita/Primary");
         expect(defaultSendFolder(focusedClaude, "/ws")).toBe("~/Primary/projects/snorkeling");
+    });
+});
+
+describe("resolveFolderScopeTabId", () => {
+    it("current → 当前 Tab id", () => {
+        expect(resolveFolderScopeTabId({ kind: "current" }, "tab-1")).toBe("tab-1");
+    });
+
+    it("current with blank/absent current tab → null（无块候选）", () => {
+        expect(resolveFolderScopeTabId({ kind: "current" }, null)).toBeNull();
+        expect(resolveFolderScopeTabId({ kind: "current" }, "   ")).toBeNull();
+        expect(resolveFolderScopeTabId({ kind: "current" }, undefined)).toBeNull();
+    });
+
+    it("existing → 该 tabId；空 tabId → null", () => {
+        expect(resolveFolderScopeTabId({ kind: "existing", tabId: "tab-2" }, "tab-1")).toBe("tab-2");
+        expect(resolveFolderScopeTabId({ kind: "existing", tabId: " " }, "tab-1")).toBeNull();
+    });
+
+    it("new → null（不读任何块）", () => {
+        expect(resolveFolderScopeTabId({ kind: "new" }, "tab-1")).toBeNull();
+    });
+});
+
+describe("collectFolderCandidatesForTab", () => {
+    it("keeps tab block order, then workspace, then home; dedupes by normalized cwd", () => {
+        const out = collectFolderCandidatesForTab({
+            cwds: [
+                { cwd: "~/Primary/projects/snorkeling", source: "agent" },
+                { cwd: "~/Primary/projects/snorkeling/", source: "terminal" },
+                { cwd: "~/Primary/projects/loop", source: "files" },
+                { cwd: "", source: "terminal" },
+            ],
+            workspaceCwd: "/Users/nita/Primary",
+            homeDir: "/Users/nita",
+        });
+        expect(out.map((c) => c.path)).toEqual([
+            "/Users/nita/Primary/projects/snorkeling",
+            "/Users/nita/Primary/projects/loop",
+            "/Users/nita/Primary",
+            "/Users/nita",
+        ]);
+        expect(out.map((c) => c.note)).toEqual([
+            i18n.t("commontext:send.noteTabAgent"),
+            i18n.t("commontext:send.noteTabFiles"),
+            i18n.t("commontext:send.noteWorkspace"),
+            i18n.t("commontext:send.noteHome"),
+        ]);
+    });
+
+    it("new tab (no block cwds) → only workspace + home", () => {
+        const out = collectFolderCandidatesForTab({
+            cwds: [],
+            workspaceCwd: "/Users/nita/Primary",
+            homeDir: "/Users/nita",
+        });
+        expect(out.map((c) => c.path)).toEqual(["/Users/nita/Primary", "/Users/nita"]);
+    });
+
+    it("ignores blanks and tolerates home-only input", () => {
+        const out = collectFolderCandidatesForTab({ cwds: [{ cwd: null, source: "agent" }], homeDir: "/Users/nita" });
+        expect(out.map((c) => c.path)).toEqual(["/Users/nita"]);
+    });
+});
+
+describe("resolveSendTarget + folderDefault（目录随 Tab）", () => {
+    it("create 路径用 folderDefault 作为 cwd（folder 未显式选择）", () => {
+        const r = resolveSendTarget(
+            {
+                agentProfile: "codex",
+                tab: { kind: "existing", tabId: "tab-2" },
+                folder: "",
+                folderDefault: "~/Primary/projects/loop",
+            },
+            focusedClaude
+        );
+        expect(r.kind).toBe("create");
+        expect(r.kind === "create" && r.cwd).toBe("~/Primary/projects/loop");
+    });
+
+    it("folderDefault 不影响 existing 判定（current + 未显式选目录仍注入聚焦块）", () => {
+        const r = resolveSendTarget(
+            {
+                agentProfile: "claude",
+                provider: "claude",
+                tab: { kind: "current" },
+                folder: "",
+                folderDefault: "~/Primary/projects/loop",
+            },
+            focusedClaude
+        );
+        expect(r.kind).toBe("existing");
+    });
+
+    it("显式 folder 优先于 folderDefault", () => {
+        const r = resolveSendTarget(
+            {
+                agentProfile: "claude",
+                tab: { kind: "new" },
+                folder: "~/Primary/projects/loop",
+                folderDefault: "~/Primary",
+            },
+            focusedClaude
+        );
+        expect(r.kind).toBe("create");
+        expect(r.kind === "create" && r.cwd).toBe("~/Primary/projects/loop");
     });
 });
 
