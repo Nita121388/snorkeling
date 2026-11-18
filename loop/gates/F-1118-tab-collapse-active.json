@@ -1,0 +1,17 @@
+{
+  "g1": {
+    "at": "2026-11-18T02:24:44Z",
+    "by": "nita",
+    "verdict": "confirmed",
+    "prdHash": "24333f9c553a"
+  },
+  "g2": {
+    "redProof": "2026-11-18 base 0789f225e: npx vitest run tabcontextmenu.test.ts tab-more-model.test.ts → 8 failed | 29 passed (37); 详见 loop/red/F-1118-tab-collapse-active.txt",
+    "at": "2026-11-18T02:30:07Z"
+  },
+  "g5": {
+    "ok": true,
+    "executedAt": "2026-11-18T02:44:52Z",
+    "by": "compliance"
+  }
+}

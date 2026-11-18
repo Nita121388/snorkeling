@@ -1,0 +1,177 @@
+
+ RUN  v3.2.4 E:/code/snorkeling
+
+ ✓ frontend/app/tab/tab-more-model.test.ts > isTabHiddenFromBar > never hides the active tab 4ms
+ ✓ frontend/app/tab/tab-more-model.test.ts > isTabHiddenFromBar > shows tabs opened this launch 1ms
+ ✓ frontend/app/tab/tab-more-model.test.ts > isTabHiddenFromBar > hides tabs not opened this launch 1ms
+ ✓ frontend/app/tab/tab-more-model.test.ts > isTabHiddenFromBar > lets unread dots resurface a tab 0ms
+ ✓ frontend/app/tab/tab-more-model.test.ts > isTabHiddenFromBar > manual collapse overrides opened-this-launch 0ms
+ ✓ frontend/app/tab/tab-more-model.test.ts > isTabHiddenFromBar > manual collapse still yields to unread dots 0ms
+ × frontend/app/tab/tab-more-model.test.ts > pickCollapseSwitchTarget > 右邻优先: 收起 t1 切到 t2 11ms
+   → (0 , pickCollapseSwitchTarget) is not a function
+ × frontend/app/tab/tab-more-model.test.ts > pickCollapseSwitchTarget > 右邻隐藏 (已收起) 时跳过它取更右侧 2ms
+   → (0 , pickCollapseSwitchTarget) is not a function
+ × frontend/app/tab/tab-more-model.test.ts > pickCollapseSwitchTarget > 右邻隐藏时回退左邻 2ms
+   → (0 , pickCollapseSwitchTarget) is not a function
+ × frontend/app/tab/tab-more-model.test.ts > pickCollapseSwitchTarget > 两侧全隐藏 (仅剩目标可见) 返回 null 1ms
+   → (0 , pickCollapseSwitchTarget) is not a function
+ × frontend/app/tab/tab-more-model.test.ts > pickCollapseSwitchTarget > 目标不在列表里返回 null 1ms
+   → (0 , pickCollapseSwitchTarget) is not a function
+ ✓ frontend/app/tab/tab-more-model.test.ts > selectBarVisibleTabIds > keeps only tabs the bar may render (hidden ones live in the 更多 dropdown) 2ms
+ ✓ frontend/app/tab/tab-more-model.test.ts > selectBarVisibleTabIds > never re-adds a hidden tab for unread dots or manual collapse 1ms
+ ✓ frontend/app/tab/tab-more-model.test.ts > selectBarVisibleTabIds > activates a hidden tab into the bar without showing its hidden neighbours 1ms
+ ✓ frontend/app/tab/tab-more-model.test.ts > buildTabMoreRows > keeps physical tabIds order 1ms
+ ✓ frontend/app/tab/tab-more-model.test.ts > buildTabMoreRows > skips tabs without meta 1ms
+ ✓ frontend/app/tab/tab-more-model.test.ts > buildTabMoreRows > marks active / hidden / unopened flags 2ms
+ ✓ frontend/app/tab/tab-more-model.test.ts > buildTabMoreRows > marks manual collapse 0ms
+ ✓ frontend/app/tab/tab-more-model.test.ts > countHiddenRows > counts hidden rows only 1ms
+ ✓ frontend/app/tab/tab-more-model.test.ts > countHiddenRows > returns 0 when everything is visible 0ms
+ ✓ frontend/app/tab/tab-more-model.test.ts > filterTabMoreRows > returns everything for an empty query 2ms
+ ✓ frontend/app/tab/tab-more-model.test.ts > filterTabMoreRows > matches case-insensitively 1ms
+ ✓ frontend/app/tab/tab-more-model.test.ts > filterTabMoreRows > returns empty array when nothing matches 0ms
+ ✓ frontend/app/tab/tab-more-model.test.ts > shouldShowTabMoreSearch > is off at the threshold 0ms
+ ✓ frontend/app/tab/tab-more-model.test.ts > shouldShowTabMoreSearch > is on above the threshold 0ms
+ ✓ frontend/app/tab/tab-more-model.test.ts > collectCollapseTargets > collects visible non-active tabs only 1ms
+ ✓ frontend/app/tab/tab-more-model.test.ts > collectTabAgentBlocks > returns empty for empty blockIds 1ms
+ ✓ frontend/app/tab/tab-more-model.test.ts > collectTabAgentBlocks > filters out non-agent blocks 1ms
+ ✓ frontend/app/tab/tab-more-model.test.ts > collectTabAgentBlocks > keeps only agent blocks and dedupes 1ms
+ ✓ frontend/app/tab/tab-more-model.test.ts > collectTabAgentBlocks > sorts by updatedAt descending, stable on ties 1ms
+ ✓ frontend/app/tab/tab-more-model.test.ts > collectTabAgentBlocks > falls back to 0 for missing updatedAt 0ms
+ ✓ frontend/app/tab/tabcontextmenu.test.ts > buildTabContextMenu — 收起到更多 > 普通 Tab: 菜单项存在且可点 13ms
+ ✓ frontend/app/tab/tabcontextmenu.test.ts > buildTabContextMenu — 收起到更多 > 点击后把单个 tabId 交给 collapseTabIds 并埋点, 不触发切换 7ms
+ × frontend/app/tab/tabcontextmenu.test.ts > buildTabContextMenu — 收起到更多 > 激活 Tab + 有切换目标: 可点, 先切走再收起 (顺序锁定) 22ms
+   → expected false to be true // Object.is equality
+ × frontend/app/tab/tabcontextmenu.test.ts > buildTabContextMenu — 收起到更多 > 激活 Tab + 无可切目标 (仅剩一个 Tab): 置灰, 带禁用说明 7ms
+   → expected 'The active tab can\'t be collapsed' to be 'contextMenu.collapseToMoreLastTabDisa…' // Object.is equality
+ × frontend/app/tab/tabcontextmenu.test.ts > buildTabContextMenu — 收起到更多 > 有未阅状态点: 置灰优先 (未阅 > 激活可收), 带禁用说明 4ms
+   → expected 'The active tab can\'t be collapsed' to be 'Tabs with unread status can\'t be col…' // Object.is equality
+ ✓ frontend/app/tab/tabcontextmenu.test.ts > buildTabContextMenu — 收起到更多 > 未传 visibility 时保持可点 (向后兼容旧调用点) 2ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 8 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  frontend/app/tab/tab-more-model.test.ts > pickCollapseSwitchTarget > 右邻优先: 收起 t1 切到 t2
+TypeError: (0 , pickCollapseSwitchTarget) is not a function
+ ❯ frontend/app/tab/tab-more-model.test.ts:69:16
+     67| describe("pickCollapseSwitchTarget", () => {
+     68|     it("右邻优先: 收起 t1 切到 t2", () => {
+     69|         expect(pickCollapseSwitchTarget(TabIds, "t1", makeCtx())).toBe…
+       |                ^
+     70|     });
+     71| 
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/8]⎯
+
+ FAIL  frontend/app/tab/tab-more-model.test.ts > pickCollapseSwitchTarget > 右邻隐藏 (已收起) 时跳过它取更右侧
+TypeError: (0 , pickCollapseSwitchTarget) is not a function
+ ❯ frontend/app/tab/tab-more-model.test.ts:74:16
+     72|     it("右邻隐藏 (已收起) 时跳过它取更右侧", () => {
+     73|         const ctx = makeCtx({ openedThisLaunch: new Set(["t1", "t2", "…
+     74|         expect(pickCollapseSwitchTarget(TabIds, "t1", ctx)).toBe("t3");
+       |                ^
+     75|     });
+     76| 
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/8]⎯
+
+ FAIL  frontend/app/tab/tab-more-model.test.ts > pickCollapseSwitchTarget > 右邻隐藏时回退左邻
+TypeError: (0 , pickCollapseSwitchTarget) is not a function
+ ❯ frontend/app/tab/tab-more-model.test.ts:79:16
+     77|     it("右邻隐藏时回退左邻", () => {
+     78|         const ctx = makeCtx({ activeTabId: "t2", collapsedTabIds: new …
+     79|         expect(pickCollapseSwitchTarget(TabIds, "t2", ctx)).toBe("t1");
+       |                ^
+     80|     });
+     81| 
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/8]⎯
+
+ FAIL  frontend/app/tab/tab-more-model.test.ts > pickCollapseSwitchTarget > 两侧全隐藏 (仅剩目标可见) 返回 null
+TypeError: (0 , pickCollapseSwitchTarget) is not a function
+ ❯ frontend/app/tab/tab-more-model.test.ts:84:16
+     82|     it("两侧全隐藏 (仅剩目标可见) 返回 null", () => {
+     83|         const ctx = makeCtx({ activeTabId: "t2", openedThisLaunch: new…
+     84|         expect(pickCollapseSwitchTarget(TabIds, "t2", ctx)).toBe(null);
+       |                ^
+     85|     });
+     86| 
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/8]⎯
+
+ FAIL  frontend/app/tab/tab-more-model.test.ts > pickCollapseSwitchTarget > 目标不在列表里返回 null
+TypeError: (0 , pickCollapseSwitchTarget) is not a function
+ ❯ frontend/app/tab/tab-more-model.test.ts:88:16
+     86| 
+     87|     it("目标不在列表里返回 null", () => {
+     88|         expect(pickCollapseSwitchTarget(TabIds, "tx", makeCtx())).toBe…
+       |                ^
+     89|     });
+     90| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/8]⎯
+
+ FAIL  frontend/app/tab/tabcontextmenu.test.ts > buildTabContextMenu — 收起到更多 > 激活 Tab + 有切换目标: 可点, 先切走再收起 (顺序锁定)
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ frontend/app/tab/tabcontextmenu.test.ts:89:31
+     87|     it("激活 Tab + 有切换目标: 可点, 先切走再收起 (顺序锁定)", () => {
+     88|         const item = findCollapseItem({ active: true, hasUnreadDot: fa…
+     89|         expect(item?.enabled).toBe(true);
+       |                               ^
+     90|         expect(item?.sublabel).toBeUndefined();
+     91|         item?.click?.();
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/8]⎯
+
+ FAIL  frontend/app/tab/tabcontextmenu.test.ts > buildTabContextMenu — 收起到更多 > 激活 Tab + 无可切目标 (仅剩一个 Tab): 置灰, 带禁用说明
+AssertionError: expected 'The active tab can\'t be collapsed' to be 'contextMenu.collapseToMoreLastTabDisa…' // Object.is equality
+
+Expected: "contextMenu.collapseToMoreLastTabDisabled"
+Received: "The active tab can't be collapsed"
+
+ ❯ frontend/app/tab/tabcontextmenu.test.ts:105:32
+    103|         const item = findCollapseItem({ active: true, hasUnreadDot: fa…
+    104|         expect(item?.enabled).toBe(false);
+    105|         expect(item?.sublabel).toBe(i18n.t("tab:contextMenu.collapseTo…
+       |                                ^
+    106|     });
+    107| 
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[7/8]⎯
+
+ FAIL  frontend/app/tab/tabcontextmenu.test.ts > buildTabContextMenu — 收起到更多 > 有未阅状态点: 置灰优先 (未阅 > 激活可收), 带禁用说明
+AssertionError: expected 'The active tab can\'t be collapsed' to be 'Tabs with unread status can\'t be col…' // Object.is equality
+
+Expected: "Tabs with unread status can't be collapsed"
+Received: "The active tab can't be collapsed"
+
+ ❯ frontend/app/tab/tabcontextmenu.test.ts:111:32
+    109|         const item = findCollapseItem({ active: true, hasUnreadDot: tr…
+    110|         expect(item?.enabled).toBe(false);
+    111|         expect(item?.sublabel).toBe(i18n.t("tab:contextMenu.collapseTo…
+       |                                ^
+    112|     });
+    113| 
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[8/8]⎯
+
+
+ Test Files  2 failed (2)
+      Tests  8 failed | 29 passed (37)
+   Start at  10:28:30
+   Duration  5.88s (transform 617ms, setup 109ms, collect 1.96s, tests 113ms, environment 1ms, prepare 758ms)
+
+JUNIT report written to E:/code/snorkeling/test-results.xml
+
+---
+# 红证元信息
+- date: 2026-11-18
+- base: 0789f225e (F-1118 实现前)
+- scope: frontend/app/tab/tabcontextmenu.test.ts (新契约) + frontend/app/tab/tab-more-model.test.ts (pickCollapseSwitchTarget 用例)
+- red: 8 failed (5x pickCollapseSwitchTarget 未实现 + 3x 契约不符) | 29 passed
+- green target: 同套 37/37

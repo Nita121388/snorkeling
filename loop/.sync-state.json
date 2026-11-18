@@ -1,0 +1,673 @@
+{
+  "lastAttemptAt": "2026-11-18T02:54:13.301Z",
+  "lastOkAt": "2026-11-18T02:54:13.301Z",
+  "failures": 0,
+  "error": null,
+  "lastOkManifest": [
+    {
+      "path": "INBOX-ARCHIVE/2026-11.md",
+      "sha256": "cfc10df4e3fa093c2046077236ffb07c54cd949fd24b3dd747873f9fc5684bbd",
+      "size": 292
+    },
+    {
+      "path": "INBOX.md",
+      "sha256": "23925f7434d30fc05ef48840626f37ef1ee45ebb7f9b60f5ccf2e5cf85bc4ff8",
+      "size": 2374
+    },
+    {
+      "path": "LEDGER-2026-11.jsonl",
+      "sha256": "b321d10c2a7c2629945c236bb580312b0dc50ccbfc1706d2ea2519e1bf989803",
+      "size": 100178
+    },
+    {
+      "path": "README.md",
+      "sha256": "e212fba6d32c4cc7e1f93c3d64ea64e9ee77cb790ea36ef71a3a6b8318a3b77f",
+      "size": 691
+    },
+    {
+      "path": "REPORTS/archive-candidates-2026-11-12.md",
+      "sha256": "69b8a6ae0c18bdc056d72f0dbff2492bf3806452f389611563bc5311e1967520",
+      "size": 3562
+    },
+    {
+      "path": "REPORTS/prove-F-1113-persona-create-ui-r1.json",
+      "sha256": "504924fc59a80b770ec73f4ddacd4deae40fac13b1fb98142439482361fb1ff0",
+      "size": 1759
+    },
+    {
+      "path": "REPORTS/prove-F-1113-persona-create-ui-r2.json",
+      "sha256": "34e6987556f7c2456aa9dc554cb0a831614170b7e561aca83dd8d9270561aceb",
+      "size": 2059
+    },
+    {
+      "path": "REPORTS/prove-F-1113-persona-journal-r1.json",
+      "sha256": "95bc14e5c3d40dae536bda7d0eb39e35a9f229b6483413dd214fa1a77337d38e",
+      "size": 1685
+    },
+    {
+      "path": "REPORTS/prove-F-1113-persona-relocate-r1.json",
+      "sha256": "3cde0a0ccbd1745494a2f4f14149d983d54e22abdd6d5bb0ae6e16f6d25c1b8a",
+      "size": 2468
+    },
+    {
+      "path": "REPORTS/prove-F-1113-persona-roster-r1.json",
+      "sha256": "adefebcd76a7c6f5a97fe9790eaeab30f45b1082495c6fc15ed496c9f87aa4ad",
+      "size": 1546
+    },
+    {
+      "path": "REPORTS/prove-F-1113-persona-sync-r1.json",
+      "sha256": "7623741f7c97566d45d6bfa20b5bc5b5dd9c85b57a0bf7e419c63acb7d1d0390",
+      "size": 1713
+    },
+    {
+      "path": "REPORTS/prove-F-1113-persona-widget-launch-r1.json",
+      "sha256": "0513f32c920bd87a6f7c536a325e17446edf24b013718704bf964e344dd63815",
+      "size": 2168
+    },
+    {
+      "path": "REPORTS/prove-F-1113-persona-widget-launch-r2.json",
+      "sha256": "98abb41b4c5d16397573d21f0af9e85e5f2f219c07fe57387c1ad1fde8292aa8",
+      "size": 2221
+    },
+    {
+      "path": "REPORTS/redproof-F-1106-move-block-tab-menu.txt",
+      "sha256": "c1324bdf05fece1464c102d15b6611f75c0ffcfb210923ad54cfb3684502f3e2",
+      "size": 2687
+    },
+    {
+      "path": "REPORTS/redproof-F-1111-agent-property-scope.txt",
+      "sha256": "b07b89c8f46edabd32c3db4927b31f118fdbf851c8ecab78bda8a21429cf7120",
+      "size": 520
+    },
+    {
+      "path": "REPORTS/redproof-F-1113-persona-create-ui-r1.txt",
+      "sha256": "0d1e3201309d7962378d86791f10af4d07253fe2913f301b2677c9bdf7a47e4d",
+      "size": 168
+    },
+    {
+      "path": "REPORTS/redproof-F-1113-persona-journal-r1.txt",
+      "sha256": "06a58af9b5f4303b52b5af2680cdc0627a3f1167dacad87e97419833041e9ebd",
+      "size": 301
+    },
+    {
+      "path": "REPORTS/redproof-F-1113-persona-relocate-r1.txt",
+      "sha256": "8e2485903bee0c3f1cc57d51e7b65e0e0c699073803e40ee98c9f5546046f4e1",
+      "size": 755
+    },
+    {
+      "path": "REPORTS/redproof-F-1113-persona-roster-r1.txt",
+      "sha256": "d99c74d0aaf4a5d02284a9411cffa3f656060e072f6595b29687df9e0bcbc2ec",
+      "size": 215
+    },
+    {
+      "path": "REPORTS/redproof-F-1113-persona-sync-r1.txt",
+      "sha256": "71e4d816bbc23ea910b059004ba3ff6cf0b93b99ccf8ac7a4940b92a3aa0609d",
+      "size": 324
+    },
+    {
+      "path": "REPORTS/redproof-F-1113-persona-widget-launch.txt",
+      "sha256": "9c8748ab3701fb5a83da0b7a5179c2def0c1945cb396392d2fb9b16c3b5fc5a1",
+      "size": 1002
+    },
+    {
+      "path": "REPORTS/redproof-N-1106-agent-tag-catalog.txt",
+      "sha256": "713a0f1f0081f2cd1af9b8e1e109d3fb01c1aced39f144c31c04716bf23f88f6",
+      "size": 3670
+    },
+    {
+      "path": "REPORTS/redproof-N-1106-overview-board-motion.txt",
+      "sha256": "9733f289ebcec788e9590f9683d594187e26b25cf2f28ae479bc7b1d8f0b7a62",
+      "size": 9536
+    },
+    {
+      "path": "REPORTS/redproof-N-1106-overview-card-actions.txt",
+      "sha256": "689e1a330f34ea31b709f8dda3ceee170d861dd22f9060a798f5db98542d9823",
+      "size": 1285
+    },
+    {
+      "path": "VERSION",
+      "sha256": "53c234e5e8472b6ac51c1ae1cab3fe06fad053beb8ebfd8977b010655bfdd3c3",
+      "size": 2
+    },
+    {
+      "path": "gates/F-1106-agent-card-chip-title.json",
+      "sha256": "4e4abda4fb49b156db00203b8b72ccefaeb72c65fbe8b3c7f25cf2eb56f21118",
+      "size": 549
+    },
+    {
+      "path": "gates/F-1106-move-block-tab-menu.json",
+      "sha256": "890ba5ae80f1b0607f23dc01cc50c0ec848ce1bc916542a15eaa3bd36b58b34d",
+      "size": 248
+    },
+    {
+      "path": "gates/F-1109-commontext-sync-watermark.json",
+      "sha256": "79543f1b5130d02b68fc842b2f1b38d1a8dd46e1b4b7cfb58d6cee259bf5bd50",
+      "size": 463
+    },
+    {
+      "path": "gates/F-1111-agent-property-scope.json",
+      "sha256": "157854ecba3e048dc46ed2c95518026925b5279a159ed95083039070d9519541",
+      "size": 339
+    },
+    {
+      "path": "gates/F-1112-persona-agent-create.json",
+      "sha256": "7abcababfba10a5485be4e3c0fc0776c84c6b2e496eec812099c3c437948d38c",
+      "size": 327
+    },
+    {
+      "path": "gates/F-1112-persona-aisessions-r1.json",
+      "sha256": "20e9c6c9aad6de4425f642ee36c66ba924d7b57a0fb09a45444f6ee917cc4ad7",
+      "size": 327
+    },
+    {
+      "path": "gates/F-1112-persona-core-r2.json",
+      "sha256": "17df3b1be3c9f7a2acb3cf25afab04538dbf751e74e68512c238fb5500cc5f54",
+      "size": 324
+    },
+    {
+      "path": "gates/F-1113-persona-create-ui-r2.json",
+      "sha256": "ba6a39a2fcf6f0930d44d24d3193e684814e4e631083acb98104af639002b595",
+      "size": 447
+    },
+    {
+      "path": "gates/F-1113-persona-journal-r1.json",
+      "sha256": "f3099532852c93e183d96b1425e092cbd487dc676e1d0e2e22d403078123d2ec",
+      "size": 444
+    },
+    {
+      "path": "gates/F-1113-persona-relocate-r1.json",
+      "sha256": "ec1a1e1e7db5d3f1e6bedac61812e48cc9a34033c1991e732d03d8345a2244f4",
+      "size": 399
+    },
+    {
+      "path": "gates/F-1113-persona-roster-r1.json",
+      "sha256": "f0d1aeeae60300f8a45dd6cb9df440e72b287bc25d1edf91ec06ba7d3d2796f9",
+      "size": 428
+    },
+    {
+      "path": "gates/F-1113-persona-sync-r1.json",
+      "sha256": "a07db991d7b0f604b1088e0ddc15c7b9dffc8fd7ade16ab8ebbbf0e1a5362bda",
+      "size": 411
+    },
+    {
+      "path": "gates/F-1113-persona-widget-launch-r2.json",
+      "sha256": "1a530d6f26b2d2d9c1aded135ce0495878fa099dc0d7938fdd7f6712404d4308",
+      "size": 479
+    },
+    {
+      "path": "gates/F-1116-commontext-sync-ws-push.json",
+      "sha256": "7730a869e68643bd8216426c66dfd53e6b59fbf08cc5ed5ec5321371c063d4e3",
+      "size": 464
+    },
+    {
+      "path": "gates/F-1116-hero-identity-inject.json",
+      "sha256": "619cd665e2b1a54eb58d4c98ce2d41fee37e4167ff1864eec39524022faf8b73",
+      "size": 689
+    },
+    {
+      "path": "gates/F-1117-overview-card-props.json",
+      "sha256": "e29761fb349a8d0266dc4ab6280129be5e8afa2de3541a4d9958186f9efa6e7d",
+      "size": 423
+    },
+    {
+      "path": "gates/F-1118-tab-collapse-active.json",
+      "sha256": "9682b0e389e006f9ba81a2434965d46401eeaa8a2cec3b5a302e0698fca789a9",
+      "size": 457
+    },
+    {
+      "path": "gates/N-1105-cleanup-46to22.json",
+      "sha256": "1f5b134ad5b650357d34542665641a139abeb73d68330e686016b708df04d244",
+      "size": 124
+    },
+    {
+      "path": "gates/N-1105-cmd-window-flash.json",
+      "sha256": "28bf446d0d5fada63511a1491e40544096518bb13871481b3283a2f4f21ee8c3",
+      "size": 260
+    },
+    {
+      "path": "gates/N-1105-harness-redproof.json",
+      "sha256": "213baf9acb97d286aad14aa4ab0a05b756a26f5e89a5b23a6776fd4d4da9ecd7",
+      "size": 58
+    },
+    {
+      "path": "gates/N-1105-loop-ledger.json",
+      "sha256": "ccc7803ede6740ec354c3e60b8626e927b6db3ff3540990c1a7ac4f6a33dd635",
+      "size": 497
+    },
+    {
+      "path": "gates/N-1105-queue-failopen.json",
+      "sha256": "44319070cab0e738c3a96fce915a394a05c93c00dea417163e6e47963937bca9",
+      "size": 207
+    },
+    {
+      "path": "gates/N-1105-tab-hover-clip.json",
+      "sha256": "da085ed399de4d3750176f6675c924724fee3abbef5c4c3eb42dc7f6a2b1bfd6",
+      "size": 340
+    },
+    {
+      "path": "gates/N-1106-agent-tag-catalog.json",
+      "sha256": "2c384b676d870ccc40c00d6646fda10fa3a2db8eba0ad3f2bca7e5f94b77ebf0",
+      "size": 336
+    },
+    {
+      "path": "gates/N-1106-overview-board-motion.json",
+      "sha256": "5f970f4c19f8f717226e97b844dd5f4dc82122ca1b2d8f99ab8f19756796c5e1",
+      "size": 346
+    },
+    {
+      "path": "gates/N-1106-overview-card-actions.json",
+      "sha256": "0ad02b19713d3309d6cedf9ab059aedf61123e26c3dcb075a9e98cd1f58bc397",
+      "size": 340
+    },
+    {
+      "path": "gates/N-1108-agent-chip-phase-duration.json",
+      "sha256": "79cf4cfb587c2925ae2f678aa96da1ca778eb72502a8444e63a4d3ab2d74929a",
+      "size": 116
+    },
+    {
+      "path": "gates/N-1109-agent-chip-conditional-hook.json",
+      "sha256": "0e424d4c7082ebb3aa32148ef7d96fbb4e1dd1b89137ef33870347e7f8303c7e",
+      "size": 118
+    },
+    {
+      "path": "gates/N-1109-overview-board-chip-polish.json",
+      "sha256": "e40d54465517f18073bf2a20cf45acf7f7aec0e825657a9c5ce0eeb590410d18",
+      "size": 207
+    },
+    {
+      "path": "gates/N-1109-overview-board-empty-status-label.json",
+      "sha256": "6dfd0433d274531aad77c0e98c096fa5365c99492600b4b49a98f07d3c603e52",
+      "size": 124
+    },
+    {
+      "path": "gates/N-1113-commontext-editor-collapse.json",
+      "sha256": "9cb3f70f7463e69fffeb62b866866533aabb696d7fa97b1104f83f7a4c35375c",
+      "size": 288
+    },
+    {
+      "path": "gates/N-1114-commontext-draft-autosave.json",
+      "sha256": "3251647f5566930f885640e14b05dd73c97ca760fa87e8dd8e0d1ff2e1c81118",
+      "size": 325
+    },
+    {
+      "path": "gates/N-1114-commontext-tags-no-hash.json",
+      "sha256": "0e85e221e015d967479924896c3e3ad3376f9c3fdcce495fc1d2ec4cd26df7a4",
+      "size": 323
+    },
+    {
+      "path": "gates/N-1114-commontext-tags-property.json",
+      "sha256": "bd5ece39c99806e341ed58dcaf03da709f7caa6e00bc7279572a5f1fef15886c",
+      "size": 312
+    },
+    {
+      "path": "gates/N-1114-commontext-tags-structured.json",
+      "sha256": "4641965d918a724b23e3a6e005b83b550b57723b60ab3e73ddc54422519e94dc",
+      "size": 498
+    },
+    {
+      "path": "gates/N-1114-commontext-tags-summary-chips.json",
+      "sha256": "0547fd4eb0ecaf0c6767b604c6b743d0daa281bfa6f198421fa110facd20bd51",
+      "size": 238
+    },
+    {
+      "path": "gates/N-1114-tab-drag-switch-fix.json",
+      "sha256": "69acab3c91043aec68b355fecd418e5af88bdb1e23753b2ef72c78a00a1ee0f5",
+      "size": 265
+    },
+    {
+      "path": "gates/N-1114-tab-restore-all-r3.json",
+      "sha256": "92183cf799ffd5eea77672f27006a538467b07d41963e2d35b3b3e677c9cb6fb",
+      "size": 236
+    },
+    {
+      "path": "gates/N-1117-conn-typeahead-row-rail-r3.json",
+      "sha256": "d8431954ca877c76fe8fa904cb2225f6aad49f6af94b281a30e99116ffecfc05",
+      "size": 114
+    },
+    {
+      "path": "gates/_dropped.jsonl",
+      "sha256": "98ab9adc902c7b65972a5c7e870fae24e0fbce0c2a38103b2b6c7ec35ad2e74f",
+      "size": 3136
+    },
+    {
+      "path": "gates/_meta.json",
+      "sha256": "4868e70240d05a602ad3f0eed285ea4da1875d8fd79f1046271e80f92e915182",
+      "size": 85
+    },
+    {
+      "path": "items/F-1106-agent-card-chip-title.md",
+      "sha256": "8cc975c69e73a30b31ca0d2e5e0be5c74d37095d6c8cea9dddbe9f9d6ea0d7af",
+      "size": 3680
+    },
+    {
+      "path": "items/F-1106-move-block-tab-menu.md",
+      "sha256": "4600bded2d7a9cba047f07e8c597482bf18228bf657e7c07d3abe9fdc0bc0fde",
+      "size": 2510
+    },
+    {
+      "path": "items/F-1107-commontext-sync-meta.md",
+      "sha256": "85bc0551d1ce2d88916f24672257db1294cc4e24619148916f7ff67d53466633",
+      "size": 1632
+    },
+    {
+      "path": "items/F-1109-commontext-sync-watermark.md",
+      "sha256": "ce7f906e3c36025639a44b1c8d8a90fe3b31219eb677a832821ecbd72b791945",
+      "size": 2597
+    },
+    {
+      "path": "items/F-1111-agent-property-scope.md",
+      "sha256": "c8e962bb0a96469bb7b1dc20844617ce598ea53a5adcc6113e18ea5a796da6c0",
+      "size": 1898
+    },
+    {
+      "path": "items/F-1112-persona-agent-create.md",
+      "sha256": "4dc9ce3ba6507eeb079739fb4fc6b70f5a9018bdcef56b83b9843797cb8f0165",
+      "size": 2543
+    },
+    {
+      "path": "items/F-1112-persona-aisessions-r1.md",
+      "sha256": "31c4b9c13a12cc44f729d3630078f1a4ed8cd85dd919e70111de1f635b0c063e",
+      "size": 1257
+    },
+    {
+      "path": "items/F-1112-persona-core-r2.md",
+      "sha256": "d97527a253da1a0e0090094b1ee272d745d1958f79be60b89d83bc785b43d237",
+      "size": 2239
+    },
+    {
+      "path": "items/F-1113-persona-create-ui-r2.md",
+      "sha256": "34669c8dad9e20fb930e59856125b50fafd292ff6585c4c209882b8a7421a65f",
+      "size": 1983
+    },
+    {
+      "path": "items/F-1113-persona-journal-r1.md",
+      "sha256": "39030b31e1bff9a2472ed652863d932db7fdaaf72f78fb51b41555ffb09993fe",
+      "size": 1519
+    },
+    {
+      "path": "items/F-1113-persona-relocate-r1.md",
+      "sha256": "a5ef74c89fab6f17f9cc5f229f00263641a18e09b0e0c8bc82b65f1591f1dcf0",
+      "size": 1834
+    },
+    {
+      "path": "items/F-1113-persona-roster-r1.md",
+      "sha256": "0111432a910d02230925fb7da025549b505fc8c05a9b1abbf35910f3e65342e9",
+      "size": 1622
+    },
+    {
+      "path": "items/F-1113-persona-sync-r1.md",
+      "sha256": "bfe95fee4c3df54b547486f7ebe4eca01bdf51398364b57c5efa7091e2739a51",
+      "size": 1612
+    },
+    {
+      "path": "items/F-1113-persona-widget-launch-r2.md",
+      "sha256": "7beb569ae2be1e01054f5348b6f9326cac9f7d12fa602b306c09ff57bcd21936",
+      "size": 2491
+    },
+    {
+      "path": "items/F-1116-commontext-sync-ws-push.md",
+      "sha256": "4b102a869dcbc6a395330df5c01dd26122b83a381231b36094663a4eb0a11ca1",
+      "size": 2518
+    },
+    {
+      "path": "items/F-1116-hero-identity-inject.md",
+      "sha256": "59111bef9c591e7c44fdba0147043e86e9ee6b8c5021dd7637a6c09543db4d7b",
+      "size": 2157
+    },
+    {
+      "path": "items/F-1117-overview-card-props.md",
+      "sha256": "07b93883feec94fe17338826b5e45c748fde393e6a962b95989a0934adab0638",
+      "size": 3258
+    },
+    {
+      "path": "items/F-1118-tab-collapse-active.md",
+      "sha256": "1bc3b9317aab59047b8b39dca8db43ff203129827c45210c88c48deec1d25625",
+      "size": 2356
+    },
+    {
+      "path": "items/N-1105-cleanup-46to22.md",
+      "sha256": "17ea23b9129a2251376e42d730123f5df8bb2e5bb647c6b7173ff81b4fd025d5",
+      "size": 836
+    },
+    {
+      "path": "items/N-1105-cmd-window-flash.md",
+      "sha256": "f63e8c26af076af4fdf4a0c0a6eaeca0b51f10b306859d07cfccb93361a997eb",
+      "size": 2259
+    },
+    {
+      "path": "items/N-1105-harness-redproof.md",
+      "sha256": "7cd57e7d02b90828e6ed633a5da0754167a7ccbc72b5a92d26f0d552db56856f",
+      "size": 691
+    },
+    {
+      "path": "items/N-1105-loop-ledger.md",
+      "sha256": "94f2dac083d4ca0cb0395b94c2fcad755b475b57c570efa4257c8b5afcfd7684",
+      "size": 944
+    },
+    {
+      "path": "items/N-1105-night-runner.md",
+      "sha256": "1c50aa0f6007071cf17be889f00b62637ca90808df6d016e23ab3111639a36f3",
+      "size": 705
+    },
+    {
+      "path": "items/N-1105-queue-failopen.md",
+      "sha256": "17fd5d49011fa3c69f61147f49ba1972db4ee160ad58a7cb334ad54b9bff77ce",
+      "size": 1012
+    },
+    {
+      "path": "items/N-1105-tab-hover-clip.md",
+      "sha256": "e8051928b4f763d0da4756918bbf38acea4ca239eebd786a2dd94992c37afc77",
+      "size": 1895
+    },
+    {
+      "path": "items/N-1106-agent-tag-catalog.md",
+      "sha256": "7b1a5bc4ff4ccb130ee49e1edac9a7a34fe6699b728b1b19c7216a007c62aa30",
+      "size": 2153
+    },
+    {
+      "path": "items/N-1106-overview-board-motion.md",
+      "sha256": "a66f25157e6725caec5ad0b01dfff5a08f69a23a7e1309e1080666141cf174b1",
+      "size": 1182
+    },
+    {
+      "path": "items/N-1106-overview-card-actions.md",
+      "sha256": "92af777df4a7c8ad2016568b0fb6ec0e3643ff8fc1a5bd2839650be143cb2f64",
+      "size": 1721
+    },
+    {
+      "path": "items/N-1108-agent-chip-phase-duration.md",
+      "sha256": "1571f29cfca33c9451debb6a5695d2aa3589cfbf375c57b4590789fbc6a01f30",
+      "size": 1354
+    },
+    {
+      "path": "items/N-1109-agent-chip-conditional-hook.md",
+      "sha256": "727bd0781711ce7e8a29c9b2b4abfccd113c4bdb562236b1069aad33dde7dffa",
+      "size": 3245
+    },
+    {
+      "path": "items/N-1109-overview-board-chip-polish.md",
+      "sha256": "dbc26de53febc30deed26388845a5b4a621eb1069ffd04d067144c34ce8d8fe4",
+      "size": 2366
+    },
+    {
+      "path": "items/N-1109-overview-board-empty-status-label.md",
+      "sha256": "f07e5dea34cb0f082d4a5870d6d11b8696203372907a33c71fad73c3140705ed",
+      "size": 2939
+    },
+    {
+      "path": "items/N-1113-commontext-editor-collapse.md",
+      "sha256": "18a1a85613fbc32f889616b85578e16cc63bdd9998ea91c359cfe55fe3246beb",
+      "size": 2525
+    },
+    {
+      "path": "items/N-1114-commontext-draft-autosave.md",
+      "sha256": "c4055454fefcfeeadfcfc96f4ea6aa26c243b005693364d508a0947c09bd61ea",
+      "size": 2656
+    },
+    {
+      "path": "items/N-1114-commontext-tags-no-hash.md",
+      "sha256": "c0f2e0ffa28b288e1000ed9f59ef634067aba56e8fa2b852fe92f31e33145450",
+      "size": 2589
+    },
+    {
+      "path": "items/N-1114-commontext-tags-property.md",
+      "sha256": "0ed66c2f9f251df9590586101118f529ce02ade163b19878e031fc647bdddbbf",
+      "size": 2493
+    },
+    {
+      "path": "items/N-1114-commontext-tags-structured.md",
+      "sha256": "9bae40dfa2d0c9566155a0ad445684b77cfd9a18a49906da509a509a13082928",
+      "size": 2854
+    },
+    {
+      "path": "items/N-1114-commontext-tags-summary-chips.md",
+      "sha256": "a0868199f1870cf60fb8073f8a1ba855c5db643fc31b3c0d9bac2db5070d20f1",
+      "size": 1607
+    },
+    {
+      "path": "items/N-1114-tab-drag-switch-fix.md",
+      "sha256": "7a8a7e377a7f1bc1c6cbb2e2afa31c9d4697aa86a07e30988ac4bc5262a4e735",
+      "size": 1511
+    },
+    {
+      "path": "items/N-1114-tab-restore-all-r3.md",
+      "sha256": "8a081f89d9ef00c7da61aaaeec103d9f014527439bb0af1bc7d418033b62e3a8",
+      "size": 1168
+    },
+    {
+      "path": "items/N-1117-conn-typeahead-row-rail-r3.md",
+      "sha256": "c826fe7a54cd823667fb4d336c83bb4bf0b197c527da6243d27d2aa6da5a3828",
+      "size": 2930
+    },
+    {
+      "path": "items/N-1117-tab-collapse-to-more.md",
+      "sha256": "4d1ad0e05081c7192f4bc20c729e36e9e36c9aa2abf4e71f9b867e9083080790",
+      "size": 2581
+    },
+    {
+      "path": "items/archive/2026-11/F-1112-persona-aisessions.md",
+      "sha256": "0db294123be25b7d69c22ce151b54dc3fdbc82243654ea8052835c58e7a133e7",
+      "size": 1043
+    },
+    {
+      "path": "items/archive/2026-11/F-1112-persona-core-r1.md",
+      "sha256": "1107ee49bffd4ff52a9bf53446f76d7544c33f3f72f06469a63057586d7920bd",
+      "size": 2009
+    },
+    {
+      "path": "items/archive/2026-11/F-1112-persona-core.md",
+      "sha256": "1fbe4a90f29218dc37f67798a3a314172f1202ddb34c570e75c0fcb82d3ffd32",
+      "size": 1330
+    },
+    {
+      "path": "items/archive/2026-11/F-1113-persona-create-ui-r1.md",
+      "sha256": "572fa0c826870629d1664ad310c6d201db88aa6702aac3a609b671e1e88eedd1",
+      "size": 1502
+    },
+    {
+      "path": "items/archive/2026-11/F-1113-persona-widget-launch-r1.md",
+      "sha256": "7e4d018f12065b91eaf1c7fbc117f86a34c7a6bc35ab997db502884dd41df9ff",
+      "size": 1989
+    },
+    {
+      "path": "items/archive/2026-11/F-1113-persona-widget-launch.md",
+      "sha256": "b9b115051bf7cc7e71d6916e1d2c0cc3a3eaed1d6bbee67fbd082991de04dd89",
+      "size": 1791
+    },
+    {
+      "path": "items/archive/2026-11/N-1106-agent-card-tag-picker.md",
+      "sha256": "a06f55d909d538ac2b7217536da5ff9619813f155e9bc2c960dcf815317d3b45",
+      "size": 2080
+    },
+    {
+      "path": "items/archive/2026-11/N-1114-tab-restore-all-r2.md",
+      "sha256": "b5462ec2cde94da7e626b8ad9ecfb6d04b2af6f8f87ed9e9dd40c8932a276985",
+      "size": 1230
+    },
+    {
+      "path": "items/archive/2026-11/N-1114-tab-restore-all.md",
+      "sha256": "a6f0014784a4093f3027fc49fac16ccc2d9c5d6526829a47f22ae1dc772635fd",
+      "size": 1096
+    },
+    {
+      "path": "items/archive/2026-11/N-1117-conn-typeahead-row-rail-r2.md",
+      "sha256": "509aac13b86e93a6616db5df8611cf7ad9195389630a5a767a68629e2d1ea922",
+      "size": 2781
+    },
+    {
+      "path": "items/archive/2026-11/N-1117-conn-typeahead-row-rail.md",
+      "sha256": "adcff10c0c4dc22ac1ff875d79a313173b984d8d85dcdde184a790cf3dceaa3a",
+      "size": 2455
+    },
+    {
+      "path": "red/F-1109-commontext-sync-watermark.txt",
+      "sha256": "49104d5e4f20378b9abaad54e86e4218d4093d2c8525831b911834e02b25cee1",
+      "size": 2478
+    },
+    {
+      "path": "red/F-1112-persona-a15-a25.txt",
+      "sha256": "67bb4a5c5b417fb64250a8a1041910192e9ec4f481d4738d8747f16799688aad",
+      "size": 897
+    },
+    {
+      "path": "red/F-1112-persona-core.txt",
+      "sha256": "dac4a1d010bdb6b2f5976909ac79286a13cf2cc4cc1acee6a3cc61d51d30dc67",
+      "size": 675
+    },
+    {
+      "path": "red/F-1116-commontext-sync-ws-push-g2-raw.txt",
+      "sha256": "672546753f9a46f29ee7f270692e3e0be6128f57b237d07722e772bd6fe941dd",
+      "size": 782
+    },
+    {
+      "path": "red/F-1116-commontext-sync-ws-push-g2.txt",
+      "sha256": "8b9991f93b6daa66b4c6fe134c9bbd44668639aaaf996241b39258ed569b5e97",
+      "size": 1939
+    },
+    {
+      "path": "red/F-1116-hero-identity-inject-g2.txt",
+      "sha256": "9eee93ae019ca725119363fcdb75e38db39e95e44873607c8ff47ef1a3262b1b",
+      "size": 2476
+    },
+    {
+      "path": "red/F-1116-hero-identity-inject-probe.txt",
+      "sha256": "41efca1662321e4214dc0900ef8300f6d33d097c2f7cf59b150bbfa1cc18ce64",
+      "size": 1084
+    },
+    {
+      "path": "red/F-1118-tab-collapse-active.txt",
+      "sha256": "ef255477fe3a9b97360ea33b3d71c29f6949480696b1e75c4be21f5e563025c1",
+      "size": 10941
+    },
+    {
+      "path": "red/N-1108-agent-chip-phase-duration.txt",
+      "sha256": "c6a3e79c20c72dd4081e57457c9fc8413e0019362e42839fecde538946c5bb94",
+      "size": 639
+    },
+    {
+      "path": "red/N-1109-agent-chip-conditional-hook.txt",
+      "sha256": "67669db0b5df7424fed4f7aef96bf56500577260fdbf648f1b893c77f9f039d4",
+      "size": 4185
+    },
+    {
+      "path": "red/N-1109-overview-board-chip-polish.txt",
+      "sha256": "6a628e26ab2fbe072d7f7ec3e58d81a9f2e23bc4fd88ffc784198576ca19db85",
+      "size": 14
+    },
+    {
+      "path": "red/N-1109-overview-board-empty-status-label.txt",
+      "sha256": "87d91c6cb97bf0d3537bc0702428b31f3859d1f19e4763458bce3c0e848368ef",
+      "size": 7306
+    },
+    {
+      "path": "red/N-1117-conn-typeahead-row-rail.txt",
+      "sha256": "d81c1493519d637ef125d2d92cea99798bac5e54bf964f814e562fa6911b8c59",
+      "size": 70448
+    },
+    {
+      "path": "red/N-1117-tab-collapse-to-more.txt",
+      "sha256": "26012a68b929d6a65162615dd2f80edb71cae4aa5b8fdeebfe3c97b40c7fc491",
+      "size": 1308
+    }
+  ]
+}
