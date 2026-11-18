@@ -4,6 +4,7 @@ title: "标题缓存缺 origin 维度：外部 dump 会话的 Header 退化为 S
 type: bug
 priority: P1
 severity: S2
+solution: fixed
 status: open
 origin: self
 source: "nita 2026-11-18：Header 走 session-note-cache（只按 connection 建键）而正文走带 origin 的 Detail，两条链路不同源"

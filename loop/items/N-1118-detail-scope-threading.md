@@ -4,6 +4,7 @@ title: "会话详情弹窗/详情块丢失 connection 与 origin，Detail 回落
 type: bug
 priority: P1
 severity: S2
+solution: fixed
 status: open
 origin: self
 source: "nita 2026-11-18：打开的 session detail 内容和 header 对不上；根因之一是入口只传裸 id"

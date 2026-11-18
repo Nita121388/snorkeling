@@ -2,7 +2,7 @@
 
 # LEDGER 视图
 
-> 生成于 2026-11-18T02:55:17Z · 源：LEDGER-2026-11.jsonl
+> 生成于 2026-11-18T07:36:19Z · 源：LEDGER-2026-11.jsonl
 
 ## 进行中
 
@@ -33,6 +33,10 @@
 | F-1116-hero-identity-inject | accepted | - | - | 2026-11-16T05:09:59Z |
 | N-1117-conn-typeahead-row-rail-r3 | green | - | - | 2026-11-17T07:47:53Z |
 | F-1118-tab-collapse-active | committed | - | 22bd914db | 2026-11-18T02:54:41Z |
+| F-1118-hero-header-display | committed | - | - | 2026-11-18T04:36:56Z |
+| N-1118-resolve-exact-id | committed | - | 93edae675 | 2026-11-18T07:18:41Z |
+| N-1118-detail-scope-threading | committed | - | 268309f2f | 2026-11-18T07:35:49Z |
+| N-1118-header-note-origin | committed | - | edde49b85 | 2026-11-18T07:35:51Z |
 
 ## 近 14 天已发布
 

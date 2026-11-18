@@ -4,6 +4,7 @@ title: "会话定位的 id 前缀匹配：唯一命中时静默返回另一个�
 type: bug
 priority: P1
 severity: S2
+solution: fixed
 status: open
 origin: self
 source: "nita 2026-11-18：详情内容和 Header 对不上的隐患之一；resolveSession/Index.GetSession/SQLiteIndex.GetSession 三处都有 HasPrefix(id) 匹配"
