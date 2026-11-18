@@ -1,6 +1,6 @@
 {
-  "lastAttemptAt": "2026-11-18T04:36:54.299Z",
-  "lastOkAt": "2026-11-18T04:36:54.299Z",
+  "lastAttemptAt": "2026-11-18T04:38:04.417Z",
+  "lastOkAt": "2026-11-18T04:38:04.417Z",
   "failures": 0,
   "error": null,
   "lastOkManifest": [
@@ -16,8 +16,8 @@
     },
     {
       "path": "LEDGER-2026-11.jsonl",
-      "sha256": "43e62f809279a0c0697148668c9f01615705575aa97cb0accd6d89b617a80dad",
-      "size": 102570
+      "sha256": "d228fff044dd26da5223d9162b2e1963a5341c358c811a6165bca5108cda6ef0",
+      "size": 102789
     },
     {
       "path": "README.md",

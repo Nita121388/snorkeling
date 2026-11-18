@@ -172,3 +172,18 @@ merge 后 go build ./... 通过、四包测试全绿、`task generate` 无 diff�
   已还原并记 INBOX。
 - 复核未动：conn-typeahead（r3 绿 3/3，真机台按用户 11-17 指示挂起补跑）、v2-gutter（代码+单测全绿，
   剩 5 项人工走查，真机按指示跳过）——两者都等 G7 人验收，不是我该代签的。
+
+## 2026-11-18 · Hero Block Header 身份显示（F-1118-hero-header-display / 11-18-hero-block-header-display）
+
+- 起因：nita 报「打开的 Hero，Agent Block Header 显示 `E:\primary\heros/hero-feaa3f86` 不友好」——
+  据点目录名是磁盘不变量（ValidateID 目录名==id，中文名必然 hero-<hash8>），不能动磁盘，只改显示层。
+- 改动：启动时写 meta `hero:name`/`display:name`（hero-launch）；`block.tsx` defaultTitle agent 分支
+  优先身份（frame:title 仍最高）；`buildCmdCwdHeaderElem` displayText 用身份、复制/tooltip 仍完整路径；
+  新增 `displayPath()`（仅展示、Windows 归一分隔符、远端块禁用）。
+- 红证 4 文件/7 例 → 绿证 hero-launch 19/19 · view/term 147/147 · block 153/153 · i18n parity 0 ·
+  tsc 55 全为既有错误（触达文件 0）。提交 016775e89 + cfcd4520e（台账）。
+- 排障沉淀 L-0007：`.cache/tmp/wt-head` 旧 worktree 快照（10 月，gitignored）被 vitest 当测试收集，
+  旧代码的 pre-existing 失败染红新改动 → 删本地缓存 + spec 写入排查规则；blockregistry 单测
+  5s 超时误红 → 放宽 20s。
+- 已知边界：旧 Hero 块 meta 无 hero:name，仍显示哈希目录名（重新登场即生效）；懒回填（启动时按
+  meta.hero 查 roster 补 meta）留后续包。G7 人验收待 nita 真机看 Header。
