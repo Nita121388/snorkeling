@@ -28,6 +28,14 @@ var (
 	sessionMarked      string
 	sessionLimit       int
 	sessionTimeoutMs   int64
+
+	sessionUsersLimit  int
+	sessionBeforeSeq   int
+	sessionTurnsLimit  int
+	sessionBeforeTurn  int
+	sessionTurnNumber  int
+	sessionTurnChars   int
+	sessionReadRefresh bool
 )
 
 var sessionCmd = &cobra.Command{
@@ -67,10 +75,43 @@ var sessionForBlockCmd = &cobra.Command{
 	PreRunE: preRunSetupRpcClient,
 }
 
+var sessionInfoCmd = &cobra.Command{
+	Use:     "info <sessionKey|sessionId>",
+	Short:   "Probe one session's size (counts/bytes/verdict) before reading it",
+	Args:    cobra.ExactArgs(1),
+	RunE:    sessionInfoRun,
+	PreRunE: preRunSetupRpcClient,
+}
+
+var sessionUsersCmd = &cobra.Command{
+	Use:     "users <sessionKey|sessionId>",
+	Short:   "Read one page of user prompts (120 chars each)",
+	Args:    cobra.ExactArgs(1),
+	RunE:    sessionUsersRun,
+	PreRunE: preRunSetupRpcClient,
+}
+
+var sessionTurnsCmd = &cobra.Command{
+	Use:     "turns <sessionKey|sessionId> --limit N",
+	Short:   "Read one page of turn summaries (limit is required, 1-10)",
+	Args:    cobra.ExactArgs(1),
+	RunE:    sessionTurnsRun,
+	PreRunE: preRunSetupRpcClient,
+}
+
+var sessionTurnCmd = &cobra.Command{
+	Use:     "turn <sessionKey|sessionId> --turn N --chars N",
+	Short:   "Read one turn's original messages (chars is required, 1-8000)",
+	Args:    cobra.ExactArgs(1),
+	RunE:    sessionTurnRun,
+	PreRunE: preRunSetupRpcClient,
+}
+
 func init() {
 	sessionCmd.PersistentFlags().BoolVar(&sessionJSON, "json", false, "output as JSON")
 	sessionCmd.PersistentFlags().Int64Var(&sessionTimeoutMs, "timeout", 8000, "RPC timeout in milliseconds")
-	sessionCmd.AddCommand(sessionLiveCmd, sessionGetCmd, sessionListCmd, sessionForBlockCmd)
+	sessionCmd.AddCommand(sessionLiveCmd, sessionGetCmd, sessionListCmd, sessionForBlockCmd,
+		sessionInfoCmd, sessionUsersCmd, sessionTurnsCmd, sessionTurnCmd)
 
 	sessionLiveCmd.Flags().BoolVar(&sessionIncludeIdle, "include-idle", false, "include idle sessions")
 	sessionLiveCmd.Flags().IntVar(&sessionMaxRows, "max-rows", 200, "maximum rows to return")
@@ -85,6 +126,20 @@ func init() {
 	sessionListCmd.Flags().IntVar(&sessionLimit, "limit", 20, "maximum rows")
 
 	sessionForBlockCmd.Flags().StringVar(&sessionBlockId, "block", "", "block id (defaults to WAVETERM_BLOCKID)")
+
+	sessionInfoCmd.Flags().BoolVar(&sessionReadRefresh, "refresh", false, "re-parse this session's messages before probing (single file, no full scan)")
+
+	sessionUsersCmd.Flags().IntVar(&sessionUsersLimit, "limit", 20, "rows per page (max 100)")
+	sessionUsersCmd.Flags().IntVar(&sessionBeforeSeq, "before-seq", 0, "cursor: return rows with seq < this (from 'nextBeforeSeq')")
+	sessionUsersCmd.Flags().BoolVar(&sessionReadRefresh, "refresh", false, "re-parse this session's messages before reading (single file, no full scan)")
+
+	sessionTurnsCmd.Flags().IntVar(&sessionTurnsLimit, "limit", 0, "rows per page: REQUIRED, 1-10 (run 'session info' first)")
+	sessionTurnsCmd.Flags().IntVar(&sessionBeforeTurn, "before-turn", 0, "cursor: return turns with number < this (from 'nextBeforeTurn')")
+	sessionTurnsCmd.Flags().BoolVar(&sessionReadRefresh, "refresh", false, "re-parse this session's messages before reading (single file, no full scan)")
+
+	sessionTurnCmd.Flags().IntVar(&sessionTurnNumber, "turn", 0, "turn number (1-based, from 'session turns')")
+	sessionTurnCmd.Flags().IntVar(&sessionTurnChars, "chars", 0, "chars budget: REQUIRED, 1-8000")
+	sessionTurnCmd.Flags().BoolVar(&sessionReadRefresh, "refresh", false, "re-parse this session's messages before reading (single file, no full scan)")
 
 	rootCmd.AddCommand(sessionCmd)
 }
@@ -276,4 +331,201 @@ func sessionAge(rec wshrpc.SessionLiveRecord) string {
 		return fmt.Sprintf("%dm", int(delta.Minutes()))
 	}
 	return fmt.Sprintf("%dh", int(delta.Hours()))
+}
+
+// sessionAgeAt renders a millisecond timestamp as a compact age.
+func sessionAgeAt(ts int64) string {
+	if ts <= 0 {
+		return "-"
+	}
+	delta := time.Since(time.UnixMilli(ts))
+	if delta < 0 {
+		delta = 0
+	}
+	if delta < time.Minute {
+		return fmt.Sprintf("%ds", int(delta.Seconds()))
+	}
+	if delta < time.Hour {
+		return fmt.Sprintf("%dm", int(delta.Minutes()))
+	}
+	if delta < 24*time.Hour {
+		return fmt.Sprintf("%dh", int(delta.Hours()))
+	}
+	return time.UnixMilli(ts).Format("2006-01-02 15:04")
+}
+
+func sessionInfoRun(cmd *cobra.Command, args []string) (rtnErr error) {
+	defer func() { sendActivity("session info", rtnErr == nil) }()
+	res, err := wshclient.SessionInfoCommand(RpcClient, wshrpc.SessionInfoRequest{
+		Identifier: args[0],
+		Refresh:    sessionReadRefresh,
+	}, sessionRpcOpts())
+	if err != nil {
+		return err
+	}
+	if sessionJSON {
+		return writeJSON(res)
+	}
+	fmt.Fprintf(WrappedStdout, "key:      %s\n", orDash(res.SessionKey))
+	fmt.Fprintf(WrappedStdout, "verdict:  %s\n", res.Verdict)
+	fmt.Fprintf(WrappedStdout, "messages: %d (%d user)\n", res.MessageCount, res.UserMessageCount)
+	fmt.Fprintf(WrappedStdout, "bytes:    %s\n", sessionSizeLabel(res.Bytes))
+	if res.LastMessageAt > 0 {
+		fmt.Fprintf(WrappedStdout, "last:     %s\n", sessionAgeAt(res.LastMessageAt))
+	}
+	if res.Stale {
+		fmt.Fprintf(WrappedStdout, "warning:  message index is stale; re-run with --refresh to re-index this session\n")
+	}
+	return nil
+}
+
+func sessionSizeLabel(size int64) string {
+	switch {
+	case size >= 1024*1024:
+		return fmt.Sprintf("%d (%.1fMB)", size, float64(size)/(1024*1024))
+	case size >= 1024:
+		return fmt.Sprintf("%d (%.1fKB)", size, float64(size)/1024)
+	default:
+		return fmt.Sprintf("%d", size)
+	}
+}
+
+func sessionUsersRun(cmd *cobra.Command, args []string) (rtnErr error) {
+	defer func() { sendActivity("session users", rtnErr == nil) }()
+	res, err := wshclient.SessionUsersCommand(RpcClient, wshrpc.SessionUsersRequest{
+		Identifier: args[0],
+		Limit:      sessionUsersLimit,
+		BeforeSeq:  sessionBeforeSeq,
+		Refresh:    sessionReadRefresh,
+	}, sessionRpcOpts())
+	if err != nil {
+		return err
+	}
+	if sessionJSON {
+		return writeJSON(res)
+	}
+	if res.Stale {
+		fmt.Fprintf(WrappedStdout, "warning: message index is stale; re-run with --refresh to re-index this session\n")
+	}
+	if len(res.Rows) == 0 {
+		if !res.Stale {
+			WriteStdout("no user messages\n")
+		}
+		return nil
+	}
+	w := tabwriter.NewWriter(WrappedStdout, 0, 0, 2, ' ', 0)
+	defer w.Flush()
+	fmt.Fprintf(w, "SEQ\tAGE\tTEXT\n")
+	for _, row := range res.Rows {
+		text := row.Text
+		if row.Truncated {
+			text += "…"
+		}
+		fmt.Fprintf(w, "%d\t%s\t%s\n", row.Seq, sessionAgeAt(row.At), text)
+	}
+	if res.HasMore {
+		fmt.Fprintf(w, "\n(more: pass --before-seq %d)\n", res.NextBeforeSeq)
+	}
+	return nil
+}
+
+func sessionTurnsRun(cmd *cobra.Command, args []string) (rtnErr error) {
+	defer func() { sendActivity("session turns", rtnErr == nil) }()
+	if !cmd.Flags().Changed("limit") {
+		return fmt.Errorf("E_USAGE: --limit is required (1-10); run 'wsh session info %s' first to size the session", args[0])
+	}
+	res, err := wshclient.SessionTurnsCommand(RpcClient, wshrpc.SessionTurnsRequest{
+		Identifier: args[0],
+		Limit:      sessionTurnsLimit,
+		BeforeTurn: sessionBeforeTurn,
+		Refresh:    sessionReadRefresh,
+	}, sessionRpcOpts())
+	if err != nil {
+		return err
+	}
+	if sessionJSON {
+		return writeJSON(res)
+	}
+	if res.Stale {
+		fmt.Fprintf(WrappedStdout, "warning: message index is stale; re-run with --refresh to re-index this session\n")
+	}
+	if len(res.Rows) == 0 {
+		if !res.Stale {
+			WriteStdout("no turns\n")
+		}
+		return nil
+	}
+	w := tabwriter.NewWriter(WrappedStdout, 0, 0, 2, ' ', 0)
+	defer w.Flush()
+	fmt.Fprintf(w, "TURN\tSEQ\tAGE\tTOOLS\tCHARS\tMS\tTEXT\n")
+	for _, row := range res.Rows {
+		text := row.Text
+		if row.Truncated {
+			text += "…"
+		}
+		fmt.Fprintf(w, "%d\t%d\t%s\t%d\t%d\t%s\t%s\n", row.Turn, row.Seq, sessionAgeAt(row.At), row.ToolCount, row.Chars, sessionMsLabel(row.Ms), text)
+	}
+	if res.HasMore {
+		fmt.Fprintf(w, "\n(more: pass --before-turn %d)\n", res.NextBeforeTurn)
+	}
+	return nil
+}
+
+func sessionMsLabel(ms int64) string {
+	if ms < 0 {
+		return "-"
+	}
+	if ms < 1000 {
+		return fmt.Sprintf("%dms", ms)
+	}
+	seconds := ms / 1000
+	if seconds < 60 {
+		return fmt.Sprintf("%ds", seconds)
+	}
+	minutes := seconds / 60
+	if minutes < 60 {
+		return fmt.Sprintf("%dm", minutes)
+	}
+	return fmt.Sprintf("%dh", minutes/60)
+}
+
+func sessionTurnRun(cmd *cobra.Command, args []string) (rtnErr error) {
+	defer func() { sendActivity("session turn", rtnErr == nil) }()
+	if !cmd.Flags().Changed("chars") {
+		return fmt.Errorf("E_USAGE: --chars is required (1-8000); run 'wsh session info %s' first to size the session", args[0])
+	}
+	res, err := wshclient.SessionTurnCommand(RpcClient, wshrpc.SessionTurnRequest{
+		Identifier: args[0],
+		Turn:       sessionTurnNumber,
+		Chars:      sessionTurnChars,
+		Refresh:    sessionReadRefresh,
+	}, sessionRpcOpts())
+	if err != nil {
+		return err
+	}
+	if sessionJSON {
+		return writeJSON(res)
+	}
+	if res.Stale {
+		fmt.Fprintf(WrappedStdout, "warning: message index is stale; re-run with --refresh to re-index this session\n")
+	}
+	w := tabwriter.NewWriter(WrappedStdout, 0, 0, 2, ' ', 0)
+	defer w.Flush()
+	fmt.Fprintf(w, "SEQ\tROLE\tAGE\tTEXT\n")
+	for _, row := range res.Rows {
+		text := row.Text
+		if row.Truncated {
+			text += "…"
+		}
+		fmt.Fprintf(w, "%d\t%s\t%s\t%s\n", row.Seq, orDash(row.Role), sessionAgeAt(row.At), text)
+	}
+	fmt.Fprintf(WrappedStdout, "\nturn %d: %d chars total%s\n", res.Turn, res.TotalChars, boolMark(res.Truncated, ", truncated to fit --chars"))
+	return nil
+}
+
+func boolMark(flag bool, label string) string {
+	if flag {
+		return label
+	}
+	return ""
 }

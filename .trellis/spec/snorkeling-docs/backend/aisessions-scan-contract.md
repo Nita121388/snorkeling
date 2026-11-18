@@ -121,3 +121,31 @@ List RPC
 
 守卫测试：`TestPiAssistantMessageModel` / `TestPiModelChangeFallback` /
 `TestCodexTurnContextModel`（`pkg/aisessions`）。
+
+## 渐进读取入口（2026-11-18，`11-18-aisessions-turn-reading`）
+
+外部 agent（守夜人巡检 / MCP 客户端）读会话只走这四个入口，不啃 jsonl 尾部、不拉全量：
+
+| 入口 | 语义 | 硬上界 |
+|---|---|---|
+| `SessionInfo` | 探规模：`messageCount` / `userMessageCount` / `bytes` / `lastMessageAt` / `verdict`（small·medium·large） | 无正文 |
+| `SessionUsers` | 最近 user 消息分页（`beforeSeq` 游标） | 每行 120 rune，`limit` 默认 20 / 上限 100 |
+| `SessionTurns` | 轮清单分页（`beforeTurn` 游标） | `limit` **必填** 1–10 |
+| `SessionTurn` | 单轮原文 | `chars` **必填** ≤8000 |
+
+**必须遵守的不变量**
+
+1. **读取路径不得全量加载**：禁止 `LoadMessages` 后内存切轮。`SessionTurns` 走尾部窗口——
+   `TurnStartCount` + `TurnStartsRange(LIMIT/OFFSET)` 定位轮首，再逐轮 `TurnHead` + `TurnSpanOf` 聚合；
+   正文不进 Go。守卫：`TestReadTurnsTailWindowIsBounded`（2 万消息单页分配 ≈174KB）。
+2. **门禁是参数上界，不是服务端状态**：RPC 无状态，记不住「调用方调过 info 没有」；「一次绝不拉全量」
+   由 `limit`/`chars` 的缺失即报错 + 硬上限保证。别为此引入服务端会话状态表。
+3. **轮的定义只有一份**：一轮 = 一段连续 user 消息（同一问）+ 其后到下一段 user 前的全部非 user 消息；
+   只有 user 跟在非 user 之后才开新轮。后端 `ComputeTurns` / `turnStartsSQL` 与前端
+   `computeTurnPages`（`frontend/app/view/aisessions/annotation-model.ts`）必须逐条一致，
+   改一侧就同步另一侧。守卫：`TestSQLTurnStartsMatchComputeTurns`。
+4. **stale 不静默**：`ai_files` 的 mtime/size/`message_indexed` 三重检查不过 → 返回 `stale=true`；
+   `SessionInfo` 的 `messageCount` 在「索引计数 > summary 计数」时用索引值（扫描未回填的窄场景），
+   `UserOutlineRows` 不得在 stale 时返回旧行（回退 `Load(refresh)`）。
+5. 新增索引 `idx_ai_session_messages_user(session_key, role, seq)`；不改表结构、不碰 List 批量路径、
+   不新增 `ScanSummaries` / `populateMessageCounts` 调用。

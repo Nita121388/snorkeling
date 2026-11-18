@@ -4,7 +4,7 @@
 
 agent card 的 emoji 要做到：打开 Picker 就有推荐；用户没设置过就自动设置；用户设置过的永不覆盖；每次选择都沉淀为偏好，下次推荐更准。现状三个硬伤：session emoji 存浏览器 localStorage（外部 agent 写不到）、无 source 字段（分不清谁设的）、无推荐。
 
-设计全文：`E:/primary/ai-output/answers/snorkeling-userline-design-20261118.html`（第 5 节）
+设计全文：`design/plans/session-kernel-design-20261118.md`（第 5 节；原始出处：Hero 据点仓 `nita/hero-feaa3f86` `design/session-kernel-design-20261118.md` @ 274f8e56）
 
 ## Requirements
 

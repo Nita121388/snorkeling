@@ -55,19 +55,23 @@ func Allows(granted []string, required string) bool {
 // (the transport layer only enforces the entries listed here; anything else is
 // reachable only through an app-level token).
 var commandScopes = map[string]string{
-	"sessionlive":    Observe,
-	"sessionget":     Observe,
-	"sessionlist":    Observe,
+	"sessionlive":     Observe,
+	"sessionget":      Observe,
+	"sessionlist":     Observe,
+	"sessioninfo":     Observe,
+	"sessionusers":    Observe,
+	"sessionturns":    Observe,
+	"sessionturn":     Observe,
 	"sessionforblock": Observe,
-	"agentcardget":   Observe,
-	"uiactive":       Observe,
-	"uistate":        Observe,
-	"blockread":      Observe,
-	"tablist":        Observe,
+	"agentcardget":    Observe,
+	"uiactive":        Observe,
+	"uistate":         Observe,
+	"blockread":       Observe,
+	"tablist":         Observe,
 
-	"blockopen":    Navigate,
-	"tabcreate":    Navigate,
-	"tabactivate":  Navigate,
+	"blockopen":   Navigate,
+	"tabcreate":   Navigate,
+	"tabactivate": Navigate,
 
 	"agentcardset": Data,
 }

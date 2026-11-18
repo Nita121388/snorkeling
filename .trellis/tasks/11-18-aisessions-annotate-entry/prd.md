@@ -4,7 +4,7 @@
 
 批注存储（schema v4）、锚定校验、AI 草稿机制、覆盖更新在后端都已齐，但只在 GUI 里可用。外部 agent（守夜人巡检）读懂会话后，没法把结论写回会话时间线。本次把这一半补上：`session annotate` 写入口，CLI + MCP 双形态，**AI 只写草稿**。
 
-设计全文：`E:/primary/ai-output/answers/snorkeling-userline-design-20261118.html`（第 3 节）
+设计全文：`design/plans/session-kernel-design-20261118.md`（第 3 节；原始出处：Hero 据点仓 `nita/hero-feaa3f86` `design/session-kernel-design-20261118.md` @ 274f8e56）
 
 ## Requirements
 

@@ -4,7 +4,7 @@
 
 外部 agent（守夜人巡检、其它 MCP 客户端）要判一个会话「现在在做什么」，现在只能读 jsonl 尾部 64KB 原始记录，大半是工具输出，用户指令常在窗口外，只能退回去猜标题。本次给 AISessions 补一套**渐进式读取入口**：先探规模决定读法，再按「轮」分页，逐层下沉，永不一次拉全量。
 
-设计全文：`E:/primary/ai-output/answers/snorkeling-userline-design-20261118.html`（第 2 节）
+设计全文：`design/plans/session-kernel-design-20261118.md`（第 2 节；原始出处：Hero 据点仓 `nita/hero-feaa3f86` `design/session-kernel-design-20261118.md` @ 274f8e56）
 
 ## Requirements
 
@@ -78,5 +78,6 @@ ORDER BY seq DESC LIMIT ?
 ## Notes
 
 - 相关代码：`pkg/aisessions/sqlite_index.go`（索引与 `GetMessages`）、`pkg/aisessions/manager.go`（`Load`/`LoadDelta`）、`pkg/service/aisessionsservice/aisessionsservice.go`（`UserOutline` 在 1303 行附近）、`pkg/agentmcp/tools.go`（工具表）、`cmd/`（CLI 子命令）。
-- 待拍板（原设计页 G2 第 1 问）：本次范围是否为「users + turns + info」，`turn`（第 3 层）可留到验证后。默认按建议：四层一起，`turn` 放最后。
+- 待拍板（原设计页 G2 第 1 问）：本次范围是否为「users + turns + info」，`turn`（第 3 层）可留到验证后。默认按建议：四层一起，`turn` 放最后。（已按设计稿 §8 Q1 落定）
+- AC5 口径改写（见本目录 design.md §5，待确认）：RPC 无状态，服务端记不住「调过 info 没有」；改为「`turns` 必须显式传 `limit`（1–10）、`turn` 必须显式传 `chars`（≤8000），缺省/越界报错」，等价保证「绝不一次拉全量」。
 - 阶段时长（大阶段/小阶段）不在本任务范围，见 `11-18-aisessions-card-phase-timeline`。

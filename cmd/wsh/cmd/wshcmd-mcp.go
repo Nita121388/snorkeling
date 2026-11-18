@@ -71,6 +71,22 @@ func (b rpcBackend) SessionList(ctx context.Context, req wshrpc.SessionListReque
 	return wshclient.SessionListCommand(RpcClient, req, b.opts())
 }
 
+func (b rpcBackend) SessionInfo(ctx context.Context, req wshrpc.SessionInfoRequest) (*wshrpc.SessionInfoResult, error) {
+	return wshclient.SessionInfoCommand(RpcClient, req, b.opts())
+}
+
+func (b rpcBackend) SessionUsers(ctx context.Context, req wshrpc.SessionUsersRequest) (*wshrpc.SessionUsersResult, error) {
+	return wshclient.SessionUsersCommand(RpcClient, req, b.opts())
+}
+
+func (b rpcBackend) SessionTurns(ctx context.Context, req wshrpc.SessionTurnsRequest) (*wshrpc.SessionTurnsResult, error) {
+	return wshclient.SessionTurnsCommand(RpcClient, req, b.opts())
+}
+
+func (b rpcBackend) SessionTurn(ctx context.Context, req wshrpc.SessionTurnRequest) (*wshrpc.SessionTurnResult, error) {
+	return wshclient.SessionTurnCommand(RpcClient, req, b.opts())
+}
+
 func (b rpcBackend) UIActive(ctx context.Context, req wshrpc.UIActiveRequest) (*wshrpc.UIActiveSnapshot, error) {
 	return wshclient.UIActiveCommand(RpcClient, req, b.opts())
 }

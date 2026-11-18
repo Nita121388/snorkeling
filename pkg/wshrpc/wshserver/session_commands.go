@@ -25,6 +25,29 @@ func (ws *WshServer) SessionListCommand(ctx context.Context, data wshrpc.Session
 	return agentcontrol.BuildSessionList(ctx, data)
 }
 
+// SessionInfoCommand is layer 0 of the progressive session read: a size probe
+// (counts/bytes/verdict) with no content. Read-only.
+func (ws *WshServer) SessionInfoCommand(ctx context.Context, data wshrpc.SessionInfoRequest) (*wshrpc.SessionInfoResult, error) {
+	return agentcontrol.GetSessionInfo(ctx, data)
+}
+
+// SessionUsersCommand is layer 1: one bounded page of user prompts. Read-only.
+func (ws *WshServer) SessionUsersCommand(ctx context.Context, data wshrpc.SessionUsersRequest) (*wshrpc.SessionUsersResult, error) {
+	return agentcontrol.GetSessionUsers(ctx, data)
+}
+
+// SessionTurnsCommand is layer 2: one bounded page of turn summaries.
+// Read-only. Limit is mandatory (1-10).
+func (ws *WshServer) SessionTurnsCommand(ctx context.Context, data wshrpc.SessionTurnsRequest) (*wshrpc.SessionTurnsResult, error) {
+	return agentcontrol.GetSessionTurns(ctx, data)
+}
+
+// SessionTurnCommand is layer 3: one turn's original messages under a chars
+// budget. Read-only. Chars is mandatory (1-8000).
+func (ws *WshServer) SessionTurnCommand(ctx context.Context, data wshrpc.SessionTurnRequest) (*wshrpc.SessionTurnResult, error) {
+	return agentcontrol.GetSessionTurn(ctx, data)
+}
+
 // AgentCardGetCommand reads one session card (read-only).
 func (ws *WshServer) AgentCardGetCommand(ctx context.Context, data wshrpc.AgentCardGetRequest) (*wshrpc.AgentCardResult, error) {
 	return agentcontrol.GetAgentCard(ctx, data)

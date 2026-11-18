@@ -27,6 +27,10 @@ type Backend interface {
 	SessionLive(ctx context.Context, req wshrpc.SessionLiveRequest) (*wshrpc.SessionLiveResult, error)
 	SessionGet(ctx context.Context, req wshrpc.SessionGetRequest) (*wshrpc.SessionLiveRecord, error)
 	SessionList(ctx context.Context, req wshrpc.SessionListRequest) (*wshrpc.SessionListResult, error)
+	SessionInfo(ctx context.Context, req wshrpc.SessionInfoRequest) (*wshrpc.SessionInfoResult, error)
+	SessionUsers(ctx context.Context, req wshrpc.SessionUsersRequest) (*wshrpc.SessionUsersResult, error)
+	SessionTurns(ctx context.Context, req wshrpc.SessionTurnsRequest) (*wshrpc.SessionTurnsResult, error)
+	SessionTurn(ctx context.Context, req wshrpc.SessionTurnRequest) (*wshrpc.SessionTurnResult, error)
 	UIActive(ctx context.Context, req wshrpc.UIActiveRequest) (*wshrpc.UIActiveSnapshot, error)
 	UIState(ctx context.Context, req wshrpc.UIStateRequest) (*wshrpc.UIStateSnapshot, error)
 	BlockRead(ctx context.Context, req wshrpc.BlockReadRequest) (*wshrpc.BlockReadResult, error)
@@ -127,8 +131,8 @@ func toolSpecs() []toolSpec {
 			Scope:       ScopeObserve,
 			Annotations: readOnly("Block: read"),
 			Schema: obj(map[string]any{
-				"blockid": str("block id ('this' resolves to the calling block)"),
-				"tail":    num("lines to return for terminal blocks (default 80, max 2000)"),
+				"blockid":  str("block id ('this' resolves to the calling block)"),
+				"tail":     num("lines to return for terminal blocks (default 80, max 2000)"),
 				"maxbytes": num("content byte cap (default 65536)"),
 			}, "blockid"),
 			Invoke: func(ctx context.Context, be Backend, args json.RawMessage) (any, error) {
@@ -207,6 +211,80 @@ func toolSpecs() []toolSpec {
 					return nil, err
 				}
 				return be.SessionList(ctx, req)
+			},
+		},
+		{
+			Name:        "snorkeling_session_info",
+			Description: "Layer 0 of reading a session: counts/bytes/verdict (small|medium|large) and a stale flag, with NO content. Call this before users/turns to size the session.",
+			Scope:       ScopeObserve,
+			Annotations: readOnly("Sessions: size probe"),
+			Schema: obj(map[string]any{
+				"identifier": str("session key / session id"),
+				"refresh":    boolean("re-parse this session's messages first (single file, no full scan)"),
+			}, "identifier"),
+			Invoke: func(ctx context.Context, be Backend, args json.RawMessage) (any, error) {
+				req, err := decode[wshrpc.SessionInfoRequest](args)
+				if err != nil {
+					return nil, err
+				}
+				return be.SessionInfo(ctx, req)
+			},
+		},
+		{
+			Name:        "snorkeling_session_users",
+			Description: "Layer 1: one page of user prompts (120 chars each, ~2KB). Page backwards with beforeSeq from nextBeforeSeq.",
+			Scope:       ScopeObserve,
+			Annotations: readOnly("Sessions: user prompts"),
+			Schema: obj(map[string]any{
+				"identifier": str("session key / session id"),
+				"limit":      num("rows per page (default 20, max 100)"),
+				"beforeseq":  num("cursor: rows with seq < this (from nextBeforeSeq)"),
+				"refresh":    boolean("re-parse this session's messages first (single file, no full scan)"),
+			}, "identifier"),
+			Invoke: func(ctx context.Context, be Backend, args json.RawMessage) (any, error) {
+				req, err := decode[wshrpc.SessionUsersRequest](args)
+				if err != nil {
+					return nil, err
+				}
+				return be.SessionUsers(ctx, req)
+			},
+		},
+		{
+			Name:        "snorkeling_session_turns",
+			Description: "Layer 2: one page of turn summaries (turn/seq/at/user text/tools/chars/ms, ~3KB). A turn = one user segment plus its replies. 'limit' is REQUIRED (1-10).",
+			Scope:       ScopeObserve,
+			Annotations: readOnly("Sessions: turns"),
+			Schema: obj(map[string]any{
+				"identifier": str("session key / session id"),
+				"limit":      num("rows per page: REQUIRED, 1-10"),
+				"beforeturn": num("cursor: turns with number < this (from nextBeforeTurn)"),
+				"refresh":    boolean("re-parse this session's messages first (single file, no full scan)"),
+			}, "identifier", "limit"),
+			Invoke: func(ctx context.Context, be Backend, args json.RawMessage) (any, error) {
+				req, err := decode[wshrpc.SessionTurnsRequest](args)
+				if err != nil {
+					return nil, err
+				}
+				return be.SessionTurns(ctx, req)
+			},
+		},
+		{
+			Name:        "snorkeling_session_turn",
+			Description: "Layer 3: one turn's original messages under a chars budget (<=8KB), with truncated/totalChars. 'turn' and 'chars' are REQUIRED.",
+			Scope:       ScopeObserve,
+			Annotations: readOnly("Sessions: one turn"),
+			Schema: obj(map[string]any{
+				"identifier": str("session key / session id"),
+				"turn":       num("turn number (1-based, from session_turns)"),
+				"chars":      num("chars budget: REQUIRED, 1-8000"),
+				"refresh":    boolean("re-parse this session's messages first (single file, no full scan)"),
+			}, "identifier", "turn", "chars"),
+			Invoke: func(ctx context.Context, be Backend, args json.RawMessage) (any, error) {
+				req, err := decode[wshrpc.SessionTurnRequest](args)
+				if err != nil {
+					return nil, err
+				}
+				return be.SessionTurn(ctx, req)
 			},
 		},
 		{
@@ -294,15 +372,15 @@ func toolSpecs() []toolSpec {
 			Scope:       ScopeData,
 			Annotations: &Annotations{Title: "Card: write", DestructiveHint: true},
 			Schema: obj(map[string]any{
-				"identifier":     str("session key / session id / 'this'"),
-				"note":           str("note text"),
-				"title":          str("title (refused when user-authored unless force)"),
-				"tags":           map[string]any{"type": "object", "description": "{add:[], remove:[], set:[]}"},
-				"props":          map[string]any{"type": "object", "description": "key -> {type, value, name, scope: session|agent|all}"},
-				"force":          boolean("overwrite user-authored title/props"),
-				"expectedhash":   str("hash from a fresh agent_card_get (required for a real write)"),
-				"dryrun":         boolean("preview without writing (default true)"),
-				"yes":            boolean("confirm the write"),
+				"identifier":   str("session key / session id / 'this'"),
+				"note":         str("note text"),
+				"title":        str("title (refused when user-authored unless force)"),
+				"tags":         map[string]any{"type": "object", "description": "{add:[], remove:[], set:[]}"},
+				"props":        map[string]any{"type": "object", "description": "key -> {type, value, name, scope: session|agent|all}"},
+				"force":        boolean("overwrite user-authored title/props"),
+				"expectedhash": str("hash from a fresh agent_card_get (required for a real write)"),
+				"dryrun":       boolean("preview without writing (default true)"),
+				"yes":          boolean("confirm the write"),
 			}, "identifier"),
 			Invoke: func(ctx context.Context, be Backend, args json.RawMessage) (any, error) {
 				req, err := decode[wshrpc.AgentCardSetRequest](args)

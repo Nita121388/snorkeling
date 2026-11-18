@@ -1116,6 +1116,12 @@ export class RpcApiType {
         return client.wshRpcCall("sessionget", data, opts);
     }
 
+    // command "sessioninfo" [call]
+    SessionInfoCommand(client: WshClient, data: SessionInfoRequest, opts?: RpcOpts): Promise<SessionInfoResult> {
+        if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "sessioninfo", data, opts);
+        return client.wshRpcCall("sessioninfo", data, opts);
+    }
+
     // command "sessionlist" [call]
     SessionListCommand(client: WshClient, data: SessionListRequest, opts?: RpcOpts): Promise<SessionListResult> {
         if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "sessionlist", data, opts);
@@ -1126,6 +1132,24 @@ export class RpcApiType {
     SessionLiveCommand(client: WshClient, data: SessionLiveRequest, opts?: RpcOpts): Promise<SessionLiveResult> {
         if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "sessionlive", data, opts);
         return client.wshRpcCall("sessionlive", data, opts);
+    }
+
+    // command "sessionturn" [call]
+    SessionTurnCommand(client: WshClient, data: SessionTurnRequest, opts?: RpcOpts): Promise<SessionTurnResult> {
+        if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "sessionturn", data, opts);
+        return client.wshRpcCall("sessionturn", data, opts);
+    }
+
+    // command "sessionturns" [call]
+    SessionTurnsCommand(client: WshClient, data: SessionTurnsRequest, opts?: RpcOpts): Promise<SessionTurnsResult> {
+        if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "sessionturns", data, opts);
+        return client.wshRpcCall("sessionturns", data, opts);
+    }
+
+    // command "sessionusers" [call]
+    SessionUsersCommand(client: WshClient, data: SessionUsersRequest, opts?: RpcOpts): Promise<SessionUsersResult> {
+        if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "sessionusers", data, opts);
+        return client.wshRpcCall("sessionusers", data, opts);
     }
 
     // command "setblockfocus" [call]

@@ -240,6 +240,10 @@ func (idx *SQLiteIndex) init(ctx context.Context) error {
 		`CREATE INDEX IF NOT EXISTS idx_ai_sessions_source_id ON ai_sessions(source, id)`,
 		`CREATE INDEX IF NOT EXISTS idx_ai_sessions_updated ON ai_sessions(updated_at)`,
 		`CREATE INDEX IF NOT EXISTS idx_ai_session_messages_session ON ai_session_messages(session_key, seq)`,
+		// (session_key, role, seq) serves the progressive read entry points:
+		// user-outline pagination, user-message counting and turn-start discovery.
+		// Additive only — the table shape is untouched.
+		`CREATE INDEX IF NOT EXISTS idx_ai_session_messages_user ON ai_session_messages(session_key, role, seq)`,
 		`CREATE INDEX IF NOT EXISTS idx_ai_session_tags_tag ON ai_session_tags(tag)`,
 		// Composite indexes for ListWithDistribution / Search hot paths
 		`CREATE INDEX IF NOT EXISTS idx_ai_sessions_list ON ai_sessions(missing, source, updated_at DESC, project_path)`,

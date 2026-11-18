@@ -4,7 +4,7 @@
 
 Overview 的 agent card 要显示会话的时间线，细到设计 / 分析 / 处理 / 验证各阶段时长。阶段分两级：**大阶段**（里程碑级，由用户指令切换与交付物划分，可跨多轮）＋**小阶段**（动作级，按消息区间归类）。数据源与展示组件（`Message.timestamp`、`DurationBar`、`fold-duration` 的差分口径）都已存在，缺的是段落表、渐进更新器与卡片堆叠条。
 
-设计全文：`E:/primary/ai-output/answers/snorkeling-userline-design-20261118.html`（第 4 节）
+设计全文：`design/plans/session-kernel-design-20261118.md`（第 4 节；原始出处：Hero 据点仓 `nita/hero-feaa3f86` `design/session-kernel-design-20261118.md` @ 274f8e56）
 
 ## Requirements
 

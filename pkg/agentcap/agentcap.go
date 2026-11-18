@@ -73,6 +73,20 @@ Reading Live Agent Sessions (read-only)
   current block. The row carries card.hash, usable directly as a precondition below.
 - wsh session list --source pi --limit 5 --json    -> indexed (not necessarily live) sessions.
 - wsh session for-block [blockid|this] --json      -> block to session mapping.
+- wsh session info <key|id> --json   -> size probe: messageCount/userMessageCount/bytes/
+  lastMessageAt/verdict (small|medium|large)/stale. No content. Call this first.
+- wsh session users <key|id> --limit 20 [--before-seq N] --json
+                              -> one page of user prompts (120 chars each), newest first page,
+                              page backwards with nextBeforeSeq until hasMore=false.
+- wsh session turns <key|id> --limit 5 [--before-turn N] --json
+                              -> one page of turn summaries (turn/seq/at/user text/tools/chars/ms).
+                              --limit is REQUIRED (1-10). A turn = one user segment plus its replies.
+- wsh session turn <key|id> --turn N --chars 2000 --json
+                              -> that turn's original messages; --chars is REQUIRED (1-8000) and
+                              the response reports truncated + totalChars.
+- Every read layer is a single-session point read. A stale message index is reported as
+  stale=true (empty page) instead of silently answering from old rows; add --refresh to
+  re-index just that session, then retry.
 - Fields per row: provider, sessionId, sessionKey, title, titleSource, projectPath,
   issue (TUI live state: state/phase/tool/message/freshness), chat (GUI chat state/model/context),
   card (note/tags/props/hash), warnings.
@@ -430,6 +444,9 @@ Rules:
 - Do not edit Snorkeling SQLite databases directly.
 - Use wsh data for AI session notes, session tags, and Common Text edits.
 - Use wsh session live --json to discover which agent sessions are running right now.
+- To see what a session is doing, probe it first with wsh session info --json, then read it
+  layer by layer: wsh session users --limit 20, wsh session turns --limit 5, and
+  wsh session turn --turn N --chars 2000. Never expect the whole transcript in one call.
 - Use wsh ui active to learn where you are versus where the user is, and wsh block read
   to inspect a block instead of guessing.
 - Use wsh block open / wsh tab create to navigate; check syncState (layout-queued means

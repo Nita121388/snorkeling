@@ -60,6 +60,40 @@ Which session a block is bound to.
 
 Flags: `[<blockid|this>]`, `--json`
 
+### `wsh session info`
+
+Size probe for one session: counts, bytes, verdict (small|medium|large), stale. No content.
+
+Flags: `<key|id>`, `--refresh`, `--json`
+
+- Call this before users/turns/turn.
+- stale: true means the message index is behind; re-run with --refresh.
+
+### `wsh session users`
+
+One page of user prompts (120 chars each), newest page first.
+
+Flags: `<key|id>`, `--limit N (max 100)`, `--before-seq N`, `--refresh`, `--json`
+
+- Page backwards with nextBeforeSeq until hasMore is false.
+
+### `wsh session turns`
+
+One page of turn summaries (turn/seq/at/user text/tools/chars/ms).
+
+Flags: `<key|id>`, `--limit N (REQUIRED 1-10)`, `--before-turn N`, `--refresh`, `--json`
+
+- A turn = one user segment plus its replies.
+- Turn numbers start at 1 and exclude the preface.
+
+### `wsh session turn`
+
+One turn's original messages under a chars budget.
+
+Flags: `<key|id>`, `--turn N`, `--chars N (REQUIRED 1-8000)`, `--refresh`, `--json`
+
+- The response reports truncated and totalChars.
+
 ### `wsh tab list`
 
 Tabs in a workspace, marking the active one.

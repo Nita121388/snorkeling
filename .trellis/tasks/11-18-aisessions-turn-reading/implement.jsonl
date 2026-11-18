@@ -1,0 +1,2 @@
+{"file": ".trellis/spec/snorkeling-docs/backend/aisessions-scan-contract.md", "reason": "新鲜度契约（stale 语义）+ 扫描预算红线；新增读取入口不得引入全量扫描"}
+{"file": ".trellis/spec/snorkeling-docs/backend/agent-control-surface-contract.md", "reason": "CLI/MCP 分层与有界截断、错误码规范"}

@@ -476,6 +476,44 @@ declare global {
         configdir?: string;
     };
 
+    // aisessionsservice.AISessionsSessionInfoRequest
+    type AISessionsSessionInfoRequest = {
+        id: string;
+        connection?: string;
+        origin?: string;
+        refresh?: boolean;
+    };
+
+    // aisessionsservice.AISessionsSessionTurnRequest
+    type AISessionsSessionTurnRequest = {
+        id: string;
+        connection?: string;
+        origin?: string;
+        turn: number;
+        chars: number;
+        refresh?: boolean;
+    };
+
+    // aisessionsservice.AISessionsSessionTurnsRequest
+    type AISessionsSessionTurnsRequest = {
+        id: string;
+        connection?: string;
+        origin?: string;
+        limit: number;
+        beforeTurn?: number;
+        refresh?: boolean;
+    };
+
+    // aisessionsservice.AISessionsSessionUsersRequest
+    type AISessionsSessionUsersRequest = {
+        id: string;
+        connection?: string;
+        origin?: string;
+        limit?: number;
+        beforeSeq?: number;
+        refresh?: boolean;
+    };
+
     // aisessionsservice.AISessionsSetPropsRequest
     type AISessionsSetPropsRequest = {
         id: string;
@@ -3184,6 +3222,23 @@ declare global {
         includeidle?: boolean;
     };
 
+    // wshrpc.SessionInfoRequest
+    type SessionInfoRequest = {
+        identifier: string;
+        refresh?: boolean;
+    };
+
+    // wshrpc.SessionInfoResult
+    type SessionInfoResult = {
+        sessionKey: string;
+        messageCount: number;
+        userMessageCount: number;
+        bytes: number;
+        lastMessageAt?: number;
+        verdict: string;
+        stale?: boolean;
+    };
+
     // wshrpc.SessionListRequest
     type SessionListRequest = {
         source?: string;
@@ -3284,6 +3339,17 @@ declare global {
         lastSeq?: number;
     };
 
+    // aisessions.SessionReadInfo
+    type SessionReadInfo = {
+        sessionKey: string;
+        messageCount: number;
+        userMessageCount: number;
+        bytes: number;
+        lastMessageAt?: number;
+        verdict: string;
+        stale?: boolean;
+    };
+
     // aisessions.SessionSummary
     type SessionSummary = {
         key: string;
@@ -3316,6 +3382,138 @@ declare global {
     type SessionTagSummary = {
         tag: string;
         count: number;
+    };
+
+    // wshrpc.SessionTurnEntry
+    type SessionTurnEntry = {
+        turn: number;
+        seq: number;
+        at?: number;
+        text: string;
+        truncated?: boolean;
+        toolCount: number;
+        chars: number;
+        ms: number;
+    };
+
+    // wshrpc.SessionTurnMessageEntry
+    type SessionTurnMessageEntry = {
+        seq: number;
+        role: string;
+        at?: number;
+        text: string;
+        truncated?: boolean;
+    };
+
+    // aisessions.SessionTurnMessageRow
+    type SessionTurnMessageRow = {
+        seq: number;
+        role: string;
+        at?: number;
+        text: string;
+        truncated?: boolean;
+    };
+
+    // aisessions.SessionTurnMessages
+    type SessionTurnMessages = {
+        turn: number;
+        rows: SessionTurnMessageRow[];
+        truncated: boolean;
+        totalChars: number;
+        stale?: boolean;
+    };
+
+    // aisessions.SessionTurnPage
+    type SessionTurnPage = {
+        rows: SessionTurnRow[];
+        nextBeforeTurn?: number;
+        hasMore: boolean;
+        stale?: boolean;
+    };
+
+    // wshrpc.SessionTurnRequest
+    type SessionTurnRequest = {
+        identifier: string;
+        turn: number;
+        chars: number;
+        refresh?: boolean;
+    };
+
+    // wshrpc.SessionTurnResult
+    type SessionTurnResult = {
+        turn: number;
+        rows: SessionTurnMessageEntry[];
+        truncated: boolean;
+        totalChars: number;
+        stale?: boolean;
+    };
+
+    // aisessions.SessionTurnRow
+    type SessionTurnRow = {
+        turn: number;
+        seq: number;
+        at?: number;
+        text: string;
+        truncated?: boolean;
+        toolCount: number;
+        chars: number;
+        ms: number;
+    };
+
+    // wshrpc.SessionTurnsRequest
+    type SessionTurnsRequest = {
+        identifier: string;
+        limit: number;
+        beforeTurn?: number;
+        refresh?: boolean;
+    };
+
+    // wshrpc.SessionTurnsResult
+    type SessionTurnsResult = {
+        rows: SessionTurnEntry[];
+        nextBeforeTurn?: number;
+        hasMore: boolean;
+        stale?: boolean;
+    };
+
+    // wshrpc.SessionUserEntry
+    type SessionUserEntry = {
+        seq: number;
+        at?: number;
+        text: string;
+        truncated?: boolean;
+    };
+
+    // aisessions.SessionUserPage
+    type SessionUserPage = {
+        rows: SessionUserRow[];
+        nextBeforeSeq?: number;
+        hasMore: boolean;
+        stale?: boolean;
+    };
+
+    // aisessions.SessionUserRow
+    type SessionUserRow = {
+        seq: number;
+        at?: number;
+        text: string;
+        truncated?: boolean;
+    };
+
+    // wshrpc.SessionUsersRequest
+    type SessionUsersRequest = {
+        identifier: string;
+        limit?: number;
+        beforeSeq?: number;
+        refresh?: boolean;
+    };
+
+    // wshrpc.SessionUsersResult
+    type SessionUsersResult = {
+        rows: SessionUserEntry[];
+        nextBeforeSeq?: number;
+        hasMore: boolean;
+        stale?: boolean;
     };
 
     // aisessions.SessionsChangedEvent

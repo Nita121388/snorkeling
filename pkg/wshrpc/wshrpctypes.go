@@ -97,6 +97,11 @@ type WshRpcInterface interface {
 	SessionLiveCommand(ctx context.Context, data SessionLiveRequest) (*SessionLiveResult, error)
 	SessionGetCommand(ctx context.Context, data SessionGetRequest) (*SessionLiveRecord, error)
 	SessionListCommand(ctx context.Context, data SessionListRequest) (*SessionListResult, error)
+	// agent control surface (progressive session reading, used by wsh session info/users/turns/turn)
+	SessionInfoCommand(ctx context.Context, data SessionInfoRequest) (*SessionInfoResult, error)
+	SessionUsersCommand(ctx context.Context, data SessionUsersRequest) (*SessionUsersResult, error)
+	SessionTurnsCommand(ctx context.Context, data SessionTurnsRequest) (*SessionTurnsResult, error)
+	SessionTurnCommand(ctx context.Context, data SessionTurnRequest) (*SessionTurnResult, error)
 	// agent control surface (session card read/write, used by wsh agent card *)
 	AgentCardGetCommand(ctx context.Context, data AgentCardGetRequest) (*AgentCardResult, error)
 	AgentCardSetCommand(ctx context.Context, data AgentCardSetRequest) (*AgentCardSetResult, error)
@@ -732,6 +737,117 @@ type SessionListResult struct {
 	Warnings    []string            `json:"warnings,omitempty"`
 }
 
+// ---- Agent Control Surface: progressive session reading DTOs ----
+// Four layers over one session (design: .trellis/tasks/11-18-aisessions-turn-reading):
+// info (size probe) -> users (paged prompts) -> turns (paged turn summaries) ->
+// turn (one turn's original messages). All single-session point reads on the
+// message index; nothing here loads a whole session.
+
+// SessionInfoRequest probes one session's size before reading it.
+type SessionInfoRequest struct {
+	Identifier string `json:"identifier"`
+	// Refresh re-parses this one session's messages when the message index is
+	// stale (single-file, no directory scan) before probing.
+	Refresh bool `json:"refresh,omitempty"`
+}
+
+// SessionUsersRequest reads one page of user prompts.
+type SessionUsersRequest struct {
+	Identifier string `json:"identifier"`
+	// Limit defaults to 20, max 100.
+	Limit int `json:"limit,omitempty"`
+	// BeforeSeq pages older prompts (seq < BeforeSeq); 0 starts from the newest.
+	BeforeSeq int  `json:"beforeSeq,omitempty"`
+	Refresh   bool `json:"refresh,omitempty"`
+}
+
+// SessionTurnsRequest reads one page of turn summaries. Limit must be passed
+// explicitly and be within 1-10: the stateless gate that guarantees a page can
+// never pull the whole session.
+type SessionTurnsRequest struct {
+	Identifier string `json:"identifier"`
+	Limit      int    `json:"limit"`
+	// BeforeTurn pages older turns (turn < BeforeTurn); 0 starts from the newest.
+	BeforeTurn int  `json:"beforeTurn,omitempty"`
+	Refresh    bool `json:"refresh,omitempty"`
+}
+
+// SessionTurnRequest reads one turn's original messages under a chars budget.
+// Chars must be passed explicitly and be within 1-8000.
+type SessionTurnRequest struct {
+	Identifier string `json:"identifier"`
+	Turn       int    `json:"turn"`
+	Chars      int    `json:"chars"`
+	Refresh    bool   `json:"refresh,omitempty"`
+}
+
+// SessionInfoResult is the size probe: counts/bytes/verdict/stale, no content.
+type SessionInfoResult struct {
+	SessionKey       string `json:"sessionKey"`
+	MessageCount     int    `json:"messageCount"`
+	UserMessageCount int    `json:"userMessageCount"`
+	Bytes            int64  `json:"bytes"`
+	LastMessageAt    int64  `json:"lastMessageAt,omitempty"`
+	Verdict          string `json:"verdict"`
+	Stale            bool   `json:"stale,omitempty"`
+}
+
+// SessionUserEntry is one user prompt on a SessionUsersResult page.
+type SessionUserEntry struct {
+	Seq       int    `json:"seq"`
+	At        int64  `json:"at,omitempty"`
+	Text      string `json:"text"`
+	Truncated bool   `json:"truncated,omitempty"`
+}
+
+// SessionUsersResult is one page of user prompts (oldest -> newest inside the
+// page; pages walk backwards via NextBeforeSeq).
+type SessionUsersResult struct {
+	Rows          []SessionUserEntry `json:"rows"`
+	NextBeforeSeq int                `json:"nextBeforeSeq,omitempty"`
+	HasMore       bool               `json:"hasMore"`
+	Stale         bool               `json:"stale,omitempty"`
+}
+
+// SessionTurnEntry is one turn summary on a SessionTurnsResult page.
+type SessionTurnEntry struct {
+	Turn      int    `json:"turn"`
+	Seq       int    `json:"seq"`
+	At        int64  `json:"at,omitempty"`
+	Text      string `json:"text"`
+	Truncated bool   `json:"truncated,omitempty"`
+	ToolCount int    `json:"toolCount"`
+	Chars     int    `json:"chars"`
+	Ms        int64  `json:"ms"`
+}
+
+// SessionTurnsResult is one page of turn summaries. Turn numbers start at 1 and
+// never include the preface (rows before the first user message).
+type SessionTurnsResult struct {
+	Rows           []SessionTurnEntry `json:"rows"`
+	NextBeforeTurn int                `json:"nextBeforeTurn,omitempty"`
+	HasMore        bool               `json:"hasMore"`
+	Stale          bool               `json:"stale,omitempty"`
+}
+
+// SessionTurnMessageEntry is one original message of a SessionTurnResult.
+type SessionTurnMessageEntry struct {
+	Seq       int    `json:"seq"`
+	Role      string `json:"role"`
+	At        int64  `json:"at,omitempty"`
+	Text      string `json:"text"`
+	Truncated bool   `json:"truncated,omitempty"`
+}
+
+// SessionTurnResult is one turn's original messages under the chars budget.
+type SessionTurnResult struct {
+	Turn       int                       `json:"turn"`
+	Rows       []SessionTurnMessageEntry `json:"rows"`
+	Truncated  bool                      `json:"truncated"`
+	TotalChars int                       `json:"totalChars"`
+	Stale      bool                      `json:"stale,omitempty"`
+}
+
 // ---- Agent Control Surface: session card DTOs ----
 
 // AgentCardGetRequest identifies the session whose card should be read. `this`
@@ -860,14 +976,14 @@ type UIStateRequest struct {
 }
 
 type UIBlockState struct {
-	BlockId     string            `json:"blockid"`
-	TabId       string            `json:"tabid,omitempty"`
-	WorkspaceId string            `json:"workspaceid,omitempty"`
-	View        string            `json:"view,omitempty"`
-	Title       string            `json:"title,omitempty"`
-	Controller  string            `json:"controller,omitempty"`
-	Runtime     *UIBlockRuntime   `json:"runtime,omitempty"`
-	Agent       *SessionLiveIssue `json:"agent,omitempty"`
+	BlockId     string              `json:"blockid"`
+	TabId       string              `json:"tabid,omitempty"`
+	WorkspaceId string              `json:"workspaceid,omitempty"`
+	View        string              `json:"view,omitempty"`
+	Title       string              `json:"title,omitempty"`
+	Controller  string              `json:"controller,omitempty"`
+	Runtime     *UIBlockRuntime     `json:"runtime,omitempty"`
+	Agent       *SessionLiveIssue   `json:"agent,omitempty"`
 	Meta        waveobj.MetaMapType `json:"meta,omitempty"`
 }
 
@@ -884,13 +1000,13 @@ type UIStateTab struct {
 }
 
 type UIStateSnapshot struct {
-	Version     int            `json:"version"`
-	GeneratedAt int64          `json:"generatedat"`
-	Windows     []string       `json:"windows,omitempty"`
-	Tabs        []UIStateTab   `json:"tabs,omitempty"`
-	Blocks      []UIBlockState `json:"blocks,omitempty"`
+	Version     int               `json:"version"`
+	GeneratedAt int64             `json:"generatedat"`
+	Windows     []string          `json:"windows,omitempty"`
+	Tabs        []UIStateTab      `json:"tabs,omitempty"`
+	Blocks      []UIBlockState    `json:"blocks,omitempty"`
 	Sources     map[string]string `json:"sources,omitempty"`
-	Warnings    []string       `json:"warnings,omitempty"`
+	Warnings    []string          `json:"warnings,omitempty"`
 }
 
 type BlockReadRequest struct {
@@ -901,28 +1017,28 @@ type BlockReadRequest struct {
 }
 
 type BlockReadResult struct {
-	Version   int                    `json:"version"`
-	BlockId   string                 `json:"blockid"`
-	View      string                 `json:"view"`
-	Kind      string                 `json:"kind"`
-	Truncated bool                   `json:"truncated"`
-	Bytes     int                    `json:"bytes"`
-	Payload   map[string]any         `json:"payload"`
-	Warnings  []string               `json:"warnings,omitempty"`
+	Version   int            `json:"version"`
+	BlockId   string         `json:"blockid"`
+	View      string         `json:"view"`
+	Kind      string         `json:"kind"`
+	Truncated bool           `json:"truncated"`
+	Bytes     int            `json:"bytes"`
+	Payload   map[string]any `json:"payload"`
+	Warnings  []string       `json:"warnings,omitempty"`
 }
 
 type BlockOpenRequest struct {
-	View           string            `json:"view"`
-	Tab            string            `json:"tab,omitempty"` // active | new | <tabid>
-	WorkspaceId    string            `json:"workspaceid,omitempty"`
-	Split          string            `json:"split,omitempty"` // right|down|left|up
-	Replace        string            `json:"replace,omitempty"` // block id to replace
-	Magnified      bool              `json:"magnified,omitempty"`
-	NoFocus        bool              `json:"nofocus,omitempty"`
-	Wait           bool              `json:"wait,omitempty"`
-	WaitMs         int               `json:"waitms,omitempty"`
-	Dedupe         bool              `json:"dedupe,omitempty"`
-	Meta           waveobj.MetaMapType `json:"meta,omitempty"`
+	View        string              `json:"view"`
+	Tab         string              `json:"tab,omitempty"` // active | new | <tabid>
+	WorkspaceId string              `json:"workspaceid,omitempty"`
+	Split       string              `json:"split,omitempty"`   // right|down|left|up
+	Replace     string              `json:"replace,omitempty"` // block id to replace
+	Magnified   bool                `json:"magnified,omitempty"`
+	NoFocus     bool                `json:"nofocus,omitempty"`
+	Wait        bool                `json:"wait,omitempty"`
+	WaitMs      int                 `json:"waitms,omitempty"`
+	Dedupe      bool                `json:"dedupe,omitempty"`
+	Meta        waveobj.MetaMapType `json:"meta,omitempty"`
 }
 
 type BlockOpenResult struct {
@@ -960,12 +1076,12 @@ type TabCreateRequest struct {
 }
 
 type TabCreateResult struct {
-	Version   int      `json:"version"`
-	Ok        bool     `json:"ok"`
-	TabId     string   `json:"tabid,omitempty"`
-	TabName   string   `json:"tabname,omitempty"`
-	WaitedMs  int      `json:"waitedms,omitempty"`
-	Warnings  []string `json:"warnings,omitempty"`
+	Version  int      `json:"version"`
+	Ok       bool     `json:"ok"`
+	TabId    string   `json:"tabid,omitempty"`
+	TabName  string   `json:"tabname,omitempty"`
+	WaitedMs int      `json:"waitedms,omitempty"`
+	Warnings []string `json:"warnings,omitempty"`
 }
 
 type TabActivateRequest struct {
@@ -975,11 +1091,11 @@ type TabActivateRequest struct {
 }
 
 type TabActivateResult struct {
-	Version   int      `json:"version"`
-	Ok        bool     `json:"ok"`
-	TabId     string   `json:"tabid,omitempty"`
-	WaitedMs  int      `json:"waitedms,omitempty"`
-	Warnings  []string `json:"warnings,omitempty"`
+	Version  int      `json:"version"`
+	Ok       bool     `json:"ok"`
+	TabId    string   `json:"tabid,omitempty"`
+	WaitedMs int      `json:"waitedms,omitempty"`
+	Warnings []string `json:"warnings,omitempty"`
 }
 
 // ---- External agent access (design §10.5.3) ----
@@ -1012,9 +1128,9 @@ type AgentAuthTokenInfo struct {
 // AgentAuthListResult lists every granted token (including revoked/expired, so
 // the panel can show history; the UI filters).
 type AgentAuthListResult struct {
-	Version int                 `json:"version"`
+	Version int                  `json:"version"`
 	Tokens  []AgentAuthTokenInfo `json:"tokens"`
-	Path    string              `json:"path"`
+	Path    string               `json:"path"`
 }
 
 // AgentAuthRevokeRequest revokes by name, by jti, or everything.

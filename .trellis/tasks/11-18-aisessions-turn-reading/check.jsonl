@@ -1,0 +1,2 @@
+{"file": ".trellis/spec/snorkeling-docs/backend/aisessions-scan-contract.md", "reason": "校验 stale 语义未被静默降级、未新增无预算扫描"}
+{"file": ".trellis/spec/snorkeling-docs/backend/agent-control-surface-contract.md", "reason": "校验 CLI 与 MCP 参数/返回一致、截断与错误码规范"}

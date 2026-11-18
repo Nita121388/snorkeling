@@ -201,7 +201,7 @@ func TestLatestUserOutlineMessagesLimitsLatestMessages(t *testing.T) {
 		{Seq: 3, Role: aisessions.RoleUser, Text: "two"},
 		{Seq: 4, Role: aisessions.RoleUser, Text: "three"},
 	}
-	latest, count := latestUserOutlineMessages(messages, 2)
+	latest, count := aisessions.LatestUserOutlineMessages(messages, 2)
 	if count != 3 {
 		t.Fatalf("expected total count 3, got %d", count)
 	}

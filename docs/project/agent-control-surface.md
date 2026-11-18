@@ -30,7 +30,45 @@ wsh session live [--include-idle] [--max-rows N] [--json]
 wsh session get <sessionKey|sessionId|this> [--block <id>] [--json]
 wsh session list [--source ..] [--query ..] [--tag ..] [--project ..] [--marked ..] [--limit N] [--json]
 wsh session for-block [<blockid|this>] [--json]
+wsh session info <sessionKey|sessionId> [--refresh] [--json]
+wsh session users <sessionKey|sessionId> [--limit 20] [--before-seq N] [--refresh] [--json]
+wsh session turns <sessionKey|sessionId> --limit 5 [--before-turn N] [--refresh] [--json]
+wsh session turn <sessionKey|sessionId> --turn N --chars 2000 [--refresh] [--json]
 ```
+
+## Progressive session reading (`info` / `users` / `turns` / `turn`)
+
+Four layers over one session. Every layer is a **single-session point read** on the
+SQLite message index (`pkg/aisessions/sqlite_read.go`) with a seq/turn cursor and a
+hard upper bound — none of them loads the whole transcript, and none of them goes
+through the List/scan budget path.
+
+| Layer | Command | MCP tool | Returns | Bound |
+|---|---|---|---|---|
+| 0 | `session info` | `snorkeling_session_info` | messageCount / userMessageCount / bytes / lastMessageAt / verdict / stale | <1KB, no content |
+| 1 | `session users` | `snorkeling_session_users` | user prompts (seq/at/text) | limit 20 (max 100), text 120 runes |
+| 2 | `session turns` | `snorkeling_session_turns` | turn summaries (turn/seq/at/text/tools/chars/ms) | limit **required** 1-10 |
+| 3 | `session turn` | `snorkeling_session_turn` | one turn's original messages | chars **required** ≤8000 |
+
+- `verdict`: `small` = ≤150 messages and ≤2MB; `large` = >1200 messages or >20MB;
+  everything else `medium`. It tells the caller which layer to start at.
+- **Turn definition** matches the GUI pager (`computeTurnPages`): a turn is a run of
+  consecutive user messages plus every non-user message until the next user-segment
+  start. Turn numbers start at 1. Rows before the first user message are the preface
+  and never occupy a turn number.
+- **Cursors**: `nextBeforeSeq` / `nextBeforeTurn` with `hasMore`. Pages walk backwards
+  (`beforeSeq` / `beforeTurn`); nothing already read is re-sent.
+- **Gate (stateless)**: `turns` requires an explicit `limit` (1-10) and `turn` an
+  explicit `chars` (1-8000). Missing or out-of-range values are `E_USAGE` with a
+  "run `session info` first" hint. This is the hard guarantee that one call can never
+  pull a whole session — RPC has no memory of a previous `info` call.
+- **Staleness is reported, never hidden**: when the message index lags the session file
+  (`ai_files` mtime/size/`message_indexed` mismatch) the response carries
+  `stale: true` (and the page is empty) instead of old rows. Add `--refresh` to
+  re-parse **just that session** (one file, no directory scan) and retry.
+- `UserOutline` now reads the same index (`SELECT ... WHERE role='user' ORDER BY seq
+  DESC LIMIT n` + `COUNT(*)`) instead of loading the session and filtering in memory;
+  a stale index still falls back to the old full-load path so its output is unchanged.
 
 `this` resolves through block meta `agent:sessionid`, then `agentstatus.SessionId`.
 Outside an agent block it returns `E_NOT_FOUND` with a hint rather than a guess.

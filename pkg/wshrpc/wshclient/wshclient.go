@@ -1113,6 +1113,12 @@ func SessionGetCommand(w *wshutil.WshRpc, data wshrpc.SessionGetRequest, opts *w
 	return resp, err
 }
 
+// command "sessioninfo", wshserver.SessionInfoCommand
+func SessionInfoCommand(w *wshutil.WshRpc, data wshrpc.SessionInfoRequest, opts *wshrpc.RpcOpts) (*wshrpc.SessionInfoResult, error) {
+	resp, err := sendRpcRequestCallHelper[*wshrpc.SessionInfoResult](w, "sessioninfo", data, opts)
+	return resp, err
+}
+
 // command "sessionlist", wshserver.SessionListCommand
 func SessionListCommand(w *wshutil.WshRpc, data wshrpc.SessionListRequest, opts *wshrpc.RpcOpts) (*wshrpc.SessionListResult, error) {
 	resp, err := sendRpcRequestCallHelper[*wshrpc.SessionListResult](w, "sessionlist", data, opts)
@@ -1122,6 +1128,24 @@ func SessionListCommand(w *wshutil.WshRpc, data wshrpc.SessionListRequest, opts 
 // command "sessionlive", wshserver.SessionLiveCommand
 func SessionLiveCommand(w *wshutil.WshRpc, data wshrpc.SessionLiveRequest, opts *wshrpc.RpcOpts) (*wshrpc.SessionLiveResult, error) {
 	resp, err := sendRpcRequestCallHelper[*wshrpc.SessionLiveResult](w, "sessionlive", data, opts)
+	return resp, err
+}
+
+// command "sessionturn", wshserver.SessionTurnCommand
+func SessionTurnCommand(w *wshutil.WshRpc, data wshrpc.SessionTurnRequest, opts *wshrpc.RpcOpts) (*wshrpc.SessionTurnResult, error) {
+	resp, err := sendRpcRequestCallHelper[*wshrpc.SessionTurnResult](w, "sessionturn", data, opts)
+	return resp, err
+}
+
+// command "sessionturns", wshserver.SessionTurnsCommand
+func SessionTurnsCommand(w *wshutil.WshRpc, data wshrpc.SessionTurnsRequest, opts *wshrpc.RpcOpts) (*wshrpc.SessionTurnsResult, error) {
+	resp, err := sendRpcRequestCallHelper[*wshrpc.SessionTurnsResult](w, "sessionturns", data, opts)
+	return resp, err
+}
+
+// command "sessionusers", wshserver.SessionUsersCommand
+func SessionUsersCommand(w *wshutil.WshRpc, data wshrpc.SessionUsersRequest, opts *wshrpc.RpcOpts) (*wshrpc.SessionUsersResult, error) {
+	resp, err := sendRpcRequestCallHelper[*wshrpc.SessionUsersResult](w, "sessionusers", data, opts)
 	return resp, err
 }
 

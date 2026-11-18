@@ -32,6 +32,18 @@ func (f *fakeBackend) SessionGet(ctx context.Context, req wshrpc.SessionGetReque
 func (f *fakeBackend) SessionList(ctx context.Context, req wshrpc.SessionListRequest) (*wshrpc.SessionListResult, error) {
 	return &wshrpc.SessionListResult{Version: 1}, nil
 }
+func (f *fakeBackend) SessionInfo(ctx context.Context, req wshrpc.SessionInfoRequest) (*wshrpc.SessionInfoResult, error) {
+	return &wshrpc.SessionInfoResult{SessionKey: req.Identifier, Verdict: "small"}, nil
+}
+func (f *fakeBackend) SessionUsers(ctx context.Context, req wshrpc.SessionUsersRequest) (*wshrpc.SessionUsersResult, error) {
+	return &wshrpc.SessionUsersResult{Rows: []wshrpc.SessionUserEntry{{Seq: req.BeforeSeq, Text: "user"}}}, nil
+}
+func (f *fakeBackend) SessionTurns(ctx context.Context, req wshrpc.SessionTurnsRequest) (*wshrpc.SessionTurnsResult, error) {
+	return &wshrpc.SessionTurnsResult{Rows: []wshrpc.SessionTurnEntry{{Turn: 1, Seq: 1, Text: "turn"}}}, nil
+}
+func (f *fakeBackend) SessionTurn(ctx context.Context, req wshrpc.SessionTurnRequest) (*wshrpc.SessionTurnResult, error) {
+	return &wshrpc.SessionTurnResult{Turn: req.Turn, TotalChars: req.Chars}, nil
+}
 func (f *fakeBackend) UIActive(ctx context.Context, req wshrpc.UIActiveRequest) (*wshrpc.UIActiveSnapshot, error) {
 	return &wshrpc.UIActiveSnapshot{Version: 1, Self: wshrpc.UIActiveSelf{TabId: req.TabId}}, nil
 }
@@ -119,8 +131,8 @@ func TestToolsListShapeAndScopes(t *testing.T) {
 	s, _ := newServer(nil)
 	res := resultMap(t, mustHandle(t, s, `{"jsonrpc":"2.0","id":2,"method":"tools/list"}`))
 	tools, _ := res["tools"].([]any)
-	if len(tools) != 12 {
-		t.Fatalf("expected 12 tools, got %d", len(tools))
+	if len(tools) != 16 {
+		t.Fatalf("expected 16 tools, got %d", len(tools))
 	}
 	seen := map[string]bool{}
 	for _, raw := range tools {
@@ -279,16 +291,77 @@ func TestScopeAllows(t *testing.T) {
 		required string
 		want     bool
 	}{
-		{nil, ScopeData, true},                              // app-level
+		{nil, ScopeData, true}, // app-level
 		{[]string{ScopeObserve}, ScopeObserve, true},
 		{[]string{ScopeObserve}, ScopeNavigate, false},
 		{[]string{ScopeObserve, ScopeNavigate}, ScopeData, false},
-		{[]string{ScopeData}, ScopeNavigate, true},          // higher grants lower
+		{[]string{ScopeData}, ScopeNavigate, true}, // higher grants lower
 		{[]string{ScopeObserve}, "bogus", false},
 	}
 	for _, tc := range tests {
 		if got := scopeAllows(tc.granted, tc.required); got != tc.want {
 			t.Fatalf("scopeAllows(%v,%q) = %v, want %v", tc.granted, tc.required, got, tc.want)
 		}
+	}
+}
+
+// AC7：4 个渐进读取工具与 CLI 参数一一对应（required 字段、readOnly、observe scope）。
+func TestSessionReadToolsSchema(t *testing.T) {
+	specs := map[string]toolSpec{}
+	for _, spec := range toolSpecs() {
+		specs[spec.Name] = spec
+	}
+	requiredOf := func(name string) map[string]bool {
+		spec, ok := specs[name]
+		if !ok {
+			t.Fatalf("tool %q missing", name)
+		}
+		if spec.Scope != ScopeObserve {
+			t.Fatalf("tool %q scope = %q, want observe", name, spec.Scope)
+		}
+		if spec.Annotations == nil || !spec.Annotations.ReadOnlyHint {
+			t.Fatalf("tool %q must be readOnly", name)
+		}
+		raw, _ := spec.Schema["required"].([]string)
+		if len(raw) == 0 {
+			t.Fatalf("tool %q must declare required args", name)
+		}
+		out := map[string]bool{}
+		for _, field := range raw {
+			out[field] = true
+		}
+		return out
+	}
+	info := requiredOf("snorkeling_session_info")
+	if !info["identifier"] {
+		t.Fatal("session_info must require identifier")
+	}
+	users := requiredOf("snorkeling_session_users")
+	if !users["identifier"] {
+		t.Fatal("session_users must require identifier")
+	}
+	turns := requiredOf("snorkeling_session_turns")
+	if !turns["identifier"] || !turns["limit"] {
+		t.Fatalf("session_turns must require identifier+limit: %v", turns)
+	}
+	turn := requiredOf("snorkeling_session_turn")
+	if !turn["identifier"] || !turn["turn"] || !turn["chars"] {
+		t.Fatalf("session_turn must require identifier+turn+chars: %v", turn)
+	}
+}
+
+func TestSessionReadToolCalls(t *testing.T) {
+	s, _ := newServer([]string{ScopeObserve})
+	res := resultMap(t, mustHandle(t, s, `{"jsonrpc":"2.0","id":9,"method":"tools/call","params":{"name":"snorkeling_session_info","arguments":{"identifier":"pi:abc"}}}`))
+	content, _ := res["content"].([]any)
+	first, _ := content[0].(map[string]any)
+	if !strings.Contains(first["text"].(string), `"verdict":"small"`) {
+		t.Fatalf("unexpected info content: %v", first)
+	}
+	res = resultMap(t, mustHandle(t, s, `{"jsonrpc":"2.0","id":10,"method":"tools/call","params":{"name":"snorkeling_session_turns","arguments":{"identifier":"pi:abc","limit":5}}}`))
+	content, _ = res["content"].([]any)
+	first, _ = content[0].(map[string]any)
+	if !strings.Contains(first["text"].(string), `"turn":1`) {
+		t.Fatalf("unexpected turns content: %v", first)
 	}
 }

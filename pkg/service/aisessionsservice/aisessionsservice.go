@@ -1310,42 +1310,19 @@ func (svc *AISessionsService) UserOutline(ctx context.Context, request *AISessio
 	if err != nil {
 		return nil, err
 	}
-	detail, err := manager.Load(ctx, request.ID, aisessions.LoadOptions{
-		Refresh: request.Refresh,
-	})
+	// UserOutlineRows serves this from the SQL message index when it is
+	// current; a stale index (or an explicit refresh) falls back to the
+	// legacy full-load path, so the response stays byte-identical and never
+	// answers from stale data.
+	result, err := manager.UserOutlineRows(ctx, request.ID, request.Refresh, request.Limit)
 	if err != nil {
 		return nil, err
 	}
-	messages, count := latestUserOutlineMessages(detail.Messages, request.Limit)
 	return &AISessionsUserOutlineResponse{
-		Summary:          detail.Summary,
-		Messages:         messages,
-		UserMessageCount: count,
+		Summary:          result.Summary,
+		Messages:         result.Messages,
+		UserMessageCount: result.UserMessageCount,
 	}, nil
-}
-
-func latestUserOutlineMessages(messages []aisessions.Message, limit int) ([]aisessions.Message, int) {
-	if limit <= 0 {
-		limit = 20
-	}
-	if limit > 200 {
-		limit = 200
-	}
-	var latest []aisessions.Message
-	count := 0
-	for _, message := range messages {
-		if message.Role != aisessions.RoleUser || strings.TrimSpace(message.Text) == "" {
-			continue
-		}
-		count++
-		if len(latest) < limit {
-			latest = append(latest, message)
-			continue
-		}
-		copy(latest, latest[1:])
-		latest[len(latest)-1] = message
-	}
-	return latest, count
 }
 
 func (svc *AISessionsService) Summary_Meta() tsgenmeta.MethodMeta {
