@@ -248,7 +248,7 @@ describe("session-note-cache TTL refresh", () => {
         ensureSessionNote(service, sessionId);
         await vi.waitFor(() => expect(getSessionNoteSnapshot(sessionId).status).toBe("loaded"));
 
-        ensureSessionNote(service, sessionId, undefined, { force: true });
+        ensureSessionNote(service, sessionId, undefined, undefined, { force: true });
         expect(summaryFn).toHaveBeenCalledTimes(2);
     });
 });

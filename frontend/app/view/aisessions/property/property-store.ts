@@ -38,11 +38,14 @@ export async function setSessionProperty(args: {
     service: AISessionsServiceType;
     sessionId: string;
     connection: string;
+    /** 会话所属 origin（""=本机）；外部 dump 会话的写入必须带上。 */
+    origin?: string;
     summary: SessionSummary;
     def: PropertyDef;
     value: PropertyValue;
 }): Promise<SetSessionPropertyResult> {
     const { service, sessionId, connection, summary, def, value } = args;
+    const origin = args.origin ?? "";
 
     if (def.builtin) {
         switch (def.key) {
@@ -52,7 +55,8 @@ export async function setSessionProperty(args: {
                     sessionId,
                     connection,
                     typeof value === "string" ? value : "",
-                    summary.tags ?? []
+                    summary.tags ?? [],
+                    origin
                 );
                 return result.status === "ok" ? { ok: true } : { ok: false, error: result.error };
             }
@@ -71,13 +75,12 @@ export async function setSessionProperty(args: {
                 for (const tag of removed) {
                     nextNote = removeSessionTagFromNote(nextNote, tag);
                 }
-                const result = await saveSessionNote(service, sessionId, connection, nextNote, tags);
+                const result = await saveSessionNote(service, sessionId, connection, nextNote, tags, origin);
                 return result.status === "ok" ? { ok: true } : { ok: false, error: result.error };
             }
             case BUILTIN_PROP_KEYS.starred: {
                 try {
-                    // origin 参数：内置 starred 只在本地会话编辑（origin 字段当前仅外部 dump 用）。
-                    const updated = await service.Mark(summary.key, value === true, "");
+                    const updated = await service.Mark(summary.key, value === true, origin);
                     dispatchAISessionNoteUpdated(updated);
                     return { ok: true };
                 } catch (err) {
@@ -89,14 +92,20 @@ export async function setSessionProperty(args: {
         }
     }
 
-    const result = await saveSessionProps(service, sessionId, connection, {
-        [def.key]: {
-            value,
-            type: def.type,
-            source: "user",
-            updatedAt: Date.now(),
+    const result = await saveSessionProps(
+        service,
+        sessionId,
+        connection,
+        {
+            [def.key]: {
+                value,
+                type: def.type,
+                source: "user",
+                updatedAt: Date.now(),
+            },
         },
-    });
+        origin
+    );
     return result.status === "ok" ? { ok: true } : { ok: false, error: result.error };
 }
 
@@ -114,6 +123,8 @@ export async function patchSessionProperty(args: {
     service: AISessionsServiceType;
     sessionId: string;
     connection: string;
+    /** 会话所属 origin（""=本机）。 */
+    origin?: string;
     summary: SessionSummary;
     key: string;
     name?: string;
@@ -136,6 +147,6 @@ export async function patchSessionProperty(args: {
     else if (existing?.name) cell.name = existing.name as string;
     if (order !== undefined) cell.order = order;
     else if (typeof existing?.order === "number" && existing.order > 0) cell.order = existing.order as number;
-    const result = await saveSessionProps(service, sessionId, connection, { [key]: cell });
+    const result = await saveSessionProps(service, sessionId, connection, { [key]: cell }, args.origin ?? "");
     return result.status === "ok" ? { ok: true } : { ok: false, error: result.error };
 }

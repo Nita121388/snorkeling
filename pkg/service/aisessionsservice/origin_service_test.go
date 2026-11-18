@@ -244,3 +244,34 @@ func TestListAllOrigins_DeduplicatesByKey(t *testing.T) {
 		}
 	}
 }
+
+// Detail / Summary 在外部 origin 下必须把 origin 标签回填进 summary，
+// 前端（弹窗、note-cache）据此把后续读写路由回同一个 origin。
+func TestDetail_ExternalOriginTagsSummary(t *testing.T) {
+	dumpDir := t.TempDir()
+	writePiSession(t, filepath.Join(dumpDir, "2026-11-18T10-00-00-000Z_sess-origin.jsonl"), "sess-origin")
+	t.Setenv(aisessions.EnvExtraSessionRoots, dumpDir)
+
+	originID := aisessions.OriginIDForPath(dumpDir)
+	detail, err := (&AISessionsService{}).Detail(context.Background(), &AISessionsDetailRequest{
+		ID:     "sess-origin",
+		Origin: originID,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if detail.Summary.Origin != originID {
+		t.Fatalf("expected summary origin tag %q, got %q", originID, detail.Summary.Origin)
+	}
+
+	summary, err := (&AISessionsService{}).Summary(context.Background(), &AISessionsSummaryRequest{
+		ID:     "sess-origin",
+		Origin: originID,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if summary.Origin != originID {
+		t.Fatalf("expected summary origin tag %q, got %q", originID, summary.Origin)
+	}
+}

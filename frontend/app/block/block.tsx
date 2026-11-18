@@ -21,6 +21,7 @@ import {
 } from "@/app/block/blocktypes";
 import { BlockLockMetaKey, buildInlineTabContextMenu } from "@/app/block/inlinetab-contextmenu";
 import { useBlockSessionTitle } from "@/app/block/use-block-session-title";
+import { OriginMetaKey, parseOriginMeta } from "@/app/view/aisessions/origin-state";
 import { InfoCardPortal, useInfoCardHover } from "@/app/element/info-card";
 import { Tooltip } from "@/app/element/tooltip";
 import { SessionOverviewModel } from "@/app/session-overview/session-overview-model";
@@ -230,7 +231,14 @@ const InlineTabLabel = memo(
                 ? (sessionMeta["aisessions:sessionid"] as string)
                 : "";
         // 只有当前激活的会话类 tab 才拉 summary（可能触发一次 RPC）；背景 tab 只读缓存。
-        const summaryTitle = useBlockSessionTitle(tabSessionId, connection ?? "", isActive && isSessionBlock);
+        // origin 必须从 meta 解析：外部 dump 会话不传 origin 时标题永远查不到。
+        const blockOrigin = parseOriginMeta(sessionMeta[OriginMetaKey]);
+        const summaryTitle = useBlockSessionTitle(
+            tabSessionId,
+            connection ?? "",
+            isActive && isSessionBlock,
+            blockOrigin ?? undefined
+        );
 
         // agent 类 Block: 由 block meta 解析 agent 的 provider / session id。
         // 必须在 resolvedTabSessionId 之前定义（后者依赖它），否则 TDZ 崩溃。

@@ -37,6 +37,8 @@ export type MetadataStatus = "idle" | "loading" | "ready" | "error";
 export type SessionNoteState = {
     sessionId: string;
     connection: string;
+    /** 会话所属 origin（""=本机）。外部 dump 会话的读写都必须带上。 */
+    origin: string;
     service: AISessionsServiceType;
     summary: SessionSummary | null;
     noteDraft: string;
@@ -104,8 +106,13 @@ function firstLine(text: string): string {
  *
  * @param sessionId    会话 id（aisessions:sessionid 或 agent:sessionid）
  * @param connection   远端连接名（空串表示本地）
+ * @param origin       会话所属 origin（空串 / "local" 表示本机）
  */
-export function useSessionNoteState(sessionId: string, connection: string): SessionNoteState {
+export function useSessionNoteState(sessionId: string, connection: string, origin?: string): SessionNoteState {
+    const originId = React.useMemo(() => {
+        const trimmed = (origin ?? "").trim();
+        return trimmed === "" || trimmed === "local" ? "" : trimmed;
+    }, [origin]);
     const service = React.useMemo(() => new AISessionsServiceType(), []);
     const [noteDraft, setNoteDraftState] = React.useState("");
     const [dirty, setDirty] = React.useState(false);
@@ -123,16 +130,16 @@ export function useSessionNoteState(sessionId: string, connection: string): Sess
 
     // 触发后台加载（幂等）；快照通过 useSyncExternalStore 订阅。
     React.useEffect(() => {
-        ensureSessionNote(service, sessionId, connection);
-    }, [connection, service, sessionId]);
+        ensureSessionNote(service, sessionId, connection, originId);
+    }, [connection, originId, service, sessionId]);
 
     const subscribe = React.useCallback(
-        (listener: () => void) => subscribeSessionNote(sessionId, connection, listener),
-        [connection, sessionId]
+        (listener: () => void) => subscribeSessionNote(sessionId, connection, listener, originId),
+        [connection, originId, sessionId]
     );
     const getSnapshot = React.useCallback(
-        () => getSessionNoteSnapshot(sessionId, connection),
-        [connection, sessionId]
+        () => getSessionNoteSnapshot(sessionId, connection, originId),
+        [connection, originId, sessionId]
     );
     const snapshot = React.useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
     const summary = snapshot?.summary ?? null;
@@ -222,7 +229,7 @@ export function useSessionNoteState(sessionId: string, connection: string): Sess
             const saveSeq = saveSeqRef.current;
             setSaveStatus("saving");
             setError("");
-            saveSessionNote(service, sessionId, connection, parsed.note, tags).then((result) => {
+            saveSessionNote(service, sessionId, connection, parsed.note, tags, originId).then((result) => {
                 if (saveSeq !== saveSeqRef.current) {
                     return;
                 }
@@ -242,7 +249,7 @@ export function useSessionNoteState(sessionId: string, connection: string): Sess
                     setSaveStatus("error");
                     setError(result.error);
                     // 缓存已回滚到保存前的权威值，草稿也要跟着回滚。
-                    const rolledBack = getSessionNoteSnapshot(sessionId, connection).summary?.note ?? "";
+                    const rolledBack = getSessionNoteSnapshot(sessionId, connection, originId).summary?.note ?? "";
                     if (!isEditing) {
                         setNoteDraftState(rolledBack);
                         latestDraftRef.current = rolledBack;
@@ -251,7 +258,7 @@ export function useSessionNoteState(sessionId: string, connection: string): Sess
             });
         },
         // 只依赖 summary 的展示字段，避免无关缓存刷新（如 TTL 背景刷新）重排已排队的保存。
-        [connection, isEditing, service, sessionId, summary?.note, summary?.key, summaryTagsKey]
+        [connection, isEditing, originId, service, sessionId, summary?.note, summary?.key, summaryTagsKey]
     );
 
     const finishEditing = React.useCallback(() => {
@@ -340,6 +347,7 @@ export function useSessionNoteState(sessionId: string, connection: string): Sess
             const result = await service.GenerateMetadata({
                 id: sessionId,
                 connection: connection || undefined,
+                origin: originId || undefined,
                 aiMode: cfg.mode,
             });
             setMetadataNote(result.suggestion.note);
@@ -349,19 +357,19 @@ export function useSessionNoteState(sessionId: string, connection: string): Sess
             setMetadataError(err instanceof Error ? err.message : String(err));
             setMetadataStatus("error");
         }
-    }, [connection, service, sessionId, summary]);
+    }, [connection, originId, service, sessionId, summary]);
     const applyMetadata = React.useCallback(async () => {
         if (summary == null || metadataStatus !== "ready") {
             return;
         }
-        const result = await saveSessionNote(service, sessionId, connection, metadataNote.trim(), metadataTags);
+        const result = await saveSessionNote(service, sessionId, connection, metadataNote.trim(), metadataTags, originId);
         if (result.status === "ok") {
             setMetadataStatus("idle");
         } else {
             setMetadataError(result.error);
             setMetadataStatus("error");
         }
-    }, [connection, metadataNote, metadataStatus, metadataTags, service, sessionId, summary]);
+    }, [connection, metadataNote, metadataStatus, metadataTags, originId, service, sessionId, summary]);
 
     // ── AI 生成的标题提案（不落库，点 Apply 才写） ──
     const [titleSuggestion, setTitleSuggestion] = React.useState("");
@@ -383,6 +391,7 @@ export function useSessionNoteState(sessionId: string, connection: string): Sess
             const result = await service.GenerateTitle({
                 id: sessionId,
                 connection: connection || undefined,
+                origin: originId || undefined,
                 aiMode: cfg.mode,
             });
             setTitleSuggestion(result.suggestion.title);
@@ -391,7 +400,7 @@ export function useSessionNoteState(sessionId: string, connection: string): Sess
             setTitleError(err instanceof Error ? err.message : String(err));
             setTitleStatus("error");
         }
-    }, [connection, service, sessionId, summary]);
+    }, [connection, originId, service, sessionId, summary]);
     const applyTitle = React.useCallback(async () => {
         if (summary == null || titleStatus !== "ready") {
             return;
@@ -402,8 +411,7 @@ export function useSessionNoteState(sessionId: string, connection: string): Sess
             return;
         }
         try {
-            // origin 参数：note-cache 场景是本地会话（无远端 origin 变量）。
-            const updated = await service.Title(sessionId, nextTitle, "");
+            const updated = await service.Title(sessionId, nextTitle, originId);
             // 广播后，note-cache 与各个卡片会拿到最新 title，不必本地硬改 summary。
             dispatchAISessionNoteUpdated(updated);
             setTitleStatus("idle");
@@ -412,7 +420,7 @@ export function useSessionNoteState(sessionId: string, connection: string): Sess
             setTitleError(err instanceof Error ? err.message : String(err));
             setTitleStatus("error");
         }
-    }, [service, sessionId, summary, titleSuggestion, titleStatus]);
+    }, [originId, service, sessionId, summary, titleSuggestion, titleStatus]);
     const dismissTitle = React.useCallback(() => {
         setTitleStatus("idle");
         setTitleSuggestion("");
@@ -431,8 +439,9 @@ export function useSessionNoteState(sessionId: string, connection: string): Sess
                 return null;
             }
             try {
-                // origin 传 connection：远端会话要落到对应 origin 的 manager 上。
-                const updated = await service.Title(sessionId, nextTitle, connection || "");
+                // origin 必须是 origin id（不是 connection）：外部 dump 会话据此落到自己的 manager。
+                // 远端会话的改名仍走本机 manager（Title 请求还没有 connection 字段），见包内“不做什么”。
+                const updated = await service.Title(sessionId, nextTitle, originId);
                 // 广播后 note-cache 与所有卡片拿到新 title，不在本地硬改 summary。
                 dispatchAISessionNoteUpdated(updated);
                 setError("");
@@ -442,7 +451,7 @@ export function useSessionNoteState(sessionId: string, connection: string): Sess
                 return null;
             }
         },
-        [connection, service, sessionId, summary]
+        [originId, service, sessionId, summary]
     );
     // 切换会话时清掉上一个会话的标题提案，避免 Apply 到错误会话。
     React.useEffect(() => {
@@ -465,8 +474,7 @@ export function useSessionNoteState(sessionId: string, connection: string): Sess
         setStarPending(true);
         setError("");
         try {
-            // origin 参数：note-cache 场景是本地会话（与 setSessionProperty 的 starred 分支一致）。
-            const updated = await service.Mark(summary.key, next, "");
+            const updated = await service.Mark(summary.key, next, originId);
             dispatchAISessionNoteUpdated(updated);
             setSaveStatus("saved");
         } catch (err) {
@@ -478,7 +486,7 @@ export function useSessionNoteState(sessionId: string, connection: string): Sess
             starPendingRef.current = false;
             setStarPending(false);
         }
-    }, [service, sessionId, summary]);
+    }, [originId, service, sessionId, summary]);
 
     const trimmedDraft = noteDraft.trim();
     const title = summary?.title || summary?.id || sessionId;
@@ -489,6 +497,7 @@ export function useSessionNoteState(sessionId: string, connection: string): Sess
     return {
         sessionId,
         connection,
+        origin: originId,
         service,
         summary,
         noteDraft,

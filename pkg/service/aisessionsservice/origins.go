@@ -191,3 +191,17 @@ func (svc *AISessionsService) originCount(ctx context.Context, originID string, 
 	}
 	return len(result.Sessions)
 }
+
+// tagExternalOrigin 回填外部 origin 标签（与 listAllOrigins 的合并视图同口径）：
+// 前端（详情弹窗、note-cache）拿到标签后才能把后续读写路由回同一个 origin。
+// 本机（空 / "local"）与合并视图（"all"）不打标。
+func tagExternalOrigin(summary *aisessions.SessionSummary, origin string) {
+	trimmed := strings.TrimSpace(origin)
+	if trimmed == "" || trimmed == aisessions.OriginLocalID || trimmed == OriginAllID {
+		return
+	}
+	if summary == nil {
+		return
+	}
+	summary.Origin = trimmed
+}

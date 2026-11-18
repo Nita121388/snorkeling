@@ -480,6 +480,7 @@ declare global {
     type AISessionsSetPropsRequest = {
         id: string;
         connection?: string;
+        origin?: string;
         props: {[key: string]: PropertyCell};
         force?: boolean;
     };

@@ -1,0 +1,6 @@
+{
+  "g2": {
+    "redProof": "go test ./pkg/service/aisessionsservice -run TestDetail_ExternalOriginTagsSummary → FAIL: expected summary origin tag dump-b657c24ac1c7, got \"\"; vitest session-note-cache-origin.test.ts → 3 failed @ origin_service_test.go",
+    "at": "2026-11-18T05:27:18Z"
+  }
+}

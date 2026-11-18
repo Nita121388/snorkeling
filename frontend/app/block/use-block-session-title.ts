@@ -18,31 +18,38 @@ import * as React from "react";
 
 const titleService = new AISessionsServiceType();
 
-export function useBlockSessionTitle(sessionId: string, connection: string, active: boolean): string {
+export function useBlockSessionTitle(
+    sessionId: string,
+    connection: string,
+    active: boolean,
+    origin?: string
+): string {
     const conn = connection?.trim() ? connection.trim() : null;
+    // 外部 dump 会话必须带 origin 查 Summary，否则标题落到本机 manager（永远查不到）。
+    const org = origin?.trim() && origin.trim() !== "local" ? origin.trim() : null;
 
     React.useEffect(() => {
         if (!active || sessionId === "") {
             return;
         }
-        ensureSessionNote(titleService, sessionId, conn);
-    }, [active, sessionId, conn]);
+        ensureSessionNote(titleService, sessionId, conn, org);
+    }, [active, sessionId, conn, org]);
 
     const subscribe = React.useCallback(
         (listener: () => void) => {
             if (sessionId === "") {
                 return () => {};
             }
-            return subscribeSessionNote(sessionId, conn, listener);
+            return subscribeSessionNote(sessionId, conn, listener, org);
         },
-        [sessionId, conn]
+        [sessionId, conn, org]
     );
     const getSnapshot = React.useCallback(() => {
         if (sessionId === "") {
             return null;
         }
-        return getSessionNoteSnapshot(sessionId, conn).summary;
-    }, [sessionId, conn]);
+        return getSessionNoteSnapshot(sessionId, conn, org).summary;
+    }, [sessionId, conn, org]);
 
     const summary = React.useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
     return summary?.title ?? "";

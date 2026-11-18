@@ -111,6 +111,7 @@ export function SessionNoteSection({
     // GenActionButton / AISessionNoteModal 等直接走 RPC 的路径不受影响，仍可用 sessionKey。
     const writeSessionId = state.sessionId;
     const connection = state.connection ?? "";
+    const origin = state.origin ?? "";
     // 全局标签清单（含使用次数）：给 PropertyList 的 Tags 浮层补上「别的会话用过什么标签」。
     // 首帧为空数组 → 候选池退化为「def.options + 已选值」，与接入前完全一致（渐进增强）。
     const availableTags = useAvailableSessionTags(connection, summary?.origin ?? "");
@@ -143,6 +144,7 @@ export function SessionNoteSection({
                 service: state.service,
                 sessionId: writeSessionId,
                 connection,
+                origin,
                 summary,
                 def,
                 value,
@@ -150,7 +152,7 @@ export function SessionNoteSection({
                 setWriteError(result.ok ? "" : i18n.t("element:sessionNote.saveFailed", { error: result.error }));
             });
         },
-        [connection, writeSessionId, state.service, summary]
+        [connection, origin, writeSessionId, state.service, summary]
     );
 
     const addProperty = React.useCallback(
@@ -209,12 +211,13 @@ export function SessionNoteSection({
                 service: state.service,
                 sessionId: writeSessionId,
                 connection,
+                origin,
                 summary,
                 key,
                 name,
             });
         },
-        [connection, writeSessionId, state.service, summary]
+        [connection, origin, writeSessionId, state.service, summary]
     );
 
     const retypeProperty = React.useCallback(
@@ -224,12 +227,13 @@ export function SessionNoteSection({
                 service: state.service,
                 sessionId: writeSessionId,
                 connection,
+                origin,
                 summary,
                 key,
                 type,
             });
         },
-        [connection, writeSessionId, state.service, summary]
+        [connection, origin, writeSessionId, state.service, summary]
     );
 
     const moveProperty = React.useCallback(
@@ -250,9 +254,9 @@ export function SessionNoteSection({
                 const existing = summary.props[k];
                 next[k] = { ...existing, order: i + 1, updatedAt: Date.now() };
             });
-            void saveSessionProps(state.service, writeSessionId, connection, next);
+            void saveSessionProps(state.service, writeSessionId, connection, next, origin);
         },
-        [connection, schema, writeSessionId, state.service, summary]
+        [connection, origin, schema, writeSessionId, state.service, summary]
     );
 
     if (summary == null) {

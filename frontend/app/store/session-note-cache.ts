@@ -27,6 +27,8 @@ export type SessionNoteStatus = "idle" | "loading" | "loaded" | "error";
 export type SessionNoteSnapshot = {
     sessionId: string;
     connection: string;
+    /** 会话所属 origin（""=本机）。外部 dump 会话必须带上，否则 Summary 落到本机 manager。 */
+    origin: string;
     status: SessionNoteStatus;
     summary: SessionSummary | null;
     error: string;
@@ -48,20 +50,26 @@ function normalizeConnection(connection: string | null | undefined): string {
     return typeof connection === "string" && connection.trim() !== "" ? connection.trim() : "";
 }
 
-function cacheKey(sessionId: string, connection?: string | null): string {
-    return `${normalizeConnection(connection)}|${sessionId}`;
+/** ""/"local" 都是本机；其余原样作为 origin id。 */
+function normalizeOrigin(origin: string | null | undefined): string {
+    const trimmed = typeof origin === "string" ? origin.trim() : "";
+    return trimmed === "" || trimmed === "local" ? "" : trimmed;
 }
 
-function initialSnapshot(sessionId: string, connection: string): SessionNoteSnapshot {
-    return { sessionId, connection, status: "idle", summary: null, error: "", loadedAt: 0 };
+function cacheKey(sessionId: string, connection: string, origin: string): string {
+    return `${connection}|${origin}|${sessionId}`;
 }
 
-function getEntry(sessionId: string, connection: string): NoteEntry {
-    const key = cacheKey(sessionId, connection);
+function initialSnapshot(sessionId: string, connection: string, origin: string): SessionNoteSnapshot {
+    return { sessionId, connection, origin, status: "idle", summary: null, error: "", loadedAt: 0 };
+}
+
+function getEntry(sessionId: string, connection: string, origin: string): NoteEntry {
+    const key = cacheKey(sessionId, connection, origin);
     let entry = noteCache.get(key);
     if (entry == null) {
         entry = {
-            snapshot: initialSnapshot(sessionId, connection),
+            snapshot: initialSnapshot(sessionId, connection, origin),
             promise: null,
             retryTimer: null,
             retryCount: 0,
@@ -88,6 +96,15 @@ function clearRetryTimer(entry: NoteEntry): void {
 
 // 外部 note 更新事件（其他组件保存了 note）→ 同步缓存，让所有订阅者立即看到。
 // 同一会话可能以 <source>:<id>:<path> 或裸 id 两种写法出现，这里做归一化匹配。
+/** 事件的 summary 不带 origin 标签时按旧行为匹配；两边都有标签时必须一致。 */
+function originCompatible(entryOrigin: string, incomingOrigin: string | null | undefined): boolean {
+    const incoming = normalizeOrigin(incomingOrigin);
+    if (incoming === "" || entryOrigin === "") {
+        return true;
+    }
+    return incoming === entryOrigin;
+}
+
 function sessionIdMatches(candidate: string, sessionId: string): boolean {
     if (candidate === "" || sessionId === "") {
         return false;
@@ -116,6 +133,9 @@ function handleNoteUpdatedEvent(event: Event): void {
         if (!candidates.some((candidate) => sessionIdMatches(candidate, entry.snapshot.sessionId))) {
             continue;
         }
+        if (!originCompatible(entry.snapshot.origin, summary.origin)) {
+            continue;
+        }
         clearRetryTimer(entry);
         entry.retryCount = 0;
         setSnapshot(entry, { status: "loaded", summary, error: "", loadedAt: Date.now() });
@@ -137,6 +157,9 @@ function applyTitleUpdate(incoming: SessionSummary): void {
             continue;
         }
         if (!candidates.some((candidate) => sessionIdMatches(candidate, entry.snapshot.sessionId))) {
+            continue;
+        }
+        if (!originCompatible(entry.snapshot.origin, incoming.origin)) {
             continue;
         }
         clearRetryTimer(entry);
@@ -204,9 +227,10 @@ function loadSessionNote(
     service: AISessionsServiceType,
     sessionId: string,
     connection: string,
+    origin: string,
     opts?: { background?: boolean }
 ): void {
-    const entry = getEntry(sessionId, connection);
+    const entry = getEntry(sessionId, connection, origin);
     if (entry.promise != null) {
         return;
     }
@@ -220,7 +244,7 @@ function loadSessionNote(
     }
     dlog("note request", { sessionId, attempt: entry.retryCount + 1, background: opts?.background === true });
     const request = service
-        .Summary({ id: sessionId, connection: connection || undefined })
+        .Summary({ id: sessionId, connection: connection || undefined, origin: origin || undefined })
         .then((summary) => {
             entry.promise = null;
             entry.retryCount = 0;
@@ -237,7 +261,7 @@ function loadSessionNote(
                     entry.retryTimer = null;
                     // 重试期间若有其他请求已进入 loading/loaded 则跳过。
                     if (entry.promise == null && entry.snapshot.status !== "loaded") {
-                        loadSessionNote(service, sessionId, connection);
+                        loadSessionNote(service, sessionId, connection, origin);
                     }
                 }, NoteLoadRetryDelayMs);
                 // background 刷新失败时保留已加载的旧快照，不要把卡片打回 loading/error。
@@ -260,28 +284,30 @@ export function ensureSessionNote(
     service: AISessionsServiceType,
     sessionId: string,
     connection?: string | null,
+    origin?: string | null,
     opts?: { force?: boolean }
 ): SessionNoteSnapshot {
     ensureEventListener();
     ensureSessionTitleListener();
     const conn = normalizeConnection(connection);
+    const org = normalizeOrigin(origin);
     if (sessionId === "") {
-        const entry = getEntry("", conn);
+        const entry = getEntry("", conn, org);
         return entry.snapshot;
     }
-    const entry = getEntry(sessionId, conn);
+    const entry = getEntry(sessionId, conn, org);
     if (entry.snapshot.status === "idle" || entry.snapshot.status === "error") {
         if (entry.snapshot.status === "error") {
             // error 是终态（重试耗尽），显式调用 ensure 视为重新触发一轮加载。
             entry.retryCount = 0;
         }
-        loadSessionNote(service, sessionId, conn);
+        loadSessionNote(service, sessionId, conn, org);
     } else if (
         entry.snapshot.status === "loaded" &&
         (opts?.force === true || Date.now() - entry.snapshot.loadedAt > NoteRefreshTtlMs)
     ) {
         // 软过期 / 显式刷新：后台拉一次，旧快照继续展示。
-        loadSessionNote(service, sessionId, conn, { background: true });
+        loadSessionNote(service, sessionId, conn, org, { background: true });
     }
     return entry.snapshot;
 }
@@ -303,14 +329,16 @@ export function ensureSessionNote(
 export function primeSessionNote(
     sessionId: string,
     summary: SessionSummary | null,
-    connection?: string | null
+    connection?: string | null,
+    origin?: string | null
 ): void {
     if (sessionId === "" || summary == null) {
         return;
     }
     ensureEventListener();
     const conn = normalizeConnection(connection);
-    const entry = getEntry(sessionId, conn);
+    const org = normalizeOrigin(origin);
+    const entry = getEntry(sessionId, conn, org);
     if (entry.snapshot.status === "loaded" && Date.now() - entry.snapshot.loadedAt < NoteRefreshTtlMs) {
         return;
     }
@@ -322,16 +350,21 @@ export function primeSessionNote(
     setSnapshot(entry, { status: "loaded", summary, error: "", loadedAt: Date.now() });
 }
 
-export function getSessionNoteSnapshot(sessionId: string, connection?: string | null): SessionNoteSnapshot {
-    return getEntry(sessionId, normalizeConnection(connection)).snapshot;
+export function getSessionNoteSnapshot(
+    sessionId: string,
+    connection?: string | null,
+    origin?: string | null
+): SessionNoteSnapshot {
+    return getEntry(sessionId, normalizeConnection(connection), normalizeOrigin(origin)).snapshot;
 }
 
 export function subscribeSessionNote(
     sessionId: string,
     connection: string | null | undefined,
-    listener: () => void
+    listener: () => void,
+    origin?: string | null
 ): () => void {
-    const entry = getEntry(sessionId, normalizeConnection(connection));
+    const entry = getEntry(sessionId, normalizeConnection(connection), normalizeOrigin(origin));
     entry.listeners.add(listener);
     return () => {
         entry.listeners.delete(listener);
@@ -352,10 +385,12 @@ export async function saveSessionNote(
     sessionId: string,
     connection: string | null | undefined,
     note: string,
-    tags: string[]
+    tags: string[],
+    origin?: string | null
 ): Promise<SaveSessionNoteResult> {
     const conn = normalizeConnection(connection);
-    const entry = getEntry(sessionId, conn);
+    const org = normalizeOrigin(origin);
+    const entry = getEntry(sessionId, conn, org);
     const before = entry.snapshot.summary;
     if (before == null) {
         // 没有基线 summary（会话还没落盘 / note 还没加载）时无法做乐观合并，
@@ -372,7 +407,12 @@ export async function saveSessionNote(
     setSnapshot(entry, { status: "loaded", summary: optimistic, error: "", loadedAt: Date.now() });
     dispatchAISessionNoteUpdated(optimistic);
     try {
-        const updated = await service.NoteAndTags({ id: before.key, note, tags });
+        const updated = await service.NoteAndTags({
+            id: before.key,
+            note,
+            tags,
+            origin: org || undefined,
+        });
         clearRetryTimer(entry);
         entry.retryCount = 0;
         setSnapshot(entry, { status: "loaded", summary: updated, error: "", loadedAt: Date.now() });
@@ -415,10 +455,12 @@ export async function saveSessionProps(
     service: AISessionsServiceType,
     sessionId: string,
     connection: string | null | undefined,
-    props: { [key: string]: PropertyCell }
+    props: { [key: string]: PropertyCell },
+    origin?: string | null
 ): Promise<SaveSessionPropsResult> {
     const conn = normalizeConnection(connection);
-    const entry = getEntry(sessionId, conn);
+    const org = normalizeOrigin(origin);
+    const entry = getEntry(sessionId, conn, org);
     const before = entry.snapshot.summary;
     if (before == null) {
         return { status: "error", error: "session summary not loaded" };
@@ -429,7 +471,12 @@ export async function saveSessionProps(
     setSnapshot(entry, { status: "loaded", summary: optimistic, error: "", loadedAt: Date.now() });
     dispatchAISessionNoteUpdated(optimistic);
     try {
-        const updated = await service.SetProps({ id: before.key, connection: conn || undefined, props });
+        const updated = await service.SetProps({
+            id: before.key,
+            connection: conn || undefined,
+            origin: org || undefined,
+            props,
+        });
         clearRetryTimer(entry);
         entry.retryCount = 0;
         setSnapshot(entry, { status: "loaded", summary: updated, error: "", loadedAt: Date.now() });

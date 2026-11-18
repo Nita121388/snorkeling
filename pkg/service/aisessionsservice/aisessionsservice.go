@@ -286,6 +286,7 @@ type AISessionsNoteAndTagsRequest struct {
 type AISessionsSetPropsRequest struct {
 	ID         string                             `json:"id"`
 	Connection string                             `json:"connection,omitempty"`
+	Origin     string                             `json:"origin,omitempty"`
 	Props      map[string]aisessions.PropertyCell `json:"props"`
 	Force      bool                               `json:"force,omitempty"`
 }
@@ -1233,6 +1234,7 @@ func (svc *AISessionsService) Detail(ctx context.Context, request *AISessionsDet
 		return nil, err
 	}
 	loadedCount := len(detail.Messages)
+	tagExternalOrigin(&detail.Summary, request.Origin)
 	tail := request.Tail
 	if tail > 0 && len(detail.Messages) > tail {
 		detail.Messages = detail.Messages[len(detail.Messages)-tail:]
@@ -1366,6 +1368,7 @@ func (svc *AISessionsService) Summary(ctx context.Context, request *AISessionsSu
 	if err != nil {
 		return nil, err
 	}
+	tagExternalOrigin(&summary, request.Origin)
 	return &summary, nil
 }
 
@@ -1650,7 +1653,7 @@ func (svc *AISessionsService) SetProps(ctx context.Context, request *AISessionsS
 	if request == nil || strings.TrimSpace(request.ID) == "" {
 		return nil, fmt.Errorf("session id is required")
 	}
-	manager, err := svc.managerForRequest(ctx, request.ID, request.Connection)
+	manager, err := svc.managerForScope(ctx, request.ID, request.Connection, request.Origin)
 	if err != nil {
 		return nil, err
 	}

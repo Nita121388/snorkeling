@@ -19,6 +19,7 @@ import {
     InfoCardTitle,
 } from "@/app/element/info-card";
 import { SessionNoteSection } from "@/app/element/info-card/session-note-section";
+import { OriginMetaKey, parseOriginMeta } from "@/app/view/aisessions/origin-state";
 import { useSessionNoteState } from "@/app/store/session-note-hook";
 import { i18n } from "@/i18n/config";
 import { useTranslation } from "react-i18next";
@@ -33,7 +34,9 @@ export function SessionDetailInfoCard({ blockData, onOpen }: { blockData: Block 
     const meta = (blockData?.meta ?? {}) as Record<string, unknown>;
     const sessionId = resolveBlockSessionId(meta);
     const connection = trimmedMetaString(meta, "connection");
-    const state = useSessionNoteState(sessionId, connection);
+    // 外部 dump 会话的 origin 存在 meta 里（详情块创建时写入）；不传就会查本机 manager。
+    const origin = parseOriginMeta(meta[OriginMetaKey]) ?? "";
+    const state = useSessionNoteState(sessionId, connection, origin);
     const summary = state.summary;
 
     const fallbackTitle =

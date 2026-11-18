@@ -1,0 +1,2 @@
+{"file": ".trellis/spec/snorkeling-docs/backend/aisessions-title-contract.md", "reason": "标题唯一来源与时序：note-cache 只缓存、不自行推导标题"}
+{"file": ".trellis/spec/snorkeling-docs/frontend/quality-guidelines.md", "reason": "前端缓存键维度变更的质量约束"}
