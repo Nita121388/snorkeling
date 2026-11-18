@@ -131,6 +131,34 @@ describe("computePages · turn", () => {
         expect(pages[1].seqs).toEqual([3, 4]);
     });
 
+    it("consecutive user messages merge into one turn page", () => {
+        const input = rows([1, "user"], [2, "user"], [3, "user"], 4);
+        const pages = computePages(input, () => undefined, { mode: "turn" });
+        expect(pages).toHaveLength(1);
+        expect(pages[0].id).toBe("t:1");
+        expect(pages[0].seqs).toEqual([1, 2, 3, 4]);
+        expect(pages[0].turnStartSeq).toBe(1); // 轮首 = 连续 user 段的第一条
+        expect(pages[0].messageCount).toBe(4);
+    });
+
+    it("a user message following a reply opens a new turn, so consecutive runs split correctly", () => {
+        const input = rows([1, "user"], [2, "user"], 3, 4, [5, "user"], [6, "user"], 7);
+        const pages = computePages(input, () => undefined, { mode: "turn" });
+        expect(pages.map((page) => page.id)).toEqual(["t:1", "t:5"]);
+        expect(pages[0].seqs).toEqual([1, 2, 3, 4]);
+        expect(pages[1].seqs).toEqual([5, 6, 7]);
+        expect(pages[0].turnStartSeq).toBe(1);
+        expect(pages[1].turnStartSeq).toBe(5);
+    });
+
+    it("tool rows count as reply side, so a user message after them still opens a new turn", () => {
+        const input = rows([1, "user"], [2, "tool"], [3, "user"]);
+        const pages = computePages(input, () => undefined, { mode: "turn" });
+        expect(pages.map((page) => page.id)).toEqual(["t:1", "t:3"]);
+        expect(pages[0].seqs).toEqual([1, 2]);
+        expect(pages[1].seqs).toEqual([3]);
+    });
+
     it("a single user message is one complete page", () => {
         const pages = computePages(rows([1, "user"]), () => undefined, { mode: "turn" });
         expect(pages).toHaveLength(1);

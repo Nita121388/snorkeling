@@ -619,17 +619,21 @@ function buildPage(
     };
 }
 
-/** turn：一条 user 消息开启一轮，到下一条 user 前为止；页 id `t:<user seq>`。
- * 首条 user 之前的行（system 前言等）自成引导页，id 取页首条 seq（保证唯一稳定）。 */
+/** turn：一轮 = 一段连续的 user 消息（合起来算一问）+ 其后到下一段 user 前的全部非 user 消息；
+ * 页 id `t:<轮首 seq>`，轮首 = 连续 user 段的第一条。
+ * 只有 user 消息**跟在非 user 消息之后**（上一问已被回应）才开新轮——用户连发多条（排队补充、
+ * 贴多个文件）属于同一问，必须并进同一页。首个 user 之前的行（system 前言等）自成引导页，
+ * id 取页首条 seq（保证唯一稳定）。 */
 function computeTurnPages(rows: PagingRow[]): MessagePage[] {
-    type Draft = { turnStartSeq: number; seqs: number[] };
+    type Draft = { turnStartSeq: number; seqs: number[]; sawReply: boolean };
     const drafts: Draft[] = [];
     let current: Draft | null = null;
     for (const row of rows) {
-        if (row.role === "user" || current == null) {
-            current = { turnStartSeq: row.seq, seqs: [] };
+        if (current == null || (row.role === "user" && current.sawReply)) {
+            current = { turnStartSeq: row.seq, seqs: [], sawReply: false };
             drafts.push(current);
         }
+        if (row.role !== "user") current.sawReply = true;
         current.seqs.push(row.seq);
     }
     return drafts.map((draft) => buildPage("turn", `t:${draft.turnStartSeq}`, draft.seqs, { turnStartSeq: draft.turnStartSeq }));
