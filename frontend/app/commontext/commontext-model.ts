@@ -547,6 +547,25 @@ function getEditorTokenWeights(editor: string, caret: number): Map<string, numbe
     return tokens;
 }
 
+/**
+ * Caret 的语义指纹：当前行索引 + 当前词。
+ *
+ * 搜索排序同时用「全文 / 当前行 / 当前词」三档权重，所以只看当前词不够：
+ * 光标换行但落在同一个词上时，当前行权重仍会变化。同行同词内移动则不应触发重算。
+ */
+export function caretContextSignature(editor: string, caret: number): string {
+    const boundedCaret = Math.max(0, Math.min(caret, editor.length));
+    const lineStart = editor.lastIndexOf("\n", Math.max(0, boundedCaret - 1)) + 1;
+    let lineIndex = 0;
+    for (let index = 0; index < lineStart; index++) {
+        if (editor[index] === "\n") lineIndex++;
+    }
+    const fragments = getCaretFragments(editor, boundedCaret)
+        .map((fragment) => fragment.normalize("NFKC").trim().toLowerCase())
+        .filter((fragment) => fragment !== "");
+    return `${lineIndex}:${fragments.join("\u0001")}`;
+}
+
 function makeCommonTextSearchFields(item: CommonTextItem): CommonTextSearchFields {
     return {
         title: item.title.normalize("NFKC").toLowerCase(),
@@ -554,6 +573,17 @@ function makeCommonTextSearchFields(item: CommonTextItem): CommonTextSearchField
         shortcut: (item.shortcut ?? "").normalize("NFKC").toLowerCase(),
         tags: (item.tags ?? []).map((tag) => tag.normalize("NFKC").toLowerCase()),
     };
+}
+
+// item 对象来自 settings 派生；配置更新会换对象，WeakMap 因此自然失效。
+const CommonTextSearchFieldsCache = new WeakMap<CommonTextItem, CommonTextSearchFields>();
+
+function getCommonTextSearchFields(item: CommonTextItem): CommonTextSearchFields {
+    const cached = CommonTextSearchFieldsCache.get(item);
+    if (cached != null) return cached;
+    const fields = makeCommonTextSearchFields(item);
+    CommonTextSearchFieldsCache.set(item, fields);
+    return fields;
 }
 
 function scoreCommonTextToken(fields: CommonTextSearchFields, token: string): number {
@@ -567,22 +597,13 @@ function scoreCommonTextToken(fields: CommonTextSearchFields, token: string): nu
     return 0;
 }
 
-export function searchCommonTextComposeItems(
-    items: CommonTextItem[],
+export function searchCommonTextComposeItemsFromBase(
+    baseItems: CommonTextItem[],
     editor: string,
     manualQuery: string,
     options: CommonTextComposeSearchOptions = {}
 ): CommonTextItem[] {
-    const {
-        limit = 40,
-        selectedTags = [],
-        untagged = false,
-        caret = editor.length,
-        insertedIds = [],
-        sortKey = DefaultCommonTextSortKey,
-        creator = "all",
-        device = "any",
-    } = options;
+    const { limit = 40, caret = editor.length, insertedIds = [] } = options;
     const isManualSearch = manualQuery.trim() !== "";
     const tokenWeights = new Map<string, number>();
     if (isManualSearch) {
@@ -592,14 +613,6 @@ export function searchCommonTextComposeItems(
             tokenWeights.set(token, weight);
         }
     }
-    // 来源筛选是硬过滤（AND），先于 tag/查询/排序执行：否则 limit 截断会把本该命中的行挤掉。
-    const sourceFiltered = items.filter(
-        (item) => commonTextItemMatchesCreator(item, creator) && commonTextItemMatchesDevice(item, device)
-    );
-    const baseItems = sortCommonTextItemsBy(
-        filterCommonTextItemsByTags(sourceFiltered, selectedTags, { untagged }),
-        sortKey
-    );
     if (tokenWeights.size === 0) {
         return baseItems.slice(0, limit);
     }
@@ -609,7 +622,7 @@ export function searchCommonTextComposeItems(
         [];
     // ponytail: A local O(items * tokens) scan is enough for the <=500-item modal; add an index only if that ceiling changes.
     for (const item of baseItems) {
-        const fields = makeCommonTextSearchFields(item);
+        const fields = getCommonTextSearchFields(item);
         const contextScores: [number, number, number] = [0, 0, 0];
         let hits = 0;
         for (const [token, contextTier] of tokenWeights) {
@@ -634,6 +647,25 @@ export function searchCommonTextComposeItems(
         return a.item.id.localeCompare(b.item.id);
     });
     return scored.slice(0, limit).map(({ item }) => item);
+}
+
+export function searchCommonTextComposeItems(
+    items: CommonTextItem[],
+    editor: string,
+    manualQuery: string,
+    options: CommonTextComposeSearchOptions = {}
+): CommonTextItem[] {
+    const { selectedTags = [], untagged = false, sortKey = DefaultCommonTextSortKey, creator = "all", device = "any" } =
+        options;
+    // 来源筛选是硬过滤（AND），先于 tag/查询/排序执行：否则 limit 截断会把本该命中的行挤掉。
+    const sourceFiltered = items.filter(
+        (item) => commonTextItemMatchesCreator(item, creator) && commonTextItemMatchesDevice(item, device)
+    );
+    const baseItems = sortCommonTextItemsBy(
+        filterCommonTextItemsByTags(sourceFiltered, selectedTags, { untagged }),
+        sortKey
+    );
+    return searchCommonTextComposeItemsFromBase(baseItems, editor, manualQuery, options);
 }
 
 export type PagedSearchResult = {

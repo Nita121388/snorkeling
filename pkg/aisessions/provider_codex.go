@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 type CodexProvider struct {
@@ -415,4 +416,88 @@ func loadCodexSessionIndex(codexDir string) map[string]codexIndexedTitle {
 		}
 	}
 	return result
+}
+
+// ── CurrentModelState (design.md §3.3) ───────────────────────────────────────
+//
+// codex rollouts stamp the model once per turn on a `turn_context` line
+// (payload.model), so the current model is the LAST turn_context model in a
+// bounded tail read. The provider (e.g. "custom") lives on the first line's
+// session_meta.payload.model_provider — verified against real rollouts, where
+// the field is on session_meta, never on turn_context — so the head is read in
+// its own small bounded chunk. Fallbacks: last assistant message model when no
+// turn_context was found; empty provider when session_meta lacks it.
+
+// readCodexSessionModelProvider scans the first bounded chunk of the rollout
+// for session_meta.payload.model_provider. session_meta is the first line, so a
+// 64 KiB head is always enough; a malformed or missing header yields "".
+func readCodexSessionModelProvider(ctx context.Context, filePath string) string {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return ""
+	}
+	defer file.Close()
+	reader := bufio.NewReaderSize(io.LimitReader(file, 64*1024), 64*1024)
+	for {
+		if ctx.Err() != nil {
+			return ""
+		}
+		raw, err := reader.ReadBytes('\n')
+		if len(raw) > 0 {
+			if value := parseModelStateLine(strings.TrimSpace(string(raw))); value != nil {
+				if strValue(value, "type") == "session_meta" {
+					if payload, ok := value["payload"].(map[string]any); ok && payload != nil {
+						return strings.TrimSpace(strValue(payload, "model_provider"))
+					}
+					return ""
+				}
+			}
+		}
+		if err != nil {
+			return ""
+		}
+	}
+}
+
+func (p *CodexProvider) CurrentModelState(ctx context.Context, filePath string) (ModelState, bool) {
+	ctx, cancel := context.WithTimeout(ctx, 250*time.Millisecond)
+	defer cancel()
+
+	state := ModelState{Provider: readCodexSessionModelProvider(ctx, filePath)}
+
+	lines, err := readModelStateTailLines(ctx, filePath, maxModelStateScanBytes, maxModelStateScanLines)
+	if err != nil {
+		return ModelState{}, false
+	}
+	for _, line := range lines {
+		value := parseModelStateLine(line)
+		if value == nil {
+			continue
+		}
+		switch strValue(value, "type") {
+		case "turn_context":
+			if payload, ok := value["payload"].(map[string]any); ok && payload != nil {
+				if model := strings.TrimSpace(strValue(payload, "model")); model != "" {
+					state.Model = model
+				}
+			}
+		case "response_item":
+			// Fallback only: without any turn_context in the window, the last
+			// assistant message's own model is the best available answer.
+			if state.Model != "" {
+				continue
+			}
+			payload, _ := value["payload"].(map[string]any)
+			if payload == nil {
+				continue
+			}
+			if normalizeRole(strValue(payload, "role")) != RoleAssistant {
+				continue
+			}
+			if model := strings.TrimSpace(strValue(payload, "model")); model != "" {
+				state.Model = model
+			}
+		}
+	}
+	return state, state.Model != ""
 }

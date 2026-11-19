@@ -14,7 +14,7 @@ import {
 import { formatSessionDateCompact, formatSessionRelativeTime } from "@/app/view/aisessions/utils";
 import { fireAndForget } from "@/util/util";
 import { useAtomValue } from "jotai";
-import { memo, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { clearEditorDraft, loadEditorDraft, saveEditorDraft } from "./commontext-editor-draft";
 import { computeEditorMaxHeight } from "./commontext-editor-size";
 import { OpenCommonTextSearchEvent, type CommonTextSearchDetail } from "./commontext-events";
@@ -26,6 +26,9 @@ import { CommonTextFreshnessSquare } from "./commontext-freshness-square";
 import { copyCommonText, insertOrCopyCommonText } from "./commontext-insert";
 import {
     DefaultCommonTextSortKey,
+    caretContextSignature,
+    commonTextItemMatchesCreator,
+    commonTextItemMatchesDevice,
     deleteCommonTextItem,
     filterCommonTextItemsByTags,
     getCommonTextCreatorKind,
@@ -38,7 +41,8 @@ import {
     getLiveCommonTextItems,
     normalizeCommonTextTags,
     recordCommonTextUse,
-    searchCommonTextComposeItems,
+    searchCommonTextComposeItemsFromBase,
+    sortCommonTextItemsBy,
     upsertCommonTextItem,
     type CommonTextCreatorFilter,
     type CommonTextItem,
@@ -58,6 +62,14 @@ import { loadCommonTextSortKey, saveCommonTextSortKey } from "./commontext-sort-
 
 const LIST_LIMIT = 500;
 const MAX_TAG_CHIPS = 16;
+// 三维性能开关：窗口化 / 缓存与行 memo / 输入快照。默认开启，置 false 回到旧行为。
+const COMMONTEXT_PERF_INPUT_ENABLED = true;
+const COMMONTEXT_PERF_CACHE_ENABLED = true;
+const COMMONTEXT_PERF_WINDOWING_ENABLED = true;
+const ROW_HEIGHT = 44;
+const OVERSCAN = 8;
+const SEARCH_COMMIT_DEBOUNCE_MS = 80;
+const EMPTY_ITEMS: CommonTextItem[] = [];
 
 /** 创建者筛选三档：图标 + 计数，含义全走 title / aria-label（与排序控件同口径）。 */
 const CommonTextCreatorFilters = [
@@ -112,13 +124,13 @@ function describeCommonTextCreatorName(item: CommonTextItem): string {
 }
 
 /** 徽标的 tooltip：谁 + 哪台机器 + 什么时候建的。 */
-function describeCommonTextSource(item: CommonTextItem): string {
+function describeCommonTextSource(item: CommonTextItem, now = Date.now()): string {
     const kind = getCommonTextCreatorKind(item);
     const who = describeCommonTextCreatorName(item);
     const device = getCommonTextOriginDeviceName(item);
     const platform = item.origin?.platform?.trim();
     const deviceLabel = platform != null && platform !== "" ? `${device} · ${platform}` : device;
-    const created = compactCommonTextTime(item.createdat, true);
+    const created = compactCommonTextTime(item.createdat, true, now);
     return i18n.t("commontext:meta.createdByOn", {
         who: kind === "agent" ? `${i18n.t("commontext:meta.agentPrefix")} ${who}` : who,
         device: deviceLabel,
@@ -126,25 +138,156 @@ function describeCommonTextSource(item: CommonTextItem): string {
     });
 }
 
-function compactCommonTextTime(timestamp: number | undefined, withTime = false): string {
+function compactCommonTextTime(timestamp: number | undefined, withTime = false, now = Date.now()): string {
     if (timestamp == null) return i18n.t("commontext:meta.never");
-    return formatSessionDateCompact(timestamp, Date.now(), withTime) || i18n.t("commontext:meta.never");
+    return formatSessionDateCompact(timestamp, now, withTime) || i18n.t("commontext:meta.never");
 }
 
 /** 列表行与详情页脚的完整时间信息：不可图标化的语义全下沉到 tooltip。 */
-function describeCommonTextTime(item: CommonTextItem): string {
+function describeCommonTextTime(item: CommonTextItem, now = Date.now()): string {
     return [
-        i18n.t("commontext:meta.timeCreated", { time: compactCommonTextTime(item.createdat, true) }),
-        i18n.t("commontext:meta.timeUpdated", { time: compactCommonTextTime(item.updatedat, true) }),
-        i18n.t("commontext:meta.timeLastUsed", { time: compactCommonTextTime(item.lastusedat, true) }),
+        i18n.t("commontext:meta.timeCreated", { time: compactCommonTextTime(item.createdat, true, now) }),
+        i18n.t("commontext:meta.timeUpdated", { time: compactCommonTextTime(item.updatedat, true, now) }),
+        i18n.t("commontext:meta.timeLastUsed", { time: compactCommonTextTime(item.lastusedat, true, now) }),
         i18n.t("commontext:meta.usedTimes", { count: item.usagecount ?? 0 }),
     ].join("\n");
 }
+
+type CommonTextRowProps = {
+    item: CommonTextItem;
+    index: number;
+    selected: boolean;
+    nowMinute: number;
+    language: string;
+    onSelect: (item: CommonTextItem) => void;
+    onInsert: (item: CommonTextItem) => void;
+};
+
+/** 列表行。父层只传稳定回调与 item，行内自算 tooltip/预览，不随打字逐帧重跑。 */
+const CommonTextRow = memo(function CommonTextRowImpl({
+    item,
+    index,
+    selected,
+    nowMinute,
+    language,
+    onSelect,
+    onInsert,
+}: CommonTextRowProps) {
+    const metaTooltip = useMemo(() => describeCommonTextTime(item, nowMinute), [item, nowMinute, language]);
+    const sourceTooltip = useMemo(() => describeCommonTextSource(item, nowMinute), [item, nowMinute, language]);
+    const insertTooltip = useMemo(
+        () =>
+            i18n.t("commontext:compose.insertTitle", {
+                time: formatSessionRelativeTime(item.updatedat, nowMinute),
+            }),
+        [item, nowMinute, language]
+    );
+    const preview = useMemo(() => makePreview(item.text), [item, language]);
+    const creatorKind = getCommonTextCreatorKind(item);
+
+    return (
+        <div
+            data-common-text-index={index}
+            data-commontext-title={item.title}
+            style={{ height: ROW_HEIGHT }}
+            className={
+                "group flex items-start gap-1.5 overflow-hidden border-l-2 px-3 py-1.5 cursor-pointer transition-colors " +
+                (selected ? "border-actionsoftborder bg-actionsoft" : "border-transparent hover:bg-hoverbg")
+            }
+            // hover 仅高亮行、不联动右侧详情：避免鼠标在列表里扫过时右侧
+            // 详情随每一行跳变。这里绝不能 setState：每次 setState 触发整弹窗重渲染。
+            onClick={() => onSelect(item)}
+        >
+            <div className="pt-0.5 w-4 shrink-0 text-secondary">
+                {item.pinned ? <i className="fa fa-solid fa-thumbtack text-[11px]" /> : null}
+            </div>
+            <div className="min-w-0 flex-1">
+                <div className="flex min-w-0 items-center gap-1.5">
+                    <span className="min-w-0 truncate text-xs font-medium">{item.title}</span>
+                    <CommonTextSyncDot item={item} />
+                    <span
+                        data-commontext-creator-badge={creatorKind}
+                        title={sourceTooltip}
+                        className={
+                            "inline-flex shrink-0 items-center gap-1 rounded-sm border px-1 py-px text-[9.5px] leading-none " +
+                            (creatorKind === "agent"
+                                ? "border-sky-500/30 bg-sky-500/10 text-sky-300"
+                                : "border-orange-400/30 bg-orange-400/10 text-orange-300")
+                        }
+                    >
+                        <i
+                            className={
+                                creatorKind === "agent"
+                                    ? "fa-solid fa-robot text-[8px]"
+                                    : "fa-solid fa-user text-[8px]"
+                            }
+                        />
+                        {describeCommonTextCreatorName(item)}
+                    </span>
+                </div>
+                <div className="text-[11px] text-secondary truncate">{preview}</div>
+                {(item.tags?.length ?? 0) > 0 && (
+                    <div className="mt-0 min-w-0 overflow-hidden">
+                        <SessionTagChips tags={item.tags?.slice(0, 4)} />
+                    </div>
+                )}
+            </div>
+            {/* 右侧固定宽槽：默认是「次数 + 更新时间」列，hover 时它淡出、插入按钮落在同一位置 */}
+            <div className="relative shrink-0 self-center w-[58px] h-7 flex items-center justify-end" data-commontext-meta="">
+                <div
+                    className="flex flex-col items-end gap-0.5 whitespace-nowrap text-[10px] leading-none tabular-nums text-secondary transition-opacity group-hover:opacity-0"
+                    title={metaTooltip}
+                >
+                    <span
+                        data-commontext-usage={item.usagecount ?? 0}
+                        className={
+                            "inline-flex items-center gap-1 " + ((item.usagecount ?? 0) === 0 ? "text-muted" : "")
+                        }
+                        title={i18n.t("commontext:compose.usedTimes", { count: item.usagecount ?? 0 })}
+                    >
+                        {item.usagecount ?? 0}
+                    </span>
+                    <span data-commontext-updated="" className="inline-flex items-center gap-1">
+                        <CommonTextFreshnessSquare
+                            tier={commonTextFreshnessTier(item)}
+                            title={i18n.t("commontext:compose.updatedTitle", {
+                                time: compactCommonTextTime(item.updatedat, true, nowMinute),
+                            })}
+                            ariaLabel={i18n.t("commontext:compose.updatedAria", {
+                                time: formatSessionRelativeTime(item.updatedat, nowMinute),
+                            })}
+                        />
+                        <span data-commontext-updated-rel="" aria-hidden="true">
+                            {formatCommonTextFreshnessCompact(item.updatedat, nowMinute)}
+                        </span>
+                    </span>
+                </div>
+                <span
+                    role="button"
+                    tabIndex={-1}
+                    aria-label={i18n.t("commontext:compose.insertAria")}
+                    title={insertTooltip}
+                    className="item-insert-btn absolute right-0 top-1/2 -translate-y-1/2 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded bg-modalbg text-secondary opacity-0 transition-opacity hover:bg-hoverbg hover:text-primary group-hover:opacity-100 cursor-pointer"
+                    onClick={(event) => {
+                        event.stopPropagation();
+                        onInsert(item);
+                    }}
+                >
+                    <i className="fa fa-regular fa-paste text-[12px]" />
+                </span>
+            </div>
+        </div>
+    );
+});
 
 type ComposeState = {
     open: boolean;
     editor: string;
     editorCaret: number;
+    // 搜索快照：只有文本或 caret 所在行/词变化时才推进，避免每次光标移动重算全表。
+    searchText: string;
+    searchCaret: number;
+    caretTokenRevision: string;
     editorFilterDismissed: boolean;
     manualQuery: string;
     selectedTags: string[];
@@ -215,6 +358,9 @@ const initialOpenState = (manualQuery = ""): ComposeState => ({
     open: true,
     editor: "",
     editorCaret: 0,
+    searchText: "",
+    searchCaret: 0,
+    caretTokenRevision: "",
     editorFilterDismissed: false,
     manualQuery,
     selectedTags: [],
@@ -242,9 +388,31 @@ const restoreOpenState = (): ComposeState => {
         editor: draft.text,
         // caret 落盘时可能因外部编辑器变更越界，clamp 回文本长度。
         editorCaret: Math.min(draft.caret, draft.text.length),
+        searchText: draft.text,
+        searchCaret: Math.min(draft.caret, draft.text.length),
+        caretTokenRevision: caretContextSignature(draft.text, Math.min(draft.caret, draft.text.length)),
         insertedIds: draft.insertedIds,
     };
 };
+
+function computeFilteredItems(
+    state: ComposeState,
+    baseItems: CommonTextItem[],
+    searchText: string,
+    searchCaret: number
+): CommonTextItem[] {
+    if (!state.open) return EMPTY_ITEMS;
+    return searchCommonTextComposeItemsFromBase(
+        baseItems,
+        state.editorFilterDismissed ? "" : searchText,
+        state.manualQuery,
+        {
+            limit: LIST_LIMIT,
+            caret: searchCaret,
+            insertedIds: state.insertedIds,
+        }
+    );
+}
 
 const CommonTextComposeModal = memo(() => {
     const { t } = useTranslation("commontext");
@@ -252,6 +420,9 @@ const CommonTextComposeModal = memo(() => {
     // 最新 state 镜像：卸载清理闭包里拿不到最新 state，草稿兜底落盘用它。
     const stateRef = useRef(state);
     stateRef.current = state;
+    // 待提交的搜索快照与提交定时器：Enter / 行内插入前会先 flush，不允许拿旧列表。
+    const pendingSearchRef = useRef({ text: "", caret: 0, revision: "" });
+    const searchCommitTimerRef = useRef<number>(null);
     // editor 默认收缩为单行高度（与 Title/Action 控件视觉对齐），聚焦时再撑开到多行，
     // 避免每次打开弹窗都被一个 120px 的 textarea 撑高、抢走主视觉。
     // "草稿含换行"会作为初始展开判定，防止多行草稿被压缩成单行截断。
@@ -276,6 +447,11 @@ const CommonTextComposeModal = memo(() => {
     const [modalSize, setModalSize] = useState<ComposeModalSize>(
         () => loadComposeModalSize() ?? { w: ComposeModalDefaultW, h: ComposeModalDefaultH }
     );
+    // 列表窗口：只随滚动/筛选变化，不随打字逐帧变化。
+    const [listScrollTop, setListScrollTop] = useState(0);
+    const [listViewportHeight, setListViewportHeight] = useState(0);
+    // 行内相对时间只按分钟刷新，不随每次输入重算。
+    const [nowMinute, setNowMinute] = useState(() => Date.now());
     // 展开态 Editor 上限随弹窗高度缩放：modalSize.h 在用户拖拽时被 ResizeObserver 写成真实 px；
     // 首次打开存的可能是 "min(78vh, 620px)" 兜底字符串，parseFloat 拿不到就回退 modalRef 实测高度。
     // ponytail: 回退常量 620 只在首帧生效，RO 首 tick 后 modalSize.h 即变真实像素，无需额外监听。
@@ -310,7 +486,11 @@ const CommonTextComposeModal = memo(() => {
     const unmountedRef = useRef(false);
 
     // 墓碑（已删除、等同步上传的条目）不进列表/标签统计：它们在库里存在只是为了把删除推出去。
-    const allItems = useMemo(() => getLiveCommonTextItems(getCommonTextItemsFromSettings(settings)), [settings]);
+    // 关闭态不构造派生数据：settings 更新只会在下次打开时重算一次。
+    const allItems = useMemo(
+        () => (state.open ? getLiveCommonTextItems(getCommonTextItemsFromSettings(settings)) : EMPTY_ITEMS),
+        [settings, state.open]
+    );
     const tagSummaries = useMemo(() => getCommonTextTagSummaries(allItems).slice(0, MAX_TAG_CHIPS), [allItems]);
     // 无标签条目数：驱动 untagged chip 的计数展示，与筛选走同一 normalize 口径。
     const untaggedCount = useMemo(
@@ -338,37 +518,98 @@ const CommonTextComposeModal = memo(() => {
     }, [sourceScopeItems]);
     const deviceSummaries = useMemo(() => getCommonTextDeviceSummaries(sourceScopeItems), [sourceScopeItems]);
 
-    const filteredItems = useMemo(() => {
-        if (!state.open) return [];
-        return searchCommonTextComposeItems(
-            allItems,
-            state.editorFilterDismissed ? "" : state.editor,
-            state.manualQuery,
-            {
-                limit: LIST_LIMIT,
-                selectedTags: state.selectedTags,
-                untagged: state.untaggedOnly,
-                caret: state.editorCaret,
-                insertedIds: state.insertedIds,
-                sortKey: state.sortKey,
-                creator: state.creatorFilter,
-                device: state.deviceFilter,
-            }
+    // baseItems 只依赖配置与筛选，不依赖输入。打字时复用，不再重做 filter + sort。
+    const baseItems = useMemo(() => {
+        if (!state.open) return EMPTY_ITEMS;
+        const sourceFiltered = allItems.filter(
+            (item) =>
+                commonTextItemMatchesCreator(item, state.creatorFilter) &&
+                commonTextItemMatchesDevice(item, state.deviceFilter)
+        );
+        return sortCommonTextItemsBy(
+            filterCommonTextItemsByTags(sourceFiltered, state.selectedTags, { untagged: state.untaggedOnly }),
+            state.sortKey
         );
     }, [
         allItems,
         state.creatorFilter,
         state.deviceFilter,
-        state.editor,
-        state.editorCaret,
-        state.editorFilterDismissed,
-        state.insertedIds,
-        state.manualQuery,
         state.open,
         state.selectedTags,
         state.sortKey,
         state.untaggedOnly,
     ]);
+
+    const filteredItems = useMemo(
+        () => computeFilteredItems(state, baseItems, state.searchText, state.searchCaret),
+        [
+            baseItems,
+            state.editorFilterDismissed,
+            state.insertedIds,
+            state.manualQuery,
+            state.open,
+            state.searchCaret,
+            state.searchText,
+            state.caretTokenRevision,
+        ]
+    );
+    const baseItemsRef = useRef(baseItems);
+    baseItemsRef.current = baseItems;
+
+    const listWindow = useMemo(() => {
+        if (!COMMONTEXT_PERF_WINDOWING_ENABLED) {
+            return { start: 0, end: filteredItems.length };
+        }
+        const visibleCount = Math.max(1, Math.ceil((listViewportHeight || 600) / ROW_HEIGHT));
+        const maxStart = Math.max(0, filteredItems.length - visibleCount);
+        const start = Math.max(0, Math.min(maxStart, Math.floor(listScrollTop / ROW_HEIGHT) - OVERSCAN));
+        const end = Math.min(filteredItems.length, start + visibleCount + OVERSCAN * 2);
+        return { start, end };
+    }, [filteredItems.length, listScrollTop, listViewportHeight]);
+
+    const commitPendingSearch = useCallback(() => {
+        const pending = pendingSearchRef.current;
+        const current = stateRef.current;
+        if (
+            pending.text === current.searchText &&
+            pending.caret === current.searchCaret &&
+            pending.revision === current.caretTokenRevision
+        ) {
+            return;
+        }
+        setState((cur) => ({
+            ...cur,
+            searchText: pending.text,
+            searchCaret: pending.caret,
+            caretTokenRevision: pending.revision,
+        }));
+    }, []);
+
+    const queueSearchCommit = useCallback(
+        (text: string, caret: number, immediate = false) => {
+            pendingSearchRef.current = { text, caret, revision: caretContextSignature(text, caret) };
+            if (searchCommitTimerRef.current != null) {
+                window.clearTimeout(searchCommitTimerRef.current);
+            }
+            searchCommitTimerRef.current = window.setTimeout(() => {
+                searchCommitTimerRef.current = null;
+                commitPendingSearch();
+            }, immediate ? 0 : SEARCH_COMMIT_DEBOUNCE_MS);
+        },
+        [commitPendingSearch]
+    );
+
+    const flushSearch = useCallback(() => {
+        if (searchCommitTimerRef.current != null) {
+            window.clearTimeout(searchCommitTimerRef.current);
+            searchCommitTimerRef.current = null;
+        }
+        commitPendingSearch();
+        const pending = pendingSearchRef.current;
+        return computeFilteredItems(stateRef.current, baseItemsRef.current, pending.text, pending.caret);
+    }, [commitPendingSearch]);
+    const flushSearchRef = useRef(flushSearch);
+    flushSearchRef.current = flushSearch;
     // 空结果文案按起因分流：查询无命中 vs 筛选把结果清空，两种情况用户要做的事不一样。
     const sourceFilterActive = state.creatorFilter !== "all" || state.deviceFilter !== "any";
     const emptyListMessage =
@@ -552,6 +793,15 @@ const CommonTextComposeModal = memo(() => {
                 }
             }
             setState(next);
+            if (searchCommitTimerRef.current != null) {
+                window.clearTimeout(searchCommitTimerRef.current);
+                searchCommitTimerRef.current = null;
+            }
+            pendingSearchRef.current = {
+                text: next.searchText,
+                caret: next.searchCaret,
+                revision: next.caretTokenRevision,
+            };
             // 草稿基线对齐本次打开后的 editor 内容：之后只有真正被用户改过才写回 localStorage。
             if (editorDraftTimerRef.current != null) {
                 window.clearTimeout(editorDraftTimerRef.current);
@@ -659,26 +909,76 @@ const CommonTextComposeModal = memo(() => {
 
     useEffect(() => {
         if (!state.open) return;
-        listScrollRef.current?.scrollTo({ top: 0 });
+        setNowMinute(Date.now());
+        const timer = window.setInterval(() => setNowMinute(Date.now()), 60_000);
+        return () => window.clearInterval(timer);
+    }, [state.open]);
+
+    // 窗口化滚动：直接用行号换算，不再查离屏 DOM 节点。
+    const scrollListToIndex = useCallback((index: number) => {
+        const node = listScrollRef.current;
+        if (node == null) return;
+        if (!COMMONTEXT_PERF_WINDOWING_ENABLED) {
+            node
+                .querySelector(`[data-common-text-index="${index}"]`)
+                ?.scrollIntoView({ block: "nearest" });
+            return;
+        }
+        const targetTop = index * ROW_HEIGHT;
+        const viewTop = node.scrollTop;
+        const viewBottom = viewTop + node.clientHeight;
+        if (targetTop < viewTop + ROW_HEIGHT) {
+            node.scrollTop = Math.max(0, targetTop - ROW_HEIGHT);
+        } else if (targetTop + ROW_HEIGHT > viewBottom) {
+            node.scrollTop = targetTop + ROW_HEIGHT - node.clientHeight;
+        }
+        setListScrollTop(node.scrollTop);
+    }, []);
+
+    const handleListScroll = useCallback(() => {
+        const node = listScrollRef.current;
+        if (node != null) setListScrollTop(node.scrollTop);
+    }, []);
+
+    useEffect(() => {
+        if (!state.open || !COMMONTEXT_PERF_WINDOWING_ENABLED) return;
+        const node = listScrollRef.current;
+        if (node == null) return;
+        const sync = () => setListViewportHeight(node.clientHeight);
+        sync();
+        const ro = new ResizeObserver(sync);
+        ro.observe(node);
+        return () => ro.disconnect();
+    }, [state.open]);
+
+    useEffect(() => {
+        if (!state.open) return;
+        const node = listScrollRef.current;
+        if (node != null) {
+            node.scrollTo({ top: 0 });
+            setListScrollTop(0);
+        }
     }, [
-        state.editor,
-        state.editorCaret,
+        state.caretTokenRevision,
         state.insertedIds,
         state.manualQuery,
         state.open,
+        state.searchText,
         state.selectedTags,
         state.untaggedOnly,
     ]);
 
     useEffect(() => {
         if (!state.open) return;
-        listScrollRef.current
-            ?.querySelector(`[data-common-text-index="${state.selectedIndex}"]`)
-            ?.scrollIntoView({ block: "nearest" });
-    }, [state.open, state.selectedIndex]);
+        scrollListToIndex(state.selectedIndex);
+    }, [state.open, state.selectedIndex, scrollListToIndex]);
 
     useEffect(() => {
         return () => {
+            if (searchCommitTimerRef.current != null) {
+                window.clearTimeout(searchCommitTimerRef.current);
+                searchCommitTimerRef.current = null;
+            }
             if (compositionEndTimerRef.current != null) {
                 window.clearTimeout(compositionEndTimerRef.current);
                 window.cancelAnimationFrame(compositionEndTimerRef.current);
@@ -762,6 +1062,10 @@ const CommonTextComposeModal = memo(() => {
     }, [state.open, state.editor, state.editorCaret, state.insertedIds]);
 
     const close = () => {
+        if (searchCommitTimerRef.current != null) {
+            window.clearTimeout(searchCommitTimerRef.current);
+            searchCommitTimerRef.current = null;
+        }
         if (compositionEndTimerRef.current != null) {
             // compositionEndTimerRef 既能容纳 setTimeout 也能容纳 rAF 的 numeric id
             // （两者共用同一 numeric handle 空间），所以两种调度都尝试取消。
@@ -791,8 +1095,24 @@ const CommonTextComposeModal = memo(() => {
 
     const update = (patch: Partial<ComposeState>) => setState((cur) => ({ ...cur, ...patch }));
 
-    const setEditor = (editor: string, editorCaret: number) =>
-        update({ editor, editorCaret, editorFilterDismissed: false, selectedIndex: 0 });
+    const setEditor = (editor: string, editorCaret: number) => {
+        const revision = caretContextSignature(editor, editorCaret);
+        const patch: Partial<ComposeState> = {
+            editor,
+            editorCaret,
+            editorFilterDismissed: false,
+            selectedIndex: 0,
+        };
+        if (!COMMONTEXT_PERF_INPUT_ENABLED) {
+            patch.searchText = editor;
+            patch.searchCaret = editorCaret;
+            patch.caretTokenRevision = revision;
+            update(patch);
+            return;
+        }
+        update(patch);
+        queueSearchCommit(editor, editorCaret);
+    };
 
     // Editor 收起/展开切换：手动收起优先于聚焦自动展开；再次点按钮恢复自动行为。
     // 收起不清正文——内容仍留在 textarea 里，展开即恢复。
@@ -808,8 +1128,23 @@ const CommonTextComposeModal = memo(() => {
 
     const setManualQuery = (manualQuery: string) => update({ manualQuery, selectedIndex: 0 });
 
-    const updateEditorCaret = (target: HTMLTextAreaElement) =>
-        update({ editorCaret: target.selectionStart ?? target.value.length, selectedIndex: 0 });
+    const updateEditorCaret = (target: HTMLTextAreaElement) => {
+        const caret = target.selectionStart ?? target.value.length;
+        const editor = target.value;
+        const revision = caretContextSignature(editor, caret);
+        const changed = revision !== stateRef.current.caretTokenRevision;
+        const patch: Partial<ComposeState> = { editorCaret: caret };
+        if (changed) patch.selectedIndex = 0;
+        if (!COMMONTEXT_PERF_INPUT_ENABLED) {
+            patch.searchText = editor;
+            patch.searchCaret = caret;
+            patch.caretTokenRevision = revision;
+            update(patch);
+            return;
+        }
+        update(patch);
+        if (changed) queueSearchCommit(editor, caret, true);
+    };
 
     const toggleTag = (tag: string) => {
         setState((cur) => {
@@ -849,7 +1184,8 @@ const CommonTextComposeModal = memo(() => {
         const editor = editorRef.current;
         const prevCaret = editor?.selectionStart ?? state.editor.length;
         const newText = removeSessionTagFromNote(state.editor, tag);
-        update({ editor: newText, editorCaret: Math.min(prevCaret, newText.length), editorFilterDismissed: false });
+        const nextCaret = Math.min(prevCaret, newText.length);
+        setEditor(newText, nextCaret);
         if (newText === state.editor) return;
         if (editor != null) {
             requestAnimationFrame(() => {
@@ -896,6 +1232,9 @@ const CommonTextComposeModal = memo(() => {
             update({
                 editor: newEditor,
                 editorCaret: newEditor.length,
+                searchText: newEditor,
+                searchCaret: newEditor.length,
+                caretTokenRevision: caretContextSignature(newEditor, newEditor.length),
                 editorFilterDismissed: false,
                 selectedIndex: 0,
                 insertedIds,
@@ -913,9 +1252,13 @@ const CommonTextComposeModal = memo(() => {
             editor.focus();
         }
         editor.setRangeText(item.text, start, end, "end");
+        const nextCaret = start + item.text.length;
         update({
             editor: newEditor,
-            editorCaret: start + item.text.length,
+            editorCaret: nextCaret,
+            searchText: newEditor,
+            searchCaret: nextCaret,
+            caretTokenRevision: caretContextSignature(newEditor, nextCaret),
             editorFilterDismissed: false,
             selectedIndex: 0,
             insertedIds,
@@ -1021,6 +1364,52 @@ const CommonTextComposeModal = memo(() => {
             saveStatusMsgRef.current = (err as Error)?.message ?? i18n.t("commontext:status.saveFailedMsg");
         }
     };
+
+    const handleRowInsertItem = (item: CommonTextItem) => {
+        fireAndForget(async () => {
+            const result = await insertOrCopyCommonText(item.text);
+            setStatus(
+                result === "inserted"
+                    ? i18n.t("commontext:status.inserted")
+                    : i18n.t("commontext:status.copiedNoTarget"),
+                result === "inserted" ? "ok" : "info"
+            );
+            // 先把详情区未落盘的草稿写完再计数：两条写路径都是
+            // "读全表 → 改 → 写全表"，交错会把用户刚改的正文覆盖掉。
+            // 顺手取消防抖定时器，免得同一份草稿再被写一遍。
+            if (detailSaveTimerRef.current != null) {
+                window.clearTimeout(detailSaveTimerRef.current);
+                detailSaveTimerRef.current = null;
+            }
+            await flushDetailSave({ keepDirty: true });
+            // 行内插入/无目标回退复制同样是一次使用：与详情 Insert 同口径计数。
+            await recordCommonTextUse(item.id);
+        });
+    };
+    const handleListItemClickRef = useRef(handleListItemClick);
+    handleListItemClickRef.current = handleListItemClick;
+    const handleRowInsertItemRef = useRef(handleRowInsertItem);
+    handleRowInsertItemRef.current = handleRowInsertItem;
+
+    // 稳定行回调：窗口化后行组件是 memo 的，不能每次父层渲染换闭包。
+    const handleRowSelect = useCallback((item: CommonTextItem) => {
+        if (COMMONTEXT_PERF_INPUT_ENABLED) {
+            const items = flushSearchRef.current();
+            const target = items.find((next) => next.id === item.id) ?? item;
+            handleListItemClickRef.current(target);
+            return;
+        }
+        handleListItemClickRef.current(item);
+    }, []);
+    const handleRowInsert = useCallback((item: CommonTextItem) => {
+        if (COMMONTEXT_PERF_INPUT_ENABLED) {
+            const items = flushSearchRef.current();
+            const target = items.find((next) => next.id === item.id) ?? item;
+            handleRowInsertItemRef.current(target);
+            return;
+        }
+        handleRowInsertItemRef.current(item);
+    }, []);
 
     // 防抖触发：detailDirty 被置 true 后排 800ms 一次性 flush，timer 在每次新改动时被清并重排。
     useEffect(() => {
@@ -1166,19 +1555,25 @@ const CommonTextComposeModal = memo(() => {
     const handleListKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
         if (event.key === "ArrowDown") {
             event.preventDefault();
-            update({ selectedIndex: Math.min(state.selectedIndex + 1, Math.max(0, filteredItems.length - 1)) });
+            const nextIndex = Math.min(state.selectedIndex + 1, Math.max(0, filteredItems.length - 1));
+            update({ selectedIndex: nextIndex });
+            scrollListToIndex(nextIndex);
             return;
         }
         if (event.key === "ArrowUp") {
             event.preventDefault();
-            update({ selectedIndex: Math.max(0, state.selectedIndex - 1) });
+            const nextIndex = Math.max(0, state.selectedIndex - 1);
+            update({ selectedIndex: nextIndex });
+            scrollListToIndex(nextIndex);
             return;
         }
         if (event.key === "Enter") {
             // Enter 不再插入 editor，而是与 click 同语义：把选中项拉进右侧详情就地编辑态。
             // 详情 textarea 自己有 Enter = 换行；这里只处理列表聚焦时的 Enter。
             event.preventDefault();
-            const selected = filteredItems[state.selectedIndex];
+            const items = COMMONTEXT_PERF_INPUT_ENABLED ? flushSearchRef.current() : filteredItems;
+            const index = Math.min(stateRef.current.selectedIndex, Math.max(0, items.length - 1));
+            const selected = items[index];
             if (selected != null) handleListItemClick(selected);
             return;
         }
@@ -1205,18 +1600,24 @@ const CommonTextComposeModal = memo(() => {
         }
         if (event.key === "ArrowDown") {
             event.preventDefault();
-            update({ selectedIndex: Math.min(state.selectedIndex + 1, Math.max(0, filteredItems.length - 1)) });
+            const nextIndex = Math.min(state.selectedIndex + 1, Math.max(0, filteredItems.length - 1));
+            update({ selectedIndex: nextIndex });
+            scrollListToIndex(nextIndex);
             return;
         }
         if (event.key === "ArrowUp") {
             event.preventDefault();
-            update({ selectedIndex: Math.max(0, state.selectedIndex - 1) });
+            const nextIndex = Math.max(0, state.selectedIndex - 1);
+            update({ selectedIndex: nextIndex });
+            scrollListToIndex(nextIndex);
             return;
         }
         if (event.key === "Enter") {
             // Enter 不再插入 editor，与 click 同语义：进详情就地编辑态。
             event.preventDefault();
-            const selected = filteredItems[state.selectedIndex];
+            const items = COMMONTEXT_PERF_INPUT_ENABLED ? flushSearchRef.current() : filteredItems;
+            const index = Math.min(stateRef.current.selectedIndex, Math.max(0, items.length - 1));
+            const selected = items[index];
             if (selected != null) handleListItemClick(selected);
         }
     };
@@ -1248,6 +1649,9 @@ const CommonTextComposeModal = memo(() => {
                     ...cur,
                     editor: next.text,
                     editorCaret: next.caret,
+                    searchText: next.text,
+                    searchCaret: next.caret,
+                    caretTokenRevision: caretContextSignature(next.text, next.caret),
                     editorFilterDismissed: false,
                     selectedIndex: 0,
                 };
@@ -1317,6 +1721,11 @@ const CommonTextComposeModal = memo(() => {
         compositionEndTimerRef.current = window.requestAnimationFrame(() => {
             isComposingRef.current = false;
             compositionEndTimerRef.current = null;
+            if (COMMONTEXT_PERF_INPUT_ENABLED) {
+                const editor = editorRef.current?.value ?? stateRef.current.editor;
+                const caret = editorRef.current?.selectionStart ?? stateRef.current.editorCaret;
+                queueSearchCommit(editor, caret, true);
+            }
         });
     };
 
@@ -1704,9 +2113,12 @@ const CommonTextComposeModal = memo(() => {
                         </div>
                         <div
                             ref={listScrollRef}
-                            className="flex-1 overflow-y-auto flex flex-col"
+                            className="flex-1 overflow-y-auto overflow-x-hidden flex flex-col"
                             tabIndex={0}
                             onKeyDown={handleListKeyDown}
+                            data-commontext-total={filteredItems.length}
+                            data-commontext-window={`${listWindow.start}-${listWindow.end}`}
+                            onScroll={COMMONTEXT_PERF_WINDOWING_ENABLED ? handleListScroll : undefined}
                             // 列表区有 tabIndex={0} 才能接键盘上下键，但也意味着鼠标点一下它就会
                             // 抢走 activeElement——上方 editor 的中文输入正合到一半时这是把焦点甩飞
                             // 的第二条暗道。mousedown 上 preventDefault 让"鼠标点列表"不再改焦点，
@@ -1719,10 +2131,29 @@ const CommonTextComposeModal = memo(() => {
                                     <div>{emptyListMessage}</div>
                                 </div>
                             ) : (
-                                filteredItems.map((item, index) => {
-                                    // 每行只算一次 tooltip：列表上限 500 行，按键重渲染时不重复格式化日期。
-                                    const metaTooltip = describeCommonTextTime(item);
-                                    return (
+                                <>
+                                    {COMMONTEXT_PERF_WINDOWING_ENABLED && listWindow.start > 0 && (
+                                        <div style={{ height: listWindow.start * ROW_HEIGHT }} aria-hidden="true" />
+                                    )}
+                                    {filteredItems.slice(listWindow.start, listWindow.end).map((item, index) => {
+                                        const absoluteIndex = listWindow.start + index;
+                                        if (COMMONTEXT_PERF_WINDOWING_ENABLED) {
+                                            return (
+                                                <CommonTextRow
+                                                    key={item.id}
+                                                    item={item}
+                                                    index={absoluteIndex}
+                                                    selected={state.selectedIndex === absoluteIndex}
+                                                    nowMinute={nowMinute}
+                                                    language={i18n.language}
+                                                    onSelect={handleRowSelect}
+                                                    onInsert={handleRowInsert}
+                                                />
+                                            );
+                                        }
+                                        // 窗口化关闭时保留旧行 DOM，作为逐字节回滚基线。
+                                        const metaTooltip = describeCommonTextTime(item);
+                                        return (
                                         <div
                                             key={item.id}
                                             data-common-text-index={index}
@@ -1864,7 +2295,14 @@ const CommonTextComposeModal = memo(() => {
                                             </div>
                                         </div>
                                     );
-                                })
+                                    })}
+                                    {COMMONTEXT_PERF_WINDOWING_ENABLED && listWindow.end < filteredItems.length && (
+                                        <div
+                                            style={{ height: (filteredItems.length - listWindow.end) * ROW_HEIGHT }}
+                                            aria-hidden="true"
+                                        />
+                                    )}
+                                </>
                             )}
                         </div>
                     </div>

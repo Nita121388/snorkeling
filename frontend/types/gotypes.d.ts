@@ -758,6 +758,7 @@ declare global {
         value: any;
         name?: string;
         scope?: string;
+        addoptions?: string[];
     };
 
     // wshrpc.AgentCardResult

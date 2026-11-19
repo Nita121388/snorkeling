@@ -1,0 +1,29 @@
+{
+  "id": "agent-card-model-title-display",
+  "name": "agent-card-model-title-display",
+  "title": "Agent 卡片模型与标题展示整改",
+  "description": "修复 agent card 模型展示滞后、模型供应商未拆分展示、标题来源文案过长三个问题",
+  "status": "planning",
+  "dev_type": null,
+  "scope": null,
+  "package": "snorkeling-docs",
+  "priority": "P1",
+  "creator": "nita",
+  "assignee": "nita",
+  "createdAt": "2026-11-19",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": "snorkeling",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [
+    "11-19-agent-card-model-provider",
+    "11-19-agent-card-title-source-marker"
+  ],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {}
+}

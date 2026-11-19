@@ -1,0 +1,2169 @@
+
+[1m[46m RUN [49m[22m [36mv3.2.4 [39m[90mE:/code/snorkeling[39m
+
+[1m[43m DEPRECATED [49m[22m [33m'basic' reporter is deprecated and will be removed in Vitest v3.
+Remove 'basic' from 'reporters' option. To match 'basic' reporter 100%, use configuration:
+{
+  "test": {
+    "reporters": [
+      [
+        "default",
+        {
+          "summary": false
+        }
+      ]
+    ]
+  }
+}[39m
+ [31m❯[39m frontend/app/block/block-title.test.ts [2m([22m[2m5 tests[22m[2m | [22m[31m1 failed[39m[2m)[22m[32m 39[2mms[22m[39m
+   [32m✓[39m heroHeaderName[2m > [22mreturns the stamped hero identity[32m 5[2mms[22m[39m
+[31m   [31m×[31m heroHeaderName[2m > [22mstrips the duplicated hero emoji from legacy stamps[39m[32m 24[2mms[22m[39m
+[31m     → expected '🦸 状态维护Hero' to be '状态维护Hero' // Object.is equality[39m
+   [32m✓[39m heroHeaderName[2m > [22mkeeps a leading emoji when it differs from the block emoji[32m 1[2mms[22m[39m
+   [32m✓[39m heroHeaderName[2m > [22mreturns empty for blocks without hero identity[32m 1[2mms[22m[39m
+   [32m✓[39m block.tsx defaultTitle wiring[2m > [22mprefers the hero identity over the cwd basename[32m 4[2mms[22m[39m
+Browserslist: browsers data (caniuse-lite) is 11 months old. Please run:
+  npx update-browserslist-db@latest
+  Why you should do it regularly: https://github.com/browserslist/update-db#readme
+ [31m❯[39m frontend/app/workspace/hero-launch.test.ts [2m([22m[2m19 tests[22m[2m | [22m[31m1 failed[39m[2m)[22m[32m 61[2mms[22m[39m
+   [32m✓[39m makeHeroHomeBase[2m > [22mjoins root and id with a single slash[32m 6[2mms[22m[39m
+   [32m✓[39m makeHeroHomeBase[2m > [22mcollapses redundant separators on both sides[32m 1[2mms[22m[39m
+   [32m✓[39m makeHeroHomeBase[2m > [22mreturns empty for blank sides[32m 1[2mms[22m[39m
+   [32m✓[39m heroRosterLabel[2m > [22mprefixes the emoji when present[32m 1[2mms[22m[39m
+   [32m✓[39m heroRosterLabel[2m > [22mfalls back to the id when the name is blank[32m 1[2mms[22m[39m
+   [32m✓[39m heroRosterLabel[2m > [22mreturns empty for null[32m 1[2mms[22m[39m
+   [32m✓[39m heroInjectionPrompt[2m > [22mcarries the main workdir, name, id and home base[32m 2[2mms[22m[39m
+   [32m✓[39m resolveHeroProfileName[2m > [22mmatches the declared provider case-insensitively[32m 1[2mms[22m[39m
+   [32m✓[39m resolveHeroProfileName[2m > [22mfalls back to undefined for unknown providers[32m 1[2mms[22m[39m
+   [32m✓[39m resolveHeroProfileName[2m > [22mfalls back to undefined when the hero declares nothing[32m 1[2mms[22m[39m
+   [32m✓[39m buildHeroLaunchBlockDef[2m > [22mlaunches in the home base with meta.hero = id[32m 3[2mms[22m[39m
+[31m   [31m×[31m buildHeroLaunchBlockDef[2m > [22mstamps the hero identity (hero:name / display:name) for header display[39m[32m 26[2mms[22m[39m
+[31m     → expected '🦸 状态维护Hero' to be '状态维护Hero' // Object.is equality[39m
+   [32m✓[39m buildHeroLaunchBlockDef[2m > [22mfalls back to the id when the hero declares no name[32m 1[2mms[22m[39m
+   [32m✓[39m buildHeroLaunchBlockDef[2m > [22mapplies the hero model as a per-launch override via cmd:args[32m 2[2mms[22m[39m
+   [32m✓[39m buildHeroLaunchBlockDef[2m > [22mappends the injection text as the last positional arg when enabled[32m 1[2mms[22m[39m
+   [32m✓[39m buildHeroLaunchBlockDef[2m > [22mkeeps the meta but skips the positional arg for providers outside the allowlist[32m 1[2mms[22m[39m
+   [32m✓[39m buildHeroLaunchBlockDef[2m > [22mdoes not inject when the toggle is off[32m 1[2mms[22m[39m
+   [32m✓[39m buildHeroLaunchBlockDef[2m > [22mhonours explicit popup profile and model picks over hero.json[32m 2[2mms[22m[39m
+   [32m✓[39m buildHeroLaunchBlockDef[2m > [22mdefaults to the codex profile when the hero declares no provider[32m 1[2mms[22m[39m
+[90mstderr[2m | frontend/app/view/term/term-header-emoji-only.test.ts
+[22m[39mNot implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+
+[90mstderr[2m | frontend/app/view/term/term-header-emoji-only.test.ts
+[22m[39mNot implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+
+[90mstderr[2m | frontend/app/view/term/term-header-emoji-only.test.ts
+[22m[39mNot implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+
+[90mstderr[2m | frontend/app/view/term/term-header-emoji-only.test.ts
+[22m[39mNot implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+
+ [31m❯[39m frontend/app/view/term/term-header-emoji-only.test.ts [2m([22m[2m12 tests[22m[2m | [22m[31m2 failed[39m[2m)[22m[32m 95[2mms[22m[39m
+   [32m✓[39m makeAgentHeaderEmojiOnlyAtom (session-scoped, not global)[2m > [22mis false until this exact session turns emoji-only on[32m 7[2mms[22m[39m
+   [32m✓[39m makeAgentHeaderEmojiOnlyAtom (session-scoped, not global)[2m > [22mturns true for this session[32m 2[2mms[22m[39m
+   [32m✓[39m makeAgentHeaderEmojiOnlyAtom (session-scoped, not global)[2m > [22mstays false when only another session is emoji-only[32m 2[2mms[22m[39m
+   [32m✓[39m makeAgentHeaderEmojiOnlyAtom (session-scoped, not global)[2m > [22mresolves the session from agentStatus when meta has no explicit id[32m 2[2mms[22m[39m
+   [32m✓[39m buildCmdCwdHeaderElem[2m > [22mrenders the folder name of the cwd in full mode[32m 6[2mms[22m[39m
+   [32m✓[39m buildCmdCwdHeaderElem[2m > [22mrenders nothing in emoji-only mode[32m 1[2mms[22m[39m
+   [32m✓[39m buildCmdCwdHeaderElem[2m > [22mrenders nothing without a cwd[32m 0[2mms[22m[39m
+[31m   [31m×[31m buildCmdCwdHeaderElem[2m > [22mshows the hero identity instead of the home-base directory hash[39m[32m 34[2mms[22m[39m
+[31m     → expected { elemtype: 'copytext', …(4) } to match object { elemtype: 'copytext', …(2) }
+(2 matching properties omitted from actual)[39m
+   [32m✓[39m buildCmdCwdHeaderElem[2m > [22mfalls back to the directory basename when no hero identity is given[32m 2[2mms[22m[39m
+[31m   [31m×[31m viewText wiring[2m > [22masks the session-scoped atom before pushing the cwd element[39m[32m 28[2mms[22m[39m
+[31m     → expected '// Copyright 2026, Command Line Inc.\…' to contain 'heroHeaderName(blockMeta)'[39m
+   [32m✓[39m getTabDisplayMode baseline[2m > [22mdefaults to full for unknown sessions[32m 3[2mms[22m[39m
+   [32m✓[39m getTabDisplayMode baseline[2m > [22mkeeps TermViewModel exporting the atoms the header depends on[32m 1[2mms[22m[39m
+
+
+[31m⎯⎯⎯⎯⎯⎯⎯[39m[1m[41m Failed Tests 4 [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯[39m
+
+[41m[1m FAIL [22m[49m frontend/app/block/block-title.test.ts[2m > [22mheroHeaderName[2m > [22mstrips the duplicated hero emoji from legacy stamps
+[31m[1mAssertionError[22m: expected '🦸 状态维护Hero' to be '状态维护Hero' // Object.is equality[39m
+
+Expected: [32m"状态维护Hero"[39m
+Received: [31m"[7m🦸 [27m状态维护Hero"[39m
+
+[36m [2m❯[22m frontend/app/block/block-title.test.ts:[2m27:85[22m[39m
+    [90m 25| [39m
+    [90m 26| [39m    [34mit[39m([32m"strips the duplicated hero emoji from legacy stamps"[39m[33m,[39m () [33m=>[39m {
+    [90m 27| [39m        expect(heroHeaderName({ "agent:emoji": "🦸", "hero:name": "🦸 …
+    [90m   | [39m                                                                                    [31m^[39m
+    [90m 28| [39m    })[33m;[39m
+    [90m 29| [39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/4]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m frontend/app/workspace/hero-launch.test.ts[2m > [22mbuildHeroLaunchBlockDef[2m > [22mstamps the hero identity (hero:name / display:name) for header display
+[31m[1mAssertionError[22m: expected '🦸 状态维护Hero' to be '状态维护Hero' // Object.is equality[39m
+
+Expected: [32m"状态维护Hero"[39m
+Received: [31m"[7m🦸 [27m状态维护Hero"[39m
+
+[36m [2m❯[22m frontend/app/workspace/hero-launch.test.ts:[2m102:35[22m[39m
+    [90m100| [39m        [35mconst[39m meta [33m=[39m blockDef[33m.[39mmeta [35mas[39m [33mRecord[39m[33m<[39mstring[33m,[39m unknown[33m>[39m[33m;[39m
+    [90m101| [39m        [34mexpect[39m(meta[[32m"agent:emoji"[39m])[33m.[39m[34mtoBe[39m([32m"🦸"[39m)[33m;[39m
+    [90m102| [39m        [34mexpect[39m(meta[[32m"hero:name"[39m])[33m.[39m[34mtoBe[39m([32m"状态维护Hero"[39m)[33m;[39m
+    [90m   | [39m                                  [31m^[39m
+    [90m103| [39m        [34mexpect[39m(meta[[32m"display:name"[39m])[33m.[39m[34mtoBe[39m([32m"状态维护Hero"[39m)[33m;[39m
+    [90m104| [39m    })[33m;[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/4]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m frontend/app/view/term/term-header-emoji-only.test.ts[2m > [22mbuildCmdCwdHeaderElem[2m > [22mshows the hero identity instead of the home-base directory hash
+[31m[1mAssertionError[22m: expected { elemtype: 'copytext', …(4) } to match object { elemtype: 'copytext', …(2) }
+(2 matching properties omitted from actual)[39m
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[2m  {[22m
+[32m-   "displayText": "状态维护Hero",[39m
+[31m+   "displayText": "🦸 状态维护Hero",[39m
+[2m    "elemtype": "copytext",[22m
+[2m    "text": "E:\\primary\\heros/hero-feaa3f86",[22m
+[2m  }[22m
+
+[36m [2m❯[22m frontend/app/view/term/term-header-emoji-only.test.ts:[2m110:22[22m[39m
+    [90m108| [39m        const homeBase = String.raw`E:\primary\heros` + "/hero-feaa3f8…
+    [90m109| [39m        const elem = buildCmdCwdHeaderElem(homeBase, false, "🦸 状态维护He…
+    [90m110| [39m        expect(elem).toMatchObject({ elemtype: "copytext", text: homeB…
+    [90m   | [39m                     [31m^[39m
+    [90m111| [39m    })[33m;[39m
+    [90m112| [39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/4]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m frontend/app/view/term/term-header-emoji-only.test.ts[2m > [22mviewText wiring[2m > [22masks the session-scoped atom before pushing the cwd element
+[31m[1mAssertionError[22m: expected '// Copyright 2026, Command Line Inc.\…' to contain 'heroHeaderName(blockMeta)'[39m
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- heroHeaderName(blockMeta)[39m
+[31m+ // Copyright 2026, Command Line Inc.[39m
+[31m+ // SPDX-License-Identifier: Apache-2.0[39m
+[31m+[39m
+[31m+ import { openAgentEmojiPicker } from "@/app/agent-persona/picker-host";[39m
+[31m+ import { getTabDisplayMode, tabDisplayModeRevisionAtom } from "@/app/agent-persona/tab-display-store";[39m
+[31m+ import { agentPersonaAtom } from "@/app/agent-persona/use-agent-personas";[39m
+[31m+ import { sessionEmojiAtom } from "@/app/agent-persona/use-session-personas";[39m
+[31m+ import { ackAgentStatus } from "@/app/agent-status/agent-status-ack";[39m
+[31m+ import { buildAgentStatusChipView } from "@/app/agent-status/agent-status-chip-view";[39m
+[31m+ import { formatAgentProvider } from "@/app/agent-status/agent-status-derive";[39m
+[31m+ import { agentStatusDoneAckStore } from "@/app/agent-status/agent-status-done-ack-store";[39m
+[31m+ import { nowMinuteTickAtom } from "@/app/agent-status/agent-status-done-tick";[39m
+[31m+ import { needsAgentChipRuntime } from "@/app/agent-status/agent-status-runtime";[39m
+[31m+ import { agentStatusSecondTickAtom } from "@/app/agent-status/agent-status-second-tick";[39m
+[31m+ import { AgentStatusStore } from "@/app/agent-status/agent-status-store";[39m
+[31m+ import type { AgentStatus } from "@/app/agent-status/agent-status-types";[39m
+[31m+ import { deriveAgentStatusView } from "@/app/agent-status/agent-status-view";[39m
+[31m+ import { WaveAIModel } from "@/app/aipanel/waveai-model";[39m
+[31m+ import { BlockNodeModel } from "@/app/block/blocktypes";[39m
+[31m+ import { makeSelectionSearchInFilesMenuItem } from "@/app/element/selection-copy-overlay";[39m
+[31m+ import { SessionOverviewModel } from "@/app/session-overview/session-overview-model";[39m
+[31m+ import { appHandleKeyDown } from "@/app/store/keymodel";[39m
+[31m+ import { modalsModel } from "@/app/store/modalmodel";[39m
+[31m+ import type { TabModel } from "@/app/store/tab-model";[39m
+[31m+ import { waveEventSubscribeSingle } from "@/app/store/wps";[39m
+[31m+ import { RpcApi } from "@/app/store/wshclientapi";[39m
+[31m+ import { makeFeBlockRouteId } from "@/app/store/wshrouter";[39m
+[31m+ import { DefaultRouter, TabRpcClient } from "@/app/store/wshrpcutil";[39m
+[31m+ import { isLightResolvedTheme } from "@/app/theme-mode";[39m
+[31m+ import { openAISessionDetailBlock } from "@/app/view/aisessions/session-detail-block";[39m
+[31m+ import { TermClaudeIcon, TerminalView } from "@/app/view/term/term";[39m
+[31m+ import { TermWshClient } from "@/app/view/term/term-wsh";[39m
+[31m+ import { VDomModel } from "@/app/view/vdom/vdom-model";[39m
+[31m+ import { WorkspaceLayoutModel } from "@/app/workspace/workspace-layout-model";[39m
+[31m+ import { i18n } from "@/i18n/config";[39m
+[31m+ import { I18nModel } from "@/i18n/i18nmodel";[39m
+[31m+ import {[39m
+[31m+     atoms,[39m
+[31m+     createBlock,[39m
+[31m+     createBlockSplitHorizontally,[39m
+[31m+     createBlockSplitVertically,[39m
+[31m+     getAllBlockComponentModels,[39m
+[31m+     getApi,[39m
+[31m+     getBlockComponentModel,[39m
+[31m+     getBlockMetaKeyAtom,[39m
+[31m+     getBlockTermDurableAtom,[39m
+[31m+     getConnStatusAtom,[39m
+[31m+     getOverrideConfigAtom,[39m
+[31m+     getSettingsKeyAtom,[39m
+[31m+     globalStore,[39m
+[31m+     readAtom,[39m
+[31m+     recordTEvent,[39m
+[31m+     useBlockAtom,[39m
+[31m+     WOS,[39m
+[31m+ } from "@/store/global";[39m
+[31m+ import * as services from "@/store/services";[39m
+[31m+ import { copyText } from "@/util/clipboard";[39m
+[31m+ import * as keyutil from "@/util/keyutil";[39m
+[31m+ import { isMacOS, isWindows } from "@/util/platformutil";[39m
+[31m+ import { basename, boundNumber, fireAndForget, stringToBase64 } from "@/util/util";[39m
+[31m+ import * as jotai from "jotai";[39m
+[31m+ import * as React from "react";[39m
+[31m+ import { canOpenAgentFolder, openAgentFolderInCurrentTab } from "./agent-folder";[39m
+[31m+ import { getAgentIcon } from "./agent-logo";[39m
+[31m+ import { isAgentTerminalMeta, normalizeAgentProvider } from "./agent-meta";[39m
+[31m+ import { extractAgentCommandFromTerminalText, resolveAgentSessionId } from "./agent-session";[39m
+[31m+ import {[39m
+[31m+     formatTerminalSessionDebugInfo,[39m
+[31m+     runAISessionsRpcProbe,[39m
+[31m+     sessionCopyCommandDebug,[39m
+[31m+     sessionCopyDebugPreview,[39m
+[31m+ } from "./session-debug";[39m
+[31m+ import { getBlockingCommand } from "./shellblocking";[39m
+[31m+ import { isFileUrl, terminalFilePath } from "./term-file-url";[39m
+[31m+ import { getNoteRenderSnapshot, getOutlineRenderSnapshot } from "./term-session-render-snapshot";[39m
+[31m+ import {[39m
+[31m+     computeTheme,[39m
+[31m+     getDefaultTermTheme,[39m
+[31m+     terminalLogicalLinesForSelection,[39m
+[31m+     terminalSelectionToSingleLine,[39m
+[31m+     trimTerminalSelection,[39m
+[31m+ } from "./termutil";[39m
+[31m+ import { isNoControllerFoundError, TermWrap, WebGLSupported } from "./termwrap";[39m
+[31m+[39m
+[31m+ const TerminalFontFamilies = ["Hack", "JetBrains Mono", "SF Mono", "Menlo", "Berkeley Mono"];[39m
+[31m+[39m
+[31m+ // Detects whether a font family is actually renderable (bundled via FontFace or[39m
+[31m+ // installed on the system). document.fonts.check() is unreliable here (it returns[39m
+[31m+ // true for missing fonts on some setups), so we compare canvas text metrics of the[39m
+[31m+ // target font against a generic fallback: if the widths differ, the font is applied.[39m
+[31m+ function isFontFamilyAvailable(fontFamily: string): boolean {[39m
+[31m+     if (typeof document === "undefined" || !document.createElement) {[39m
+[31m+         return true;[39m
+[31m+     }[39m
+[31m+     try {[39m
+[31m+         const canvas = document.createElement("canvas");[39m
+[31m+         const ctx = canvas.getContext("2d");[39m
+[31m+         if (!ctx) {[39m
+[31m+             return true;[39m
+[31m+         }[39m
+[31m+         const testStr = "mmMMilliW中文字体0O1";[39m
+[31m+         ctx.font = "12px serif";[39m
+[31m+         const baseline = ctx.measureText(testStr).width;[39m
+[31m+         ctx.font = `12px "${fontFamily}", serif`;[39m
+[31m+         const test = ctx.measureText(testStr).width;[39m
+[31m+         return Math.abs(test - baseline) > 0.5;[39m
+[31m+     } catch {[39m
+[31m+         return true;[39m
+[31m+     }[39m
+[31m+ }[39m
+[31m+[39m
+[31m+ /**[39m
+[31m+  * agent Block 头部的「仅显示 Emoji」镜像 atom。[39m
+[31m+  *[39m
+[31m+  * 这个开关是**会话级**的（tab-display-store，key = sessionId），不是全局设置：[39m
+[31m+  * 只看本块的 agent 会话 id（显式 `agent:sessionid` meta 优先，否则从命令解析，[39m
+[31m+  * 再落到 agentStatus 上报）。别的会话勾选不影响本块。[39m
+[31m+  *[39m
+[31m+  * 抽成模块级工厂：构造函数太重，单测直接拿真 atom 验证（term-header-emoji-only.test.ts）。[39m
+[31m+  * `get(tabDisplayModeRevisionAtom)` 建立重算依赖 —— 外部 localStorage 快照不是 jotai[39m
+[31m+  * 状态，picker 里勾/去掉勾后头部同帧重算。[39m
+[31m+  */[39m
+[31m+ export function makeAgentHeaderEmojiOnlyAtom([39m
+[31m+     blockAtom: jotai.Atom<Block>,[39m
+[31m+     agentStatusAtom: jotai.Atom<AgentStatus | null>[39m
+[31m+ ): jotai.Atom<boolean> {[39m
+[31m+     return jotai.atom((get) => {[39m
+[31m+         get(tabDisplayModeRevisionAtom);[39m
+[31m+         const blockMeta = get(blockAtom)?.meta;[39m
+[31m+         const explicitSessionId =[39m
+[31m+             typeof blockMeta?.["agent:sessionid"] === "string" && blockMeta["agent:sessionid"] !== ""[39m
+[31m+                 ? blockMeta["agent:sessionid"][39m
+[31m+                 : "";[39m
+[31m+         const sessionId =[39m
+[31m+             explicitSessionId ||[39m
+[31m+             resolveAgentSessionId(blockMeta ?? {}).sessionId ||[39m
+[31m+             get(agentStatusAtom)?.sessionId ||[39m
+[31m+             "";[39m
+[31m+         return getTabDisplayMode(sessionId) === "emoji-only";[39m
+[31m+     });[39m
+[31m+ }[39m
+[31m+[39m
+[31m+ /**[39m
+[31m+  * cmd 类 agent Block 头部的 cwd 路径元素。[39m
+[31m+  *[39m
+[31m+  * 「仅显示 Emoji」（会话级，见 tab-display-store）开启时返回 null —— 头部只留图标与[39m
+[31m+  * 状态徽章，不再显示项目路径；否则返回可点击复制完整路径的 copytext 元素。[39m
+[31m+  *[39m
+[31m+  * Hero 登场块传 heroName：据点目录名是磁盘不变量（目录名 == id，中文名 Hero 必然[39m
+[31m+  * hero-<hash8>），displayText 用身份而非哈希目录名；复制内容与 tooltip 仍是完整路径。[39m
+[31m+  */[39m
+[31m+ export function buildCmdCwdHeaderElem([39m
+[31m+     cmdCwd: unknown,[39m
+[31m+     emojiOnly: boolean,[39m
+[31m+     heroName?: string[39m
+[31m+ ): HeaderElem | null {[39m
+[31m+     if (emojiOnly) {[39m
+[31m+         return null;[39m
+[31m+     }[39m
+[31m+     if (typeof cmdCwd !== "string" || cmdCwd.trim().length === 0) {[39m
+[31m+         return null;[39m
+[31m+     }[39m
+[31m+     const trimmedHeroName = typeof heroName === "string" ? heroName.trim() : "";[39m
+[31m+     return {[39m
+[31m+         elemtype: "copytext",[39m
+[31m+         text: cmdCwd,[39m
+[31m+         displayText: trimmedHeroName !== "" ? trimmedHeroName : basename(cmdCwd),[39m
+[31m+         title: "Click to copy full path",[39m
+[31m+         className: "text-muted",[39m
+[31m+     };[39m
+[31m+ }[39m
+[31m+[39m
+[31m+ export class TermViewModel implements ViewModel {[39m
+[31m+     viewType: string;[39m
+[31m+     nodeModel: BlockNodeModel;[39m
+[31m+     tabModel: TabModel;[39m
+[31m+     connected: boolean;[39m
+[31m+     termRef: React.RefObject<TermWrap> = { current: null };[39m
+[31m+     blockAtom: jotai.Atom<Block>;[39m
+[31m+     termMode: jotai.Atom<string>;[39m
+[31m+     blockId: string;[39m
+[31m+     viewIcon: jotai.Atom<IconButtonDecl>;[39m
+[31m+     viewName: jotai.Atom<string>;[39m
+[31m+     viewText: jotai.Atom<HeaderElem[]>;[39m
+[31m+     /** 会话级「仅显示 Emoji」镜像：true 时头部隐藏 cwd 路径（跟随会话，非全局）。 */[39m
+[31m+     emojiOnlyHeaderAtom: jotai.Atom<boolean>;[39m
+[31m+     blockBg: jotai.Atom<MetaType>;[39m
+[31m+     manageConnection: jotai.Atom<boolean>;[39m
+[31m+     filterOutNowsh?: jotai.Atom<boolean>;[39m
+[31m+     connStatus: jotai.Atom<ConnStatus>;[39m
+[31m+     useTermHeader: jotai.Atom<boolean>;[39m
+[31m+     termWshClient: TermWshClient;[39m
+[31m+     vdomBlockId: jotai.Atom<string>;[39m
+[31m+     vdomToolbarBlockId: jotai.Atom<string>;[39m
+[31m+     vdomToolbarTarget: jotai.PrimitiveAtom<VDomTargetToolbar>;[39m
+[31m+     fontSizeAtom: jotai.Atom<number>;[39m
+[31m+     termThemeNameAtom: jotai.Atom<string>;[39m
+[31m+     termTransparencyAtom: jotai.Atom<number>;[39m
+[31m+     termBPMAtom: jotai.Atom<boolean>;[39m
+[31m+     noPadding: jotai.PrimitiveAtom<boolean>;[39m
+[31m+     endIconButtons: jotai.Atom<IconButtonDecl[]>;[39m
+[31m+     shellProcFullStatus: jotai.PrimitiveAtom<BlockControllerRuntimeStatus>;[39m
+[31m+     shellProcStatus: jotai.Atom<string>;[39m
+[31m+     shellProcStatusUnsubFn: () => void;[39m
+[31m+     agentStatusAtom: jotai.Atom<AgentStatus | null>;[39m
+[31m+     blockJobStatusAtom: jotai.PrimitiveAtom<BlockJobStatusData>;[39m
+[31m+     blockJobStatusVersionTs: number;[39m
+[31m+     blockJobStatusUnsubFn: () => void;[39m
+[31m+     termBPMUnsubFn: () => void;[39m
+[31m+     termCursorUnsubFn: () => void;[39m
+[31m+     termCursorBlinkUnsubFn: () => void;[39m
+[31m+     isCmdController: jotai.Atom<boolean>;[39m
+[31m+     isRestarting: jotai.PrimitiveAtom<boolean>;[39m
+[31m+     termDurableStatus: jotai.Atom<BlockJobStatusData | null>;[39m
+[31m+     termConfigedDurable: jotai.Atom<null | boolean>;[39m
+[31m+     searchAtoms?: SearchAtoms;[39m
+[31m+[39m
+[31m+     constructor({ blockId, nodeModel, tabModel }: ViewModelInitType) {[39m
+[31m+         this.viewType = "term";[39m
+[31m+         this.blockId = blockId;[39m
+[31m+         this.tabModel = tabModel;[39m
+[31m+         this.termWshClient = new TermWshClient(blockId, this);[39m
+[31m+         DefaultRouter.registerRoute(makeFeBlockRouteId(blockId), this.termWshClient);[39m
+[31m+         this.nodeModel = nodeModel;[39m
+[31m+         this.blockAtom = WOS.getWaveObjectAtom<Block>(`block:${blockId}`);[39m
+[31m+         this.vdomBlockId = jotai.atom((get) => {[39m
+[31m+             const blockData = get(this.blockAtom);[39m
+[31m+             return blockData?.meta?.["term:vdomblockid"];[39m
+[31m+         });[39m
+[31m+         this.vdomToolbarBlockId = jotai.atom((get) => {[39m
+[31m+             const blockData = get(this.blockAtom);[39m
+[31m+             return blockData?.meta?.["term:vdomtoolbarblockid"];[39m
+[31m+         });[39m
+[31m+         this.vdomToolbarTarget = jotai.atom<VDomTargetToolbar>(null) as jotai.PrimitiveAtom<VDomTargetToolbar>;[39m
+[31m+         this.termMode = jotai.atom((get) => {[39m
+[31m+             const blockData = get(this.blockAtom);[39m
+[31m+             return blockData?.meta?.["term:mode"] ?? "term";[39m
+[31m+         });[39m
+[31m+         this.isRestarting = jotai.atom(false);[39m
+[31m+         this.viewIcon = jotai.atom((get) => {[39m
+[31m+             const termMode = get(this.termMode);[39m
+[31m+             if (termMode == "vdom") {[39m
+[31m+                 return { elemtype: "iconbutton", icon: "bolt" };[39m
+[31m+             }[39m
+[31m+             // agent block: 显示对应 agent 的品牌 icon 而不是通用 terminal 图标[39m
+[31m+             const blockMeta = get(this.blockAtom)?.meta;[39m
+[31m+             const agentStatus = get(this.agentStatusAtom);[39m
+[31m+             if (isAgentTerminalMeta(blockMeta) || agentStatus != null) {[39m
+[31m+                 const explicitProvider =[39m
+[31m+                     typeof blockMeta?.["agent:provider"] === "string" ? blockMeta["agent:provider"].trim() : "";[39m
+[31m+                 const commandResolution = resolveAgentSessionId(blockMeta ?? {});[39m
+[31m+                 const commandProvider = commandResolution.provider;[39m
+[31m+                 const provider = normalizeAgentProvider(explicitProvider || commandProvider || agentStatus?.provider);[39m
+[31m+                 if (provider !== "agent") {[39m
+[31m+                     const personas = get(agentPersonaAtom) ?? {};[39m
+[31m+                     const sessionEmojis = get(sessionEmojiAtom) ?? {};[39m
+[31m+                     // Hooks can report the session id before it is persisted into[39m
+[31m+                     // block meta (e.g. a freshly started session). Use it so[39m
+[31m+                     // "仅此会话" stays session-scoped instead of falling back to the[39m
+[31m+                     // provider-wide persona.[39m
+[31m+                     const resolvedSessionId = commandResolution.sessionId || agentStatus?.sessionId || "";[39m
+[31m+                     const iconSpec = getAgentIcon(provider, {[39m
+[31m+                         meta: blockMeta,[39m
+[31m+                         personas,[39m
+[31m+                         sessionEmojis,[39m
+[31m+                         sessionId: resolvedSessionId,[39m
+[31m+                     });[39m
+[31m+                     if (iconSpec != null) {[39m
+[31m+                         const openPicker = (e: React.MouseEvent<any>) => {[39m
+[31m+                             // The click that opens the picker also bubbles to the block,[39m
+[31m+                             // which focuses the terminal and steals focus from the search[39m
+[31m+                             // input — swallow it here.[39m
+[31m+                             e.preventDefault();[39m
+[31m+                             e.stopPropagation();[39m
+[31m+                             openAgentEmojiPicker([39m
+[31m+                                 this.blockId,[39m
+[31m+                                 provider,[39m
+[31m+                                 e.currentTarget.getBoundingClientRect(),[39m
+[31m+                                 "session",[39m
+[31m+                                 resolvedSessionId[39m
+[31m+                             );[39m
+[31m+                         };[39m
+[31m+                         if (iconSpec.kind === "emoji") {[39m
+[31m+                             return {[39m
+[31m+                                 elemtype: "iconbutton",[39m
+[31m+                                 icon: React.createElement("span", { className: "agent-emoji-icon" }, iconSpec.emoji),[39m
+[31m+                                 className: "agent-brand-icon",[39m
+[31m+                                 title: i18n.t("term:hoverCard.clickSetPersonaEmoji"),[39m
+[31m+                                 click: openPicker,[39m
+[31m+                             } as IconButtonDecl;[39m
+[31m+                         }[39m
+[31m+                         return {[39m
+[31m+                             elemtype: "iconbutton",[39m
+[31m+                             icon: iconSpec.icon,[39m
+[31m+                             iconColor: iconSpec.iconColor,[39m
+[31m+                             className: "agent-brand-icon",[39m
+[31m+                             title: i18n.t("term:hoverCard.clickSetPersonaEmoji"),[39m
+[31m+                             click: openPicker,[39m
+[31m+                         } as IconButtonDecl;[39m
+[31m+                     }[39m
+[31m+                 }[39m
+[31m+             }[39m
+[31m+             return { elemtype: "iconbutton", icon: "terminal" };[39m
+[31m+         });[39m
+[31m+         this.viewName = jotai.atom((get) => {[39m
+[31m+             // Locale dependency: without it the string would be frozen at the[39m
+[31m+             // locale that was active when the block was first rendered.[39m
+[31m+             get(I18nModel.getInstance().activeLocaleAtom);[39m
+[31m+             const blockData = get(this.blockAtom);[39m
+[31m+             const termMode = get(this.termMode);[39m
+[31m+             if (termMode == "vdom") {[39m
+[31m+                 return i18n.t("block:viewName.waveApp");[39m
+[31m+             }[39m
+[31m+             if (blockData?.meta?.controller == "cmd") {[39m
+[31m+                 return "";[39m
+[31m+             }[39m
+[31m+             return "";[39m
+[31m+         });[39m
+[31m+         this.viewText = jotai.atom((get) => {[39m
+[31m+             const termMode = get(this.termMode);[39m
+[31m+             if (termMode == "vdom") {[39m
+[31m+                 return [[39m
+[31m+                     {[39m
+[31m+                         elemtype: "iconbutton",[39m
+[31m+                         icon: "square-terminal",[39m
+[31m+                         title: "Switch back to Terminal",[39m
+[31m+                         click: () => {[39m
+[31m+                             this.setTermMode("term");[39m
+[31m+                         },[39m
+[31m+                     },[39m
+[31m+                 ];[39m
+[31m+             }[39m
+[31m+             const vdomBlockId = get(this.vdomBlockId);[39m
+[31m+             const rtn: HeaderElem[] = [];[39m
+[31m+             if (vdomBlockId) {[39m
+[31m+                 rtn.push({[39m
+[31m+                     elemtype: "iconbutton",[39m
+[31m+                     icon: "bolt",[39m
+[31m+                     title: "Switch to Wave App",[39m
+[31m+                     click: () => {[39m
+[31m+                         this.setTermMode("vdom");[39m
+[31m+                     },[39m
+[31m+                 });[39m
+[31m+             }[39m
+[31m+             const isCmd = get(this.isCmdController);[39m
+[31m+             if (isCmd) {[39m
+[31m+                 const blockMeta = get(this.blockAtom)?.meta;[39m
+[31m+                 const cmdArgs = blockMeta?.["cmd:args"];[39m
+[31m+                 const cmdCwd = blockMeta?.["cmd:cwd"];[39m
+[31m+                 const cmdRaw = blockMeta?.["cmd"];[39m
+[31m+                 const providerRaw = blockMeta?.["agent:provider"];[39m
+[31m+                 const explicitProvider =[39m
+[31m+                     typeof providerRaw === "string" && providerRaw.trim() !== "" ? providerRaw.trim() : "";[39m
+[31m+                 const commandProvider = resolveAgentSessionId(blockMeta ?? {}).provider;[39m
+[31m+                 const agentStatus = get(this.agentStatusAtom);[39m
+[31m+                 const provider = explicitProvider || commandProvider || agentStatus?.provider || "";[39m
+[31m+                 const hasCmdArgs = cmdArgs != null && Array.isArray(cmdArgs) && cmdArgs.length > 0;[39m
+[31m+                 const cmdArgsStr = hasCmdArgs ? cmdArgs.join(" ") : "";[39m
+[31m+                 // Agent blocks: surface the provider's short label (e.g. "Claude") instead of the raw[39m
+[31m+                 // command string, which may be an absolute path or carry args. Keep the original[39m
+[31m+                 // command text reachable via the tooltip for debugging.[39m
+[31m+                 const isAgentBlock = (isAgentTerminalMeta(blockMeta) || agentStatus != null) && provider !== "";[39m
+[31m+                 const headerText = isAgentBlock ? "" : cmdRaw;[39m
+[31m+                 const headerTitle = isAgentBlock[39m
+[31m+                     ? `${formatAgentProvider(provider)} · ${cmdRaw ?? ""}${cmdArgsStr ? " " + cmdArgsStr : ""}`[39m
+[31m+                     : undefined;[39m
+[31m+                 rtn.push({[39m
+[31m+                     elemtype: "text",[39m
+[31m+                     text: headerText,[39m
+[31m+                     title: headerTitle,[39m
+[31m+                     noGrow: true,[39m
+[31m+                 });[39m
+[31m+                 // 「仅显示 Emoji」开启时头部不显示项目路径（仅留图标与状态）。[39m
+[31m+                 // 该开关是会话级的，非 Agent 会话（无 sessionId）永远为 false，不受影响。[39m
+[31m+                 // Hero 登场块显示身份（hero:name）而非据点哈希目录名。[39m
+[31m+                 const heroName =[39m
+[31m+                     typeof blockMeta?.["hero:name"] === "string" ? (blockMeta["hero:name"] as string) : "";[39m
+[31m+                 const cwdElem = buildCmdCwdHeaderElem(cmdCwd, get(this.emojiOnlyHeaderAtom), heroName);[39m
+[31m+                 if (cwdElem != null) {[39m
+[31m+                     rtn.push(cwdElem);[39m
+[31m+                 }[39m
+[31m+                 const agentStatusElem = this.getAgentStatusHeaderElem(get, blockMeta);[39m
+[31m+                 if (agentStatusElem != null) {[39m
+[31m+                     rtn.push(agentStatusElem);[39m
+[31m+                 }[39m
+[31m+                 const isRestarting = get(this.isRestarting);[39m
+[31m+                 if (isRestarting) {[39m
+[31m+                     rtn.push({[39m
+[31m+                         elemtype: "iconbutton",[39m
+[31m+                         icon: "refresh",[39m
+[31m+                         iconColor: "var(--success-color)",[39m
+[31m+                         iconSpin: true,[39m
+[31m+                         title: "Restarting Command",[39m
+[31m+                         noAction: true,[39m
+[31m+                     });[39m
+[31m+                 } else {[39m
+[31m+                     const fullShellProcStatus = get(this.shellProcFullStatus);[39m
+[31m+                     if (fullShellProcStatus?.shellprocstatus == "done") {[39m
+[31m+                         if (fullShellProcStatus?.shellprocexitcode == 0) {[39m
+[31m+                             rtn.push({[39m
+[31m+                                 elemtype: "iconbutton",[39m
+[31m+                                 icon: "check",[39m
+[31m+                                 iconColor: "var(--success-color)",[39m
+[31m+                                 title: "Command Exited Successfully",[39m
+[31m+                                 noAction: true,[39m
+[31m+                             });[39m
+[31m+                         } else {[39m
+[31m+                             rtn.push({[39m
+[31m+                                 elemtype: "iconbutton",[39m
+[31m+                                 icon: "xmark-large",[39m
+[31m+                                 iconColor: "var(--error-color)",[39m
+[31m+                                 title: "Exit Code: " + fullShellProcStatus?.shellprocexitcode,[39m
+[31m+                                 noAction: true,[39m
+[31m+                             });[39m
+[31m+                         }[39m
+[31m+                     }[39m
+[31m+                 }[39m
+[31m+             }[39m
+[31m+             const isMI = get(this.tabModel.isTermMultiInput);[39m
+[31m+             if (isMI && this.isBasicTerm(get)) {[39m
+[31m+                 rtn.push({[39m
+[31m+                     elemtype: "textbutton",[39m
+[31m+                     text: "Multi Input ON",[39m
+[31m+                     className: "yellow !py-[2px] !px-[10px] text-[11px] font-[500]",[39m
+[31m+                     title: "Input will be sent to all connected terminals (click to disable)",[39m
+[31m+                     onClick: () => {[39m
+[31m+                         globalStore.set(this.tabModel.isTermMultiInput, false);[39m
+[31m+                     },[39m
+[31m+                 });[39m
+[31m+             }[39m
+[31m+             return rtn;[39m
+[31m+         });[39m
+[31m+         this.manageConnection = jotai.atom((get) => {[39m
+[31m+             const termMode = get(this.termMode);[39m
+[31m+             if (termMode == "vdom") {[39m
+[31m+                 return false;[39m
+[31m+             }[39m
+[31m+             const isCmd = get(this.isCmdController);[39m
+[31m+             if (isCmd) {[39m
+[31m+                 return false;[39m
+[31m+             }[39m
+[31m+             return true;[39m
+[31m+         });[39m
+[31m+         this.useTermHeader = jotai.atom((get) => {[39m
+[31m+             const termMode = get(this.termMode);[39m
+[31m+             if (termMode == "vdom") {[39m
+[31m+                 return false;[39m
+[31m+             }[39m
+[31m+             const isCmd = get(this.isCmdController);[39m
+[31m+             if (isCmd) {[39m
+[31m+                 return false;[39m
+[31m+             }[39m
+[31m+             return true;[39m
+[31m+         });[39m
+[31m+         this.filterOutNowsh = jotai.atom(false);[39m
+[31m+         // 方案A: 对 pi agent 终端块强制启用 bracketed paste mode。[39m
+[31m+         // Pi TUI 依赖 bracketed paste 标记(\x1b[200~/\x1b[201~)来正确处理多行粘贴；[39m
+[31m+         // 若 BPM 关闭，粘贴的 \r 会被误判为 Enter 触发提交，导致长文本被截断。[39m
+[31m+         // 参见 pi-tui issue #7321: Multi-line paste broken without bracketed paste.[39m
+[31m+         const rawBPAtom = getOverrideConfigAtom(blockId, "term:allowbracketedpaste");[39m
+[31m+         this.termBPMAtom = jotai.atom((get) => {[39m
+[31m+             const blockMeta = get(this.blockAtom)?.meta;[39m
+[31m+             const provider =[39m
+[31m+                 typeof blockMeta?.["agent:provider"] === "string"[39m
+[31m+                     ? blockMeta["agent:provider"].trim().toLowerCase()[39m
+[31m+                     : "";[39m
+[31m+             if (provider === "pi") {[39m
+[31m+                 return true; // pi agent block: always enable bracketed paste[39m
+[31m+             }[39m
+[31m+             return get(rawBPAtom) ?? true;[39m
+[31m+         }) as jotai.Atom<boolean>;[39m
+[31m+         this.termThemeNameAtom = useBlockAtom(blockId, "termthemeatom", () => {[39m
+[31m+             return jotai.atom<string>((get) => {[39m
+[31m+                 return ([39m
+[31m+                     get(getOverrideConfigAtom(this.blockId, "term:theme")) ??[39m
+[31m+                     getDefaultTermTheme(get(atoms.resolvedAppThemeAtom))[39m
+[31m+                 );[39m
+[31m+             });[39m
+[31m+         });[39m
+[31m+         this.termTransparencyAtom = useBlockAtom(blockId, "termtransparencyatom", () => {[39m
+[31m+             return jotai.atom<number>((get) => {[39m
+[31m+                 const appTheme = get(atoms.resolvedAppThemeAtom);[39m
+[31m+                 if (isLightResolvedTheme(appTheme)) {[39m
+[31m+                     return 0;[39m
+[31m+                 }[39m
+[31m+                 const value = get(getOverrideConfigAtom(this.blockId, "term:transparency")) ?? 0.5;[39m
+[31m+                 return boundNumber(value, 0, 1);[39m
+[31m+             });[39m
+[31m+         });[39m
+[31m+         this.blockBg = jotai.atom((get) => {[39m
+[31m+             const fullConfig = get(atoms.fullConfigAtom);[39m
+[31m+             const themeName = get(this.termThemeNameAtom);[39m
+[31m+             const termTransparency = get(this.termTransparencyAtom);[39m
+[31m+             const [_, bgcolor] = computeTheme(fullConfig, themeName, termTransparency);[39m
+[31m+             if (bgcolor != null) {[39m
+[31m+                 return { bg: bgcolor };[39m
+[31m+             }[39m
+[31m+             return null;[39m
+[31m+         });[39m
+[31m+         this.connStatus = jotai.atom((get) => {[39m
+[31m+             const blockData = get(this.blockAtom);[39m
+[31m+             const connName = blockData?.meta?.connection;[39m
+[31m+             const connAtom = getConnStatusAtom(connName);[39m
+[31m+             return get(connAtom);[39m
+[31m+         });[39m
+[31m+         this.fontSizeAtom = useBlockAtom(blockId, "fontsizeatom", () => {[39m
+[31m+             return jotai.atom<number>((get) => {[39m
+[31m+                 const blockData = get(this.blockAtom);[39m
+[31m+                 const fsSettingsAtom = getSettingsKeyAtom("term:fontsize");[39m
+[31m+                 const settingsFontSize = get(fsSettingsAtom);[39m
+[31m+                 const connName = blockData?.meta?.connection;[39m
+[31m+                 const fullConfig = get(atoms.fullConfigAtom);[39m
+[31m+                 const connFontSize = fullConfig?.connections?.[connName]?.["term:fontsize"];[39m
+[31m+                 const rtnFontSize = blockData?.meta?.["term:fontsize"] ?? connFontSize ?? settingsFontSize ?? 12;[39m
+[31m+                 if (typeof rtnFontSize != "number" || isNaN(rtnFontSize) || rtnFontSize < 4 || rtnFontSize > 64) {[39m
+[31m+                     return 12;[39m
+[31m+                 }[39m
+[31m+                 return rtnFontSize;[39m
+[31m+             });[39m
+[31m+         });[39m
+[31m+         this.noPadding = jotai.atom(true);[39m
+[31m+         this.endIconButtons = jotai.atom((get) => {[39m
+[31m+             const blockData = get(this.blockAtom);[39m
+[31m+             const shellProcStatus = get(this.shellProcStatus);[39m
+[31m+             const connStatus = get(this.connStatus);[39m
+[31m+             const isCmd = get(this.isCmdController);[39m
+[31m+             const rtn: IconButtonDecl[] = [];[39m
+[31m+[39m
+[31m+             const isAIPanelOpen = get(WorkspaceLayoutModel.getInstance().panelVisibleAtom);[39m
+[31m+             if (isAIPanelOpen) {[39m
+[31m+                 const shellIntegrationButton = this.getShellIntegrationIconButton(get);[39m
+[31m+                 if (shellIntegrationButton) {[39m
+[31m+                     shellIntegrationButton.zone = "reveal";[39m
+[31m+                     rtn.push(shellIntegrationButton);[39m
+[31m+                 }[39m
+[31m+             }[39m
+[31m+[39m
+[31m+             if (get(getSettingsKeyAtom("debug:webglstatus"))) {[39m
+[31m+                 const webglButton = this.getWebGlIconButton(get);[39m
+[31m+                 if (webglButton) {[39m
+[31m+                     webglButton.zone = "reveal";[39m
+[31m+                     rtn.push(webglButton);[39m
+[31m+                 }[39m
+[31m+             }[39m
+[31m+[39m
+[31m+             if (blockData?.meta?.["controller"] != "cmd" && shellProcStatus != "done") {[39m
+[31m+                 return rtn;[39m
+[31m+             }[39m
+[31m+             if (connStatus?.status != "connected") {[39m
+[31m+                 return rtn;[39m
+[31m+             }[39m
+[31m+             let iconName: string = null;[39m
+[31m+             let title: string = null;[39m
+[31m+             let click: () => void = null;[39m
+[31m+             const noun = isCmd ? "Command" : "Shell";[39m
+[31m+             if (shellProcStatus == "init") {[39m
+[31m+                 iconName = "play";[39m
+[31m+                 title = "Click to Start " + noun;[39m
+[31m+                 click = () => fireAndForget(() => this.forceRestartController());[39m
+[31m+             } else if (shellProcStatus == "running") {[39m
+[31m+                 // Redraw TUI: repaint the terminal buffer and nudge the running[39m
+[31m+                 // TUI process to redraw itself via SIGWINCH. Never restarts the[39m
+[31m+                 // controller or changes session state.[39m
+[31m+                 iconName = "refresh";[39m
+[31m+                 title = "Redraw TUI";[39m
+[31m+                 click = () => this.redrawTUI();[39m
+[31m+             } else if (shellProcStatus == "done") {[39m
+[31m+                 iconName = "refresh";[39m
+[31m+                 title = "Redraw TUI";[39m
+[31m+                 click = () => this.redrawTUI();[39m
+[31m+             }[39m
+[31m+             if (iconName != null) {[39m
+[31m+                 const buttonDecl: IconButtonDecl = {[39m
+[31m+                     elemtype: "iconbutton",[39m
+[31m+                     icon: iconName,[39m
+[31m+                     click: click,[39m
+[31m+                     title: title,[39m
+[31m+                 };[39m
+[31m+                 rtn.push(buttonDecl);[39m
+[31m+             }[39m
+[31m+             return rtn;[39m
+[31m+         });[39m
+[31m+         this.isCmdController = jotai.atom((get) => {[39m
+[31m+             const controllerMetaAtom = getBlockMetaKeyAtom(this.blockId, "controller");[39m
+[31m+             return get(controllerMetaAtom) == "cmd";[39m
+[31m+         });[39m
+[31m+         this.shellProcFullStatus = jotai.atom(null) as jotai.PrimitiveAtom<BlockControllerRuntimeStatus>;[39m
+[31m+         const initialShellProcStatus = services.BlockService.GetControllerStatus(blockId);[39m
+[31m+         initialShellProcStatus.then((rts) => {[39m
+[31m+             this.updateShellProcStatus(rts);[39m
+[31m+         });[39m
+[31m+         this.shellProcStatusUnsubFn = waveEventSubscribeSingle({[39m
+[31m+             eventType: "controllerstatus",[39m
+[31m+             scope: WOS.makeORef("block", blockId),[39m
+[31m+             handler: (event) => {[39m
+[31m+                 this.updateShellProcStatus(event.data);[39m
+[31m+             },[39m
+[31m+         });[39m
+[31m+         // Reuse AgentStatusStore's singleton atom + subscription per blockId, instead of[39m
+[31m+         // maintaining our own duplicate. AgentStatusStore handles GetAgentStatus on acquire[39m
+[31m+         // and subscribes to agentstatus events with reference-counted lifetime — when all[39m
+[31m+         // consumers (TermViewModel + useInlineTabAgentStatus) release the blockId the[39m
+[31m+         // subscription is torn down. This eliminates the first-screen race where TermViewModel's[39m
+[31m+         // own subscription could miss the inaugural event before it registered.[39m
+[31m+         this.agentStatusAtom = AgentStatusStore.getInstance().acquire(blockId);[39m
+[31m+         // viewText（上方已构造）在渲染时才读这个 atom，而 agentStatusAtom 到这里才建好，[39m
+[31m+         // 所以在它之后创建才安全。[39m
+[31m+         this.emojiOnlyHeaderAtom = makeAgentHeaderEmojiOnlyAtom(this.blockAtom, this.agentStatusAtom);[39m
+[31m+         this.shellProcStatus = jotai.atom((get) => {[39m
+[31m+             const fullStatus = get(this.shellProcFullStatus);[39m
+[31m+             return fullStatus?.shellprocstatus ?? "init";[39m
+[31m+         });[39m
+[31m+         this.termDurableStatus = jotai.atom((get) => {[39m
+[31m+             const isDurable = get(getBlockTermDurableAtom(this.blockId));[39m
+[31m+             if (!isDurable) {[39m
+[31m+                 return null;[39m
+[31m+             }[39m
+[31m+             const blockJobStatus = get(this.blockJobStatusAtom);[39m
+[31m+             if (blockJobStatus?.jobid == null || blockJobStatus?.status == null) {[39m
+[31m+                 return null;[39m
+[31m+             }[39m
+[31m+             return blockJobStatus;[39m
+[31m+         });[39m
+[31m+         this.termConfigedDurable = getBlockTermDurableAtom(this.blockId);[39m
+[31m+         this.blockJobStatusAtom = jotai.atom(null) as jotai.PrimitiveAtom<BlockJobStatusData>;[39m
+[31m+         this.blockJobStatusVersionTs = 0;[39m
+[31m+         const initialBlockJobStatus = RpcApi.BlockJobStatusCommand(TabRpcClient, blockId);[39m
+[31m+         initialBlockJobStatus[39m
+[31m+             .then((status) => {[39m
+[31m+                 this.handleBlockJobStatusUpdate(status);[39m
+[31m+             })[39m
+[31m+             .catch((error) => {[39m
+[31m+                 console.log("error getting initial block job status", error);[39m
+[31m+             });[39m
+[31m+         this.blockJobStatusUnsubFn = waveEventSubscribeSingle({[39m
+[31m+             eventType: "block:jobstatus",[39m
+[31m+             scope: `block:${blockId}`,[39m
+[31m+             handler: (event) => {[39m
+[31m+                 this.handleBlockJobStatusUpdate(event.data);[39m
+[31m+             },[39m
+[31m+         });[39m
+[31m+         this.termBPMUnsubFn = globalStore.sub(this.termBPMAtom, () => {[39m
+[31m+             if (this.termRef.current?.terminal) {[39m
+[31m+                 const allowBPM = globalStore.get(this.termBPMAtom) ?? true;[39m
+[31m+                 this.termRef.current.terminal.options.ignoreBracketedPasteMode = !allowBPM;[39m
+[31m+             }[39m
+[31m+         });[39m
+[31m+         const termCursorAtom = getOverrideConfigAtom(blockId, "term:cursor");[39m
+[31m+         this.termCursorUnsubFn = globalStore.sub(termCursorAtom, () => {[39m
+[31m+             if (this.termRef.current?.terminal) {[39m
+[31m+                 this.termRef.current.setCursorStyle(globalStore.get(termCursorAtom));[39m
+[31m+             }[39m
+[31m+         });[39m
+[31m+         const termCursorBlinkAtom = getOverrideConfigAtom(blockId, "term:cursorblink");[39m
+[31m+         this.termCursorBlinkUnsubFn = globalStore.sub(termCursorBlinkAtom, () => {[39m
+[31m+             if (this.termRef.current?.terminal) {[39m
+[31m+                 this.termRef.current.setCursorBlink(globalStore.get(termCursorBlinkAtom) ?? false);[39m
+[31m+             }[39m
+[31m+         });[39m
+[31m+     }[39m
+[31m+[39m
+[31m+     getShellIntegrationIconButton(get: jotai.Getter): IconButtonDecl | null {[39m
+[31m+         if (!this.termRef.current?.shellIntegrationStatusAtom) {[39m
+[31m+             return null;[39m
+[31m+         }[39m
+[31m+         const shellIntegrationStatus = get(this.termRef.current.shellIntegrationStatusAtom);[39m
+[31m+         const claudeCodeActive = get(this.termRef.current.claudeCodeActiveAtom);[39m
+[31m+         const icon = claudeCodeActive ? React.createElement(TermClaudeIcon) : "sparkles";[39m
+[31m+         if (shellIntegrationStatus == null) {[39m
+[31m+             return {[39m
+[31m+                 elemtype: "iconbutton",[39m
+[31m+                 icon,[39m
+[31m+                 className: "text-muted",[39m
+[31m+                 title: "No shell integration — Wave AI unable to run commands.",[39m
+[31m+                 noAction: true,[39m
+[31m+             };[39m
+[31m+         }[39m
+[31m+         if (shellIntegrationStatus === "ready") {[39m
+[31m+             return {[39m
+[31m+                 elemtype: "iconbutton",[39m
+[31m+                 icon,[39m
+[31m+                 className: "text-accent",[39m
+[31m+                 title: "Shell ready — Wave AI can run commands in this terminal.",[39m
+[31m+                 noAction: true,[39m
+[31m+             };[39m
+[31m+         }[39m
+[31m+         if (shellIntegrationStatus === "running-command") {[39m
+[31m+             let title = claudeCodeActive[39m
+[31m+                 ? "Claude Code Detected"[39m
+[31m+                 : "Shell busy — Wave AI unable to run commands while another command is running.";[39m
+[31m+[39m
+[31m+             if (this.termRef.current) {[39m
+[31m+                 const inAltBuffer = this.termRef.current.terminal?.buffer?.active?.type === "alternate";[39m
+[31m+                 const lastCommand = get(this.termRef.current.lastCommandAtom);[39m
+[31m+                 const blockingCmd = getBlockingCommand(lastCommand, inAltBuffer);[39m
+[31m+                 if (blockingCmd) {[39m
+[31m+                     title = `Wave AI integration disabled while you're inside ${blockingCmd}.`;[39m
+[31m+                 }[39m
+[31m+             }[39m
+[31m+[39m
+[31m+             return {[39m
+[31m+                 elemtype: "iconbutton",[39m
+[31m+                 icon,[39m
+[31m+                 className: "text-warning",[39m
+[31m+                 title: title,[39m
+[31m+                 noAction: true,[39m
+[31m+             };[39m
+[31m+         }[39m
+[31m+         return null;[39m
+[31m+     }[39m
+[31m+[39m
+[31m+     getAgentStatusHeaderElem(get: jotai.Getter, blockMeta: MetaType | null | undefined): HeaderElem | null {[39m
+[31m+         const status = get(this.agentStatusAtom);[39m
+[31m+         // 新建 agent 尚无任何上报时直接不渲染徽章 (不显示 "No data"), 首次 agentstatus 到达后正常亮起.[39m
+[31m+         if (status == null) {[39m
+[31m+             return null;[39m
+[31m+         }[39m
+[31m+         // 呈现态统一走 deriveAgentStatusView：read（看过没看过）由它一处判定，[39m
+[31m+         // 不再是"头部自己算 R + 自己算 D"两套逻辑。这样卡片面 ack、切过去看过、[39m
+[31m+         // Overview chip ack 都会同帧反映到徽章上。[39m
+[31m+         //[39m
+[31m+         // `get` 是 viewText atom 的 getter（同一个 globalStore），因此 ack / read 写入[39m
+[31m+         // 会触发本 elem 重算并重渲染。[39m
+[31m+         const overview = SessionOverviewModel.getInstance();[39m
+[31m+         const ackedFpMap = get(overview.agentStatusAckedFpAtom) ?? {};[39m
+[31m+         const doneAckedAtMap = get(agentStatusDoneAckStore.doneAckedAtAtom) ?? {};[39m
+[31m+         const view = deriveAgentStatusView({[39m
+[31m+             status,[39m
+[31m+             blockId: this.blockId,[39m
+[31m+             ackedFp: ackedFpMap[this.blockId] ?? null,[39m
+[31m+             doneAckedAt: doneAckedAtMap[this.blockId] ?? 0,[39m
+[31m+             nowMs: Date.now(),[39m
+[31m+         });[39m
+[31m+         if (view == null) {[39m
+[31m+             return null;[39m
+[31m+         }[39m
+[31m+         // 文案 / 类名 / 跑时全部来自共享纯函数 —— 本文件不再自己拼 label 或 className。[39m
+[31m+         // 这与 React 侧的 AgentStatusChip 是同一份产出（agent-status-chip-view.ts），[39m
+[31m+         // 所以同一个状态在头部徽章与卡片 chip 上不可能再出现两种说法。[39m
+[31m+         const chipView = buildAgentStatusChipView({[39m
+[31m+             variant: "header",[39m
+[31m+             status,[39m
+[31m+             read: view.read,[39m
+[31m+             nowMs: Date.now(),[39m
+[31m+         });[39m
+[31m+         if (chipView == null) {[39m
+[31m+             return null;[39m
+[31m+         }[39m
+[31m+         const doneUnread = view.read === "unread" && view.state === "done";[39m
+[31m+         // 两根 tick 按需订阅，不白付代价：[39m
+[31m+         //   - 活跃态跑时（mm:ss）走 1s tick；[39m
+[31m+         //   - 未读 Done 的分钟级 elapsed 走 60s tick。[39m
+[31m+         if (doneUnread) {[39m
+[31m+             get(nowMinuteTickAtom);[39m
+[31m+         }[39m
+[31m+         if (needsAgentChipRuntime(status)) {[39m
+[31m+             get(agentStatusSecondTickAtom);[39m
+[31m+         }[39m
+[31m+         const allRead = view.read === "seen";[39m
+[31m+         // allRead 灰化: 已读 (点击 ack 或切过去看过) → is-acked 视觉变淡; 无跳变的 idle 上[39m
+[31m+         // 文案收敛成 "Seen"，其余仍是状态词。[39m
+[31m+         const titleText = chipView.title;[39m
+[31m+         const labelText = view.state === "idle" && allRead ? "Seen" : chipView.label;[39m
+[31m+         return {[39m
+[31m+             elemtype: "text",[39m
+[31m+             text: chipView.runtime !== "" ? `${labelText} ${chipView.runtime}` : labelText,[39m
+[31m+             className: chipView.className,[39m
+[31m+             noGrow: true,[39m
+[31m+             onClick: (e) => {[39m
+[31m+                 e.stopPropagation();[39m
+[31m+                 // 一次点击同时 ack R（在飞的报告）与 D（刚跑完的提示）—— 收口在[39m
+[31m+                 // ackAgentStatus，避免某个面忘了写其中一份导致另一面"复活"。[39m
+[31m+                 ackAgentStatus(this.blockId, status, "term-header");[39m
+[31m+             },[39m
+[31m+             tooltipNode: titleText,[39m
+[31m+             tooltipProps: { hideOnClick: true, openDelay: 200, divClassName: "inline-flex" },[39m
+[31m+         };[39m
+[31m+     }[39m
+[31m+[39m
+[31m+     getWebGlIconButton(get: jotai.Getter): IconButtonDecl | null {[39m
+[31m+         if (!WebGLSupported) {[39m
+[31m+             return {[39m
+[31m+                 elemtype: "iconbutton",[39m
+[31m+                 icon: "microchip",[39m
+[31m+                 iconColor: "var(--error-color)",[39m
+[31m+                 title: "WebGL not supported",[39m
+[31m+                 noAction: true,[39m
+[31m+             };[39m
+[31m+         }[39m
+[31m+         if (!this.termRef.current?.webglEnabledAtom) {[39m
+[31m+             return null;[39m
+[31m+         }[39m
+[31m+         const webglEnabled = get(this.termRef.current.webglEnabledAtom);[39m
+[31m+         if (webglEnabled) {[39m
+[31m+             return {[39m
+[31m+                 elemtype: "iconbutton",[39m
+[31m+                 icon: "microchip",[39m
+[31m+                 iconColor: "var(--success-color)",[39m
+[31m+                 title: "WebGL enabled (click to disable)",[39m
+[31m+                 click: () => this.toggleWebGl(),[39m
+[31m+             };[39m
+[31m+         }[39m
+[31m+         return {[39m
+[31m+             elemtype: "iconbutton",[39m
+[31m+             icon: "microchip",[39m
+[31m+             iconColor: "var(--secondary-text-color)",[39m
+[31m+             title: "WebGL disabled (click to enable)",[39m
+[31m+             click: () => this.toggleWebGl(),[39m
+[31m+         };[39m
+[31m+     }[39m
+[31m+[39m
+[31m+     get viewComponent(): ViewComponent {[39m
+[31m+         return TerminalView as ViewComponent;[39m
+[31m+     }[39m
+[31m+[39m
+[31m+     isBasicTerm(getFn: jotai.Getter): boolean {[39m
+[31m+         const termMode = getFn(this.termMode);[39m
+[31m+         if (termMode == "vdom") {[39m
+[31m+             return false;[39m
+[31m+         }[39m
+[31m+         const blockData = getFn(this.blockAtom);[39m
+[31m+         if (blockData?.meta?.controller == "cmd") {[39m
+[31m+             return false;[39m
+[31m+         }[39m
+[31m+         return true;[39m
+[31m+     }[39m
+[31m+[39m
+[31m+     multiInputHandler(data: string) {[39m
+[31m+         const tvms = getAllBasicTermModels();[39m
+[31m+         for (const tvm of tvms) {[39m
+[31m+             if (tvm != this) {[39m
+[31m+                 tvm.sendDataToController(data);[39m
+[31m+             }[39m
+[31m+         }[39m
+[31m+     }[39m
+[31m+[39m
+[31m+     sendDataToController(data: string) {[39m
+[31m+         const b64data = stringToBase64(data);[39m
+[31m+         RpcApi.ControllerInputCommand(TabRpcClient, { blockid: this.blockId, inputdata64: b64data });[39m
+[31m+     }[39m
+[31m+[39m
+[31m+     setTermMode(mode: "term" | "vdom") {[39m
+[31m+         if (mode == "term") {[39m
+[31m+             mode = null;[39m
+[31m+         }[39m
+[31m+         RpcApi.SetMetaCommand(TabRpcClient, {[39m
+[31m+             oref: WOS.makeORef("block", this.blockId),[39m
+[31m+             meta: { "term:mode": mode },[39m
+[31m+         });[39m
+[31m+     }[39m
+[31m+[39m
+[31m+     getTermRenderer(): "webgl" | "dom" {[39m
+[31m+         return this.termRef.current?.getTermRenderer() ?? "dom";[39m
+[31m+     }[39m
+[31m+[39m
+[31m+     isWebGlEnabled(): boolean {[39m
+[31m+         return this.termRef.current?.isWebGlEnabled() ?? false;[39m
+[31m+     }[39m
+[31m+[39m
+[31m+     toggleWebGl() {[39m
+[31m+         if (!this.termRef.current) {[39m
+[31m+             return;[39m
+[31m+         }[39m
+[31m+         const renderer = this.termRef.current.getTermRenderer() === "webgl" ? "dom" : "webgl";[39m
+[31m+         this.termRef.current.setTermRenderer(renderer);[39m
+[31m+     }[39m
+[31m+[39m
+[31m+     triggerRestartAtom() {[39m
+[31m+         globalStore.set(this.isRestarting, true);[39m
+[31m+         setTimeout(() => {[39m
+[31m+             globalStore.set(this.isRestarting, false);[39m
+[31m+         }, 300);[39m
+[31m+     }[39m
+[31m+[39m
+[31m+     handleBlockJobStatusUpdate(status: BlockJobStatusData) {[39m
+[31m+         if (status?.versionts == null) {[39m
+[31m+             return;[39m
+[31m+         }[39m
+[31m+         if (status.versionts <= this.blockJobStatusVersionTs) {[39m
+[31m+             return;[39m
+[31m+         }[39m
+[31m+         this.blockJobStatusVersionTs = status.versionts;[39m
+[31m+         globalStore.set(this.blockJobStatusAtom, status);[39m
+[31m+     }[39m
+[31m+[39m
+[31m+     updateShellProcStatus(fullStatus: BlockControllerRuntimeStatus) {[39m
+[31m+         if (fullStatus == null) {[39m
+[31m+             return;[39m
+[31m+         }[39m
+[31m+         const curStatus = globalStore.get(this.shellProcFullStatus);[39m
+[31m+         if (curStatus == null || curStatus.version < fullStatus.version) {[39m
+[31m+             globalStore.set(this.shellProcFullStatus, fullStatus);[39m
+[31m+         }[39m
+[31m+     }[39m
+[31m+[39m
+[31m+     getVDomModel(): VDomModel {[39m
+[31m+         const vdomBlockId = globalStore.get(this.vdomBlockId);[39m
+[31m+         if (!vdomBlockId) {[39m
+[31m+             return null;[39m
+[31m+         }[39m
+[31m+         const bcm = getBlockComponentModel(vdomBlockId);[39m
+[31m+         if (!bcm) {[39m
+[31m+             return null;[39m
+[31m+         }[39m
+[31m+         return bcm.viewModel as VDomModel;[39m
+[31m+     }[39m
+[31m+[39m
+[31m+     getVDomToolbarModel(): VDomModel {[39m
+[31m+         const vdomToolbarBlockId = globalStore.get(this.vdomToolbarBlockId);[39m
+[31m+         if (!vdomToolbarBlockId) {[39m
+[31m+             return null;[39m
+[31m+         }[39m
+[31m+         const bcm = getBlockComponentModel(vdomToolbarBlockId);[39m
+[31m+         if (!bcm) {[39m
+[31m+             return null;[39m
+[31m+         }[39m
+[31m+         return bcm.viewModel as VDomModel;[39m
+[31m+     }[39m
+[31m+[39m
+[31m+     dispose() {[39m
+[31m+         DefaultRouter.unregisterRoute(makeFeBlockRouteId(this.blockId));[39m
+[31m+         this.shellProcStatusUnsubFn?.();[39m
+[31m+         AgentStatusStore.getInstance().release(this.blockId);[39m
+[31m+         this.blockJobStatusUnsubFn?.();[39m
+[31m+         this.termBPMUnsubFn?.();[39m
+[31m+         this.termCursorUnsubFn?.();[39m
+[31m+         this.termCursorBlinkUnsubFn?.();[39m
+[31m+     }[39m
+[31m+[39m
+[31m+     giveFocus(): boolean {[39m
+[31m+         if (this.searchAtoms && globalStore.get(this.searchAtoms.isOpen)) {[39m
+[31m+             console.log("search is open, not giving focus");[39m
+[31m+             return true;[39m
+[31m+         }[39m
+[31m+         const termMode = globalStore.get(this.termMode);[39m
+[31m+         if (termMode == "term") {[39m
+[31m+             if (this.termRef?.current?.terminal) {[39m
+[31m+                 this.termRef.current.terminal.focus();[39m
+[31m+                 window.requestAnimationFrame(() => {[39m
+[31m+                     this.termRef.current?.terminal?.focus();[39m
+[31m+                 });[39m
+[31m+                 return true;[39m
+[31m+             }[39m
+[31m+         }[39m
+[31m+         return false;[39m
+[31m+     }[39m
+[31m+[39m
+[31m+     keyDownHandler(waveEvent: WaveKeyboardEvent): boolean {[39m
+[31m+         if (keyutil.checkKeyPressed(waveEvent, "Ctrl:r")) {[39m
+[31m+             const shellIntegrationStatus = readAtom(this.termRef?.current?.shellIntegrationStatusAtom);[39m
+[31m+             if (shellIntegrationStatus === "ready") {[39m
+[31m+                 recordTEvent("action:term", { "action:type": "term:ctrlr" });[39m
+[31m+             }[39m
+[31m+             // just for telemetry, we allow this keybinding through, back to the terminal[39m
+[31m+             return false;[39m
+[31m+         }[39m
+[31m+         if (keyutil.checkKeyPressed(waveEvent, "Cmd:Escape")) {[39m
+[31m+             const blockAtom = WOS.getWaveObjectAtom<Block>(`block:${this.blockId}`);[39m
+[31m+             const blockData = globalStore.get(blockAtom);[39m
+[31m+             const newTermMode = blockData?.meta?.["term:mode"] == "vdom" ? null : "vdom";[39m
+[31m+             const vdomBlockId = globalStore.get(this.vdomBlockId);[39m
+[31m+             if (newTermMode == "vdom" && !vdomBlockId) {[39m
+[31m+                 return;[39m
+[31m+             }[39m
+[31m+             this.setTermMode(newTermMode);[39m
+[31m+             return true;[39m
+[31m+         }[39m
+[31m+         if (keyutil.checkKeyPressed(waveEvent, "Shift:End")) {[39m
+[31m+             if (this.termRef?.current?.terminal) {[39m
+[31m+                 this.termRef.current.terminal.scrollToBottom();[39m
+[31m+             }[39m
+[31m+             return true;[39m
+[31m+         }[39m
+[31m+         if (keyutil.checkKeyPressed(waveEvent, "Shift:Home")) {[39m
+[31m+             if (this.termRef?.current?.terminal) {[39m
+[31m+                 this.termRef.current.terminal.scrollToLine(0);[39m
+[31m+             }[39m
+[31m+             return true;[39m
+[31m+         }[39m
+[31m+         if (isMacOS() && keyutil.checkKeyPressed(waveEvent, "Cmd:End")) {[39m
+[31m+             if (this.termRef?.current?.terminal) {[39m
+[31m+                 this.termRef.current.terminal.scrollToBottom();[39m
+[31m+             }[39m
+[31m+             return true;[39m
+[31m+         }[39m
+[31m+         if (isMacOS() && keyutil.checkKeyPressed(waveEvent, "Cmd:Home")) {[39m
+[31m+             if (this.termRef?.current?.terminal) {[39m
+[31m+                 this.termRef.current.terminal.scrollToLine(0);[39m
+[31m+             }[39m
+[31m+             return true;[39m
+[31m+         }[39m
+[31m+         if (keyutil.checkKeyPressed(waveEvent, "Shift:PageDown")) {[39m
+[31m+             if (this.termRef?.current?.terminal) {[39m
+[31m+                 this.termRef.current.terminal.scrollPages(1);[39m
+[31m+             }[39m
+[31m+             return true;[39m
+[31m+         }[39m
+[31m+         if (keyutil.checkKeyPressed(waveEvent, "Shift:PageUp")) {[39m
+[31m+             if (this.termRef?.current?.terminal) {[39m
+[31m+                 this.termRef.current.terminal.scrollPages(-1);[39m
+[31m+             }[39m
+[31m+             return true;[39m
+[31m+         }[39m
+[31m+         const blockData = globalStore.get(this.blockAtom);[39m
+[31m+         if (blockData.meta?.["term:mode"] == "vdom") {[39m
+[31m+             const vdomModel = this.getVDomModel();[39m
+[31m+             return vdomModel?.keyDownHandler(waveEvent);[39m
+[31m+         }[39m
+[31m+         return false;[39m
+[31m+     }[39m
+[31m+[39m
+[31m+     shouldHandleCtrlVPaste(): boolean {[39m
+[31m+         // macOS never uses Ctrl-V for paste (uses Cmd-V)[39m
+[31m+         if (isMacOS()) {[39m
+[31m+             return false;[39m
+[31m+         }[39m
+[31m+[39m
+[31m+         // Get the app:ctrlvpaste setting[39m
+[31m+         const ctrlVPasteAtom = getSettingsKeyAtom("app:ctrlvpaste");[39m
+[31m+         const ctrlVPasteSetting = globalStore.get(ctrlVPasteAtom);[39m
+[31m+[39m
+[31m+         // If setting is explicitly set, use it[39m
+[31m+         if (ctrlVPasteSetting != null) {[39m
+[31m+             return ctrlVPasteSetting;[39m
+[31m+         }[39m
+[31m+[39m
+[31m+         // Default behavior: Windows=true, Linux/other=false[39m
+[31m+         return isWindows();[39m
+[31m+     }[39m
+[31m+[39m
+[31m+     handleTerminalKeydown(event: KeyboardEvent): boolean {[39m
+[31m+         const waveEvent = keyutil.adaptFromReactOrNativeKeyEvent(event);[39m
+[31m+         if (waveEvent.type != "keydown") {[39m
+[31m+             return true;[39m
+[31m+         }[39m
+[31m+[39m
+[31m+         if (this.keyDownHandler(waveEvent)) {[39m
+[31m+             event.preventDefault();[39m
+[31m+             event.stopPropagation();[39m
+[31m+             return false;[39m
+[31m+         }[39m
+[31m+[39m
+[31m+         if (isMacOS()) {[39m
+[31m+             if (keyutil.checkKeyPressed(waveEvent, "Cmd:ArrowLeft")) {[39m
+[31m+                 this.sendDataToController("\x01"); // Ctrl-A (beginning of line)[39m
+[31m+                 event.preventDefault();[39m
+[31m+                 event.stopPropagation();[39m
+[31m+                 return false;[39m
+[31m+             }[39m
+[31m+             if (keyutil.checkKeyPressed(waveEvent, "Cmd:ArrowRight")) {[39m
+[31m+                 this.sendDataToController("\x05"); // Ctrl-E (end of line)[39m
+[31m+                 event.preventDefault();[39m
+[31m+                 event.stopPropagation();[39m
+[31m+                 return false;[39m
+[31m+             }[39m
+[31m+         }[39m
+[31m+         if (keyutil.checkKeyPressed(waveEvent, "Shift:Enter")) {[39m
+[31m+             const shiftEnterNewlineAtom = getOverrideConfigAtom(this.blockId, "term:shiftenternewline");[39m
+[31m+             const shiftEnterNewlineEnabled = globalStore.get(shiftEnterNewlineAtom) ?? true;[39m
+[31m+             if (shiftEnterNewlineEnabled) {[39m
+[31m+                 this.sendDataToController("\n");[39m
+[31m+                 event.preventDefault();[39m
+[31m+                 event.stopPropagation();[39m
+[31m+                 return false;[39m
+[31m+             }[39m
+[31m+         }[39m
+[31m+[39m
+[31m+         // Check for Ctrl-V paste (platform-dependent)[39m
+[31m+         if (this.shouldHandleCtrlVPaste() && keyutil.checkKeyPressed(waveEvent, "Ctrl:v")) {[39m
+[31m+             event.preventDefault();[39m
+[31m+             event.stopPropagation();[39m
+[31m+             getApi().nativePaste();[39m
+[31m+             return false;[39m
+[31m+         }[39m
+[31m+[39m
+[31m+         if (keyutil.checkKeyPressed(waveEvent, "Ctrl:Shift:v")) {[39m
+[31m+             event.preventDefault();[39m
+[31m+             event.stopPropagation();[39m
+[31m+             getApi().nativePaste();[39m
+[31m+             // this.termRef.current?.pasteHandler();[39m
+[31m+             return false;[39m
+[31m+         } else if (keyutil.checkKeyPressed(waveEvent, "Ctrl:Shift:c")) {[39m
+[31m+             event.preventDefault();[39m
+[31m+             event.stopPropagation();[39m
+[31m+             let sel = this.termRef.current?.terminal.getSelection();[39m
+[31m+             if (!sel) {[39m
+[31m+                 return false;[39m
+[31m+             }[39m
+[31m+             if (globalStore.get(getSettingsKeyAtom("term:trimtrailingwhitespace")) !== false) {[39m
+[31m+                 sel = trimTerminalSelection(sel);[39m
+[31m+             }[39m
+[31m+             fireAndForget(() => copyText(sel));[39m
+[31m+             return false;[39m
+[31m+         } else if (keyutil.checkKeyPressed(waveEvent, "Cmd:k")) {[39m
+[31m+             event.preventDefault();[39m
+[31m+             event.stopPropagation();[39m
+[31m+             this.termRef.current?.terminal?.clear();[39m
+[31m+             return false;[39m
+[31m+         }[39m
+[31m+         const shellProcStatus = globalStore.get(this.shellProcStatus);[39m
+[31m+         if ((shellProcStatus == "done" || shellProcStatus == "init") && keyutil.checkKeyPressed(waveEvent, "Enter")) {[39m
+[31m+             fireAndForget(() => this.forceRestartController());[39m
+[31m+             return false;[39m
+[31m+         }[39m
+[31m+         const appHandled = appHandleKeyDown(waveEvent);[39m
+[31m+         if (appHandled) {[39m
+[31m+             event.preventDefault();[39m
+[31m+             event.stopPropagation();[39m
+[31m+             return false;[39m
+[31m+         }[39m
+[31m+         return true;[39m
+[31m+     }[39m
+[31m+[39m
+[31m+     setTerminalTheme(themeName: string) {[39m
+[31m+         RpcApi.SetMetaCommand(TabRpcClient, {[39m
+[31m+             oref: WOS.makeORef("block", this.blockId),[39m
+[31m+             meta: { "term:theme": themeName },[39m
+[31m+         });[39m
+[31m+     }[39m
+[31m+[39m
+[31m+     async forceRestartController() {[39m
+[31m+         if (globalStore.get(this.isRestarting)) {[39m
+[31m+             return;[39m
+[31m+         }[39m
+[31m+         this.triggerRestartAtom();[39m
+[31m+         await RpcApi.ControllerDestroyCommand(TabRpcClient, this.blockId);[39m
+[31m+         const termsize = {[39m
+[31m+             rows: this.termRef.current?.terminal?.rows,[39m
+[31m+             cols: this.termRef.current?.terminal?.cols,[39m
+[31m+         };[39m
+[31m+         await RpcApi.ControllerResyncCommand(TabRpcClient, {[39m
+[31m+             tabid: globalStore.get(atoms.staticTabId),[39m
+[31m+             blockid: this.blockId,[39m
+[31m+             forcerestart: true,[39m
+[31m+             rtopts: { termsize: termsize },[39m
+[31m+         });[39m
+[31m+     }[39m
+[31m+[39m
+[31m+     /**[39m
+[31m+      * Redraw the terminal UI without touching the controller or session state:[39m
+[31m+      * 1) force an xterm buffer/canvas re-render, and[39m
+[31m+      * 2) ask the running TUI process to redraw itself by sending SIGWINCH.[39m
+[31m+      * Safe to call even when no process is running (frontend-only repaint).[39m
+[31m+      */[39m
+[31m+     redrawTUI() {[39m
+[31m+         const terminal = this.termRef.current?.terminal;[39m
+[31m+         if (terminal) {[39m
+[31m+             try {[39m
+[31m+                 terminal.refresh(0, terminal.rows - 1);[39m
+[31m+             } catch (e) {[39m
+[31m+                 console.warn("redrawTUI refresh error", e);[39m
+[31m+             }[39m
+[31m+             // WebGL keeps glyphs in a texture atlas; a stale atlas survives a[39m
+[31m+             // plain refresh and shows up as corrupted/blank text. Clearing it[39m
+[31m+             // forces every glyph to be re-rasterized.[39m
+[31m+             if (this.termRef.current?.getTermRenderer?.() === "webgl") {[39m
+[31m+                 try {[39m
+[31m+                     terminal.clearTextureAtlas?.();[39m
+[31m+                 } catch (e) {[39m
+[31m+                     console.warn("redrawTUI clearTextureAtlas error", e);[39m
+[31m+                 }[39m
+[31m+             }[39m
+[31m+         }[39m
+[31m+         fireAndForget(() =>[39m
+[31m+             RpcApi.ControllerRedrawCommand(TabRpcClient, this.blockId).catch((error) => {[39m
+[31m+                 if (isNoControllerFoundError(error)) {[39m
+[31m+                     return; // no live controller — frontend repaint already ran[39m
+[31m+                 }[39m
+[31m+                 console.warn("redrawTUI rpc error", error);[39m
+[31m+             })[39m
+[31m+         );[39m
+[31m+     }[39m
+[31m+[39m
+[31m+     async restartSessionWithDurability(isDurable: boolean) {[39m
+[31m+         await RpcApi.SetMetaCommand(TabRpcClient, {[39m
+[31m+             oref: WOS.makeORef("block", this.blockId),[39m
+[31m+             meta: { "term:durable": isDurable },[39m
+[31m+         });[39m
+[31m+         await RpcApi.ControllerDestroyCommand(TabRpcClient, this.blockId);[39m
+[31m+         const termsize = {[39m
+[31m+             rows: this.termRef.current?.terminal?.rows,[39m
+[31m+             cols: this.termRef.current?.terminal?.cols,[39m
+[31m+         };[39m
+[31m+         await RpcApi.ControllerResyncCommand(TabRpcClient, {[39m
+[31m+             tabid: globalStore.get(atoms.staticTabId),[39m
+[31m+             blockid: this.blockId,[39m
+[31m+             forcerestart: true,[39m
+[31m+             rtopts: { termsize: termsize },[39m
+[31m+         });[39m
+[31m+     }[39m
+[31m+[39m
+[31m+     getContextMenuItems(): ContextMenuItem[] {[39m
+[31m+         const menu: ContextMenuItem[] = [];[39m
+[31m+         const terminal = this.termRef.current?.terminal;[39m
+[31m+         const hasSelection = terminal?.hasSelection();[39m
+[31m+         const selection = hasSelection ? terminal.getSelection() : null;[39m
+[31m+         const logicalLineText = hasSelection[39m
+[31m+             ? terminalLogicalLinesForSelection(terminal.buffer.active, terminal.getSelectionPosition())[39m
+[31m+             : null;[39m
+[31m+         const sessionMenuItems = this.getSessionMenuItems();[39m
+[31m+[39m
+[31m+         if (hasSelection) {[39m
+[31m+             menu.push({[39m
+[31m+                 label: "Copy",[39m
+[31m+                 click: () => {[39m
+[31m+                     if (selection) {[39m
+[31m+                         const text =[39m
+[31m+                             globalStore.get(getSettingsKeyAtom("term:trimtrailingwhitespace")) !== false[39m
+[31m+                                 ? trimTerminalSelection(selection)[39m
+[31m+                                 : selection;[39m
+[31m+                         fireAndForget(() => copyText(text));[39m
+[31m+                     }[39m
+[31m+                 },[39m
+[31m+             });[39m
+[31m+             menu.push({[39m
+[31m+                 label: "Copy Logical Line",[39m
+[31m+                 enabled: !!logicalLineText,[39m
+[31m+                 click: () => {[39m
+[31m+                     if (logicalLineText) {[39m
+[31m+                         fireAndForget(() => copyText(logicalLineText));[39m
+[31m+                     }[39m
+[31m+                 },[39m
+[31m+             });[39m
+[31m+             menu.push({[39m
+[31m+                 label: "Copy Selection as One Line",[39m
+[31m+                 click: () => {[39m
+[31m+                     if (selection) {[39m
+[31m+                         fireAndForget(() => copyText(terminalSelectionToSingleLine(selection)));[39m
+[31m+                     }[39m
+[31m+                 },[39m
+[31m+             });[39m
+[31m+             menu.push(makeSelectionSearchInFilesMenuItem(selection));[39m
+[31m+             menu.push({ type: "separator" });[39m
+[31m+             menu.push({[39m
+[31m+                 label: "Send to Wave AI",[39m
+[31m+                 click: () => {[39m
+[31m+                     if (selection) {[39m
+[31m+                         const aiModel = WaveAIModel.getInstance();[39m
+[31m+                         aiModel.appendText(selection, true, { scrollToBottom: true });[39m
+[31m+                         const layoutModel = WorkspaceLayoutModel.getInstance();[39m
+[31m+                         if (!layoutModel.getAIPanelVisible()) {[39m
+[31m+                             layoutModel.setAIPanelVisible(true);[39m
+[31m+                         }[39m
+[31m+                         aiModel.focusInput();[39m
+[31m+                     }[39m
+[31m+                 },[39m
+[31m+             });[39m
+[31m+[39m
+[31m+             menu.push({ type: "separator" });[39m
+[31m+         }[39m
+[31m+[39m
+[31m+         if (sessionMenuItems.length > 0) {[39m
+[31m+             menu.push(...sessionMenuItems);[39m
+[31m+             menu.push({ type: "separator" });[39m
+[31m+         }[39m
+[31m+[39m
+[31m+         const hoveredLinkUri = this.termRef.current?.hoveredLinkUri;[39m
+[31m+         if (hoveredLinkUri) {[39m
+[31m+             const nativeFilePath = isFileUrl(hoveredLinkUri) ? terminalFilePath(hoveredLinkUri) : null;[39m
+[31m+             if (nativeFilePath != null) {[39m
+[31m+                 menu.push({[39m
+[31m+                     label: "Open File in Default App",[39m
+[31m+                     click: () => {[39m
+[31m+                         getApi().openNativePath(nativeFilePath);[39m
+[31m+                     },[39m
+[31m+                 });[39m
+[31m+                 menu.push({[39m
+[31m+                     label: "Show in Folder",[39m
+[31m+                     click: () => {[39m
+[31m+                         getApi().revealNativePath(nativeFilePath);[39m
+[31m+                     },[39m
+[31m+                 });[39m
+[31m+                 menu.push({ type: "separator" });[39m
+[31m+             } else {[39m
+[31m+                 let hoveredURL: URL = null;[39m
+[31m+                 try {[39m
+[31m+                     hoveredURL = new URL(hoveredLinkUri);[39m
+[31m+                 } catch (e) {[39m
+[31m+                     // not a valid URL[39m
+[31m+                 }[39m
+[31m+                 if (hoveredURL) {[39m
+[31m+                     menu.push({[39m
+[31m+                         label: hoveredURL.hostname ? "Open URL (" + hoveredURL.hostname + ")" : "Open URL",[39m
+[31m+                         click: () => {[39m
+[31m+                             createBlock({[39m
+[31m+                                 meta: {[39m
+[31m+                                     view: "web",[39m
+[31m+                                     url: hoveredURL.toString(),[39m
+[31m+                                 },[39m
+[31m+                             });[39m
+[31m+                         },[39m
+[31m+                     });[39m
+[31m+                     menu.push({[39m
+[31m+                         label: "Open URL in External Browser",[39m
+[31m+                         click: () => {[39m
+[31m+                             getApi().openExternal(hoveredURL.toString());[39m
+[31m+                         },[39m
+[31m+                     });[39m
+[31m+                     menu.push({ type: "separator" });[39m
+[31m+                 }[39m
+[31m+             }[39m
+[31m+         }[39m
+[31m+[39m
+[31m+         menu.push({[39m
+[31m+             label: "Paste",[39m
+[31m+             click: () => {[39m
+[31m+                 getApi().nativePaste();[39m
+[31m+             },[39m
+[31m+         });[39m
+[31m+[39m
+[31m+         menu.push({ type: "separator" });[39m
+[31m+[39m
+[31m+         const magnified = globalStore.get(this.nodeModel.isMagnified);[39m
+[31m+         menu.push({[39m
+[31m+             label: magnified ? "Un-Magnify Block" : "Magnify Block",[39m
+[31m+             click: () => {[39m
+[31m+                 this.nodeModel.toggleMagnify();[39m
+[31m+             },[39m
+[31m+         });[39m
+[31m+[39m
+[31m+         menu.push({ type: "separator" });[39m
+[31m+[39m
+[31m+         const settingsItems = this.getSettingsMenuItems();[39m
+[31m+         menu.push(...settingsItems);[39m
+[31m+[39m
+[31m+         return menu;[39m
+[31m+     }[39m
+[31m+[39m
+[31m+     getAgentSessionId(): string {[39m
+[31m+         const blockData = globalStore.get(this.blockAtom);[39m
+[31m+         const meta = (blockData?.meta ?? {}) as Record<string, unknown>;[39m
+[31m+         const termWrap = this.termRef.current;[39m
+[31m+         const shellLastCommand = this.getAgentShellLastCommand(termWrap);[39m
+[31m+         return resolveAgentSessionId(meta, shellLastCommand).sessionId;[39m
+[31m+     }[39m
+[31m+[39m
+[31m+     private getAgentShellLastCommand(termWrap: TermWrap | null): string | null {[39m
+[31m+         if (!termWrap) {[39m
+[31m+             return null;[39m
+[31m+         }[39m
+[31m+         const shellLastCommand = globalStore.get(termWrap.lastCommandAtom);[39m
+[31m+         if (typeof shellLastCommand === "string" && shellLastCommand.trim() !== "") {[39m
+[31m+             return shellLastCommand;[39m
+[31m+         }[39m
+[31m+         const fallbackCommand = extractAgentCommandFromTerminalText(termWrap.getScrollbackContent());[39m
+[31m+         return fallbackCommand !== "" ? fallbackCommand : null;[39m
+[31m+     }[39m
+[31m+[39m
+[31m+     getSessionMenuItems(): ContextMenuItem[] {[39m
+[31m+         const blockData = globalStore.get(this.blockAtom);[39m
+[31m+         const meta = (blockData?.meta ?? {}) as Record<string, unknown>;[39m
+[31m+         const termWrap = this.termRef.current;[39m
+[31m+         const shellLastCommand = this.getAgentShellLastCommand(termWrap);[39m
+[31m+         const agentSessionResolution = resolveAgentSessionId(meta, shellLastCommand);[39m
+[31m+         const agentSessionId = agentSessionResolution.sessionId;[39m
+[31m+         const jobStatus = globalStore.get(this.blockJobStatusAtom);[39m
+[31m+         const blockJobId = typeof blockData?.jobid === "string" ? blockData.jobid.trim() : "";[39m
+[31m+         const jobId = typeof jobStatus?.jobid === "string" ? jobStatus.jobid.trim() : blockJobId;[39m
+[31m+         const shellProcStatus = globalStore.get(this.shellProcStatus);[39m
+[31m+         console.log("[term-session-copy] resolving session copy menu item", {[39m
+[31m+             blockId: this.blockId,[39m
+[31m+             view: meta.view,[39m
+[31m+             controller: meta.controller,[39m
+[31m+             cmd: meta.cmd,[39m
+[31m+             cmdPreview: sessionCopyDebugPreview(meta.cmd),[39m
+[31m+             cmdArgsCount: Array.isArray(meta["cmd:args"]) ? meta["cmd:args"].length : 0,[39m
+[31m+             agentAutoResume: meta["agent:autoresume"],[39m
+[31m+             agentProvider: meta["agent:provider"],[39m
+[31m+             agentSessionSource: agentSessionResolution.source,[39m
+[31m+             agentSessionProvider: agentSessionResolution.provider,[39m
+[31m+             agentSessionReason: agentSessionResolution.reason,[39m
+[31m+             hasAgentSessionId: agentSessionId !== "",[39m
+[31m+             agentSessionIdLength: agentSessionId.length,[39m
+[31m+             startupCommand: sessionCopyCommandDebug(agentSessionResolution.startupCommand),[39m
+[31m+             hasShellLastCommand: typeof shellLastCommand === "string" && shellLastCommand.trim() !== "",[39m
+[31m+             shellLastCommandPreview: sessionCopyDebugPreview(shellLastCommand),[39m
+[31m+             shellLastCommand: sessionCopyCommandDebug(agentSessionResolution.shellLastCommand),[39m
+[31m+             hasTermWrap: this.termRef.current != null,[39m
+[31m+             hasJobId: jobId !== "",[39m
+[31m+             jobIdLength: jobId.length,[39m
+[31m+             jobStatus: jobStatus?.status,[39m
+[31m+             shellProcStatus,[39m
+[31m+         });[39m
+[31m+         const connectionForProbe = typeof meta.connection === "string" ? meta.connection : null;[39m
+[31m+         const debugText = async (): Promise<string> =>[39m
+[31m+             formatTerminalSessionDebugInfo({[39m
+[31m+                 blockId: this.blockId,[39m
+[31m+                 tabId: this.tabModel?.tabId ?? globalStore.get(atoms.staticTabId) ?? "",[39m
+[31m+                 workspaceId: globalStore.get(atoms.workspaceId) ?? "",[39m
+[31m+                 routeId: makeFeBlockRouteId(this.blockId),[39m
+[31m+                 blockData: blockData ?? null,[39m
+[31m+                 meta,[39m
+[31m+                 agentSessionResolution,[39m
+[31m+                 shellLastCommand: typeof shellLastCommand === "string" ? shellLastCommand : null,[39m
+[31m+                 blockJobStatus: jobStatus ?? null,[39m
+[31m+                 shellProcStatus: shellProcStatus ?? null,[39m
+[31m+                 shellProcFullStatus: globalStore.get(this.shellProcFullStatus) ?? null,[39m
+[31m+                 shellIntegrationStatus: termWrap ? globalStore.get(termWrap.shellIntegrationStatusAtom) : null,[39m
+[31m+                 terminal: {[39m
+[31m+                     hasTermWrap: termWrap != null,[39m
+[31m+                     rows: termWrap?.terminal?.rows,[39m
+[31m+                     cols: termWrap?.terminal?.cols,[39m
+[31m+                     renderer: termWrap?.getTermRenderer?.(),[39m
+[31m+                     hasSelection: termWrap?.terminal?.hasSelection?.() ?? false,[39m
+[31m+                 },[39m
+[31m+                 rpcProbe: await runAISessionsRpcProbe(agentSessionId, connectionForProbe),[39m
+[31m+                 outlineRender: getOutlineRenderSnapshot(this.blockId),[39m
+[31m+                 noteRender: getNoteRenderSnapshot(this.blockId),[39m
+[31m+             });[39m
+[31m+         const debugMenuItem: ContextMenuItem = {[39m
+[31m+             label: "Copy Session Debug Info",[39m
+[31m+             click: () => {[39m
+[31m+                 fireAndForget(async () => copyText(await debugText()));[39m
+[31m+             },[39m
+[31m+         };[39m
+[31m+         const connection = typeof meta.connection === "string" ? meta.connection : "";[39m
+[31m+         const envMenuItem: ContextMenuItem = {[39m
+[31m+             label: "Show Terminal Environment…",[39m
+[31m+             click: () => {[39m
+[31m+                 modalsModel.pushModal("EnvModalView", {[39m
+[31m+                     blockId: this.blockId,[39m
+[31m+                     connection: connection,[39m
+[31m+                 });[39m
+[31m+             },[39m
+[31m+         };[39m
+[31m+         const agentFolderMenuItem: ContextMenuItem = {[39m
+[31m+             label: "Open Agent Folder",[39m
+[31m+             enabled: canOpenAgentFolder(blockData ?? null, agentSessionId),[39m
+[31m+             click: () => {[39m
+[31m+                 fireAndForget(() =>[39m
+[31m+                     openAgentFolderInCurrentTab({[39m
+[31m+                         blockId: this.blockId,[39m
+[31m+                         block: blockData ?? null,[39m
+[31m+                         sessionId: agentSessionId,[39m
+[31m+                     })[39m
+[31m+                 );[39m
+[31m+             },[39m
+[31m+         };[39m
+[31m+         if (agentSessionId !== "") {[39m
+[31m+             return [[39m
+[31m+                 {[39m
+[31m+                     label: "Copy Agent Session ID",[39m
+[31m+                     click: () => {[39m
+[31m+                         fireAndForget(() => copyText(agentSessionId));[39m
+[31m+                     },[39m
+[31m+                 },[39m
+[31m+                 {[39m
+[31m+                     label: "Open Session Detail",[39m
+[31m+                     click: () => {[39m
+[31m+                         const connection = typeof meta.connection === "string" ? meta.connection : "";[39m
+[31m+                         const cwd = typeof meta["cmd:cwd"] === "string" ? meta["cmd:cwd"] : "";[39m
+[31m+                         fireAndForget(() => openAISessionDetailBlock(agentSessionId, this.blockId, connection, cwd));[39m
+[31m+                     },[39m
+[31m+                 },[39m
+[31m+                 agentFolderMenuItem,[39m
+[31m+                 {[39m
+[31m+                     label: "Edit Agent Session Note...",[39m
+[31m+                     click: () => {[39m
+[31m+                         modalsModel.pushModal("AISessionNoteModal", { sessionId: agentSessionId });[39m
+[31m+                     },[39m
+[31m+                 },[39m
+[31m+                 debugMenuItem,[39m
+[31m+                 envMenuItem,[39m
+[31m+             ];[39m
+[31m+         }[39m
+[31m+         if (canOpenAgentFolder(blockData ?? null, "")) {[39m
+[31m+             return [agentFolderMenuItem, debugMenuItem, envMenuItem];[39m
+[31m+         }[39m
+[31m+         if (jobId === "") {[39m
+[31m+             console.log("[term-session-copy] no session id available for terminal block", {[39m
+[31m+                 blockId: this.blockId,[39m
+[31m+                 reason: "missing agent session id and jobid",[39m
+[31m+                 agentSessionSource: agentSessionResolution.source,[39m
+[31m+                 agentSessionReason: agentSessionResolution.reason,[39m
+[31m+                 startupCommand: sessionCopyCommandDebug(agentSessionResolution.startupCommand),[39m
+[31m+                 shellLastCommand: sessionCopyCommandDebug(agentSessionResolution.shellLastCommand),[39m
+[31m+                 hasShellLastCommand: typeof shellLastCommand === "string" && shellLastCommand.trim() !== "",[39m
+[31m+             });[39m
+[31m+             return [debugMenuItem, envMenuItem];[39m
+[31m+         }[39m
+[31m+         return [[39m
+[31m+             {[39m
+[31m+                 label: "Copy Terminal Session ID",[39m
+[31m+                 click: () => {[39m
+[31m+                     fireAndForget(() => copyText(jobId));[39m
+[31m+                 },[39m
+[31m+             },[39m
+[31m+             debugMenuItem,[39m
+[31m+             envMenuItem,[39m
+[31m+         ];[39m
+[31m+     }[39m
+[31m+[39m
+[31m+     getSettingsMenuItems(): ContextMenuItem[] {[39m
+[31m+         const fullConfig = globalStore.get(atoms.fullConfigAtom);[39m
+[31m+         const termThemes = fullConfig?.termthemes ?? {};[39m
+[31m+         const termThemeKeys = Object.keys(termThemes);[39m
+[31m+         const curThemeName = globalStore.get(getBlockMetaKeyAtom(this.blockId, "term:theme"));[39m
+[31m+         const defaultFontSize = globalStore.get(getSettingsKeyAtom("term:fontsize")) ?? 12;[39m
+[31m+         const defaultAllowBracketedPaste = globalStore.get(getSettingsKeyAtom("term:allowbracketedpaste")) ?? true;[39m
+[31m+         const transparencyMeta = globalStore.get(getBlockMetaKeyAtom(this.blockId, "term:transparency"));[39m
+[31m+         const blockData = globalStore.get(this.blockAtom);[39m
+[31m+         const overrideFontSize = blockData?.meta?.["term:fontsize"];[39m
+[31m+         const connFontFamily = fullConfig?.connections?.[blockData?.meta?.connection]?.["term:fontfamily"];[39m
+[31m+         const defaultFontFamily = connFontFamily ?? globalStore.get(getSettingsKeyAtom("term:fontfamily")) ?? "Hack";[39m
+[31m+         const overrideFontFamily = blockData?.meta?.["term:fontfamily"];[39m
+[31m+         const appTheme = globalStore.get(atoms.resolvedAppThemeAtom);[39m
+[31m+         const defaultThemeName = getDefaultTermTheme(appTheme);[39m
+[31m+[39m
+[31m+         termThemeKeys.sort((a, b) => {[39m
+[31m+             return (termThemes[a]["display:order"] ?? 0) - (termThemes[b]["display:order"] ?? 0);[39m
+[31m+         });[39m
+[31m+         const defaultTermBlockDef: BlockDef = {[39m
+[31m+             meta: {[39m
+[31m+                 view: "term",[39m
+[31m+                 controller: "shell",[39m
+[31m+             },[39m
+[31m+         };[39m
+[31m+[39m
+[31m+         const fullMenu: ContextMenuItem[] = [];[39m
+[31m+         fullMenu.push({[39m
+[31m+             label: "Split Horizontally",[39m
+[31m+             click: () => {[39m
+[31m+                 const blockData = globalStore.get(this.blockAtom);[39m
+[31m+                 const blockDef: BlockDef = {[39m
+[31m+                     meta: blockData?.meta || defaultTermBlockDef.meta,[39m
+[31m+                 };[39m
+[31m+                 createBlockSplitHorizontally(blockDef, this.blockId, "after");[39m
+[31m+             },[39m
+[31m+         });[39m
+[31m+         fullMenu.push({[39m
+[31m+             label: "Split Vertically",[39m
+[31m+             click: () => {[39m
+[31m+                 const blockData = globalStore.get(this.blockAtom);[39m
+[31m+                 const blockDef: BlockDef = {[39m
+[31m+                     meta: blockData?.meta || defaultTermBlockDef.meta,[39m
+[31m+                 };[39m
+[31m+                 createBlockSplitVertically(blockDef, this.blockId, "after");[39m
+[31m+             },[39m
+[31m+         });[39m
+[31m+         fullMenu.push({ type: "separator" });[39m
+[31m+[39m
+[31m+         const shellIntegrationStatus = globalStore.get(this.termRef?.current?.shellIntegrationStatusAtom);[39m
+[31m+         const cwd = blockData?.meta?.["cmd:cwd"];[39m
+[31m+         const canShowFileBrowser = shellIntegrationStatus === "ready" && cwd != null;[39m
+[31m+[39m
+[31m+         if (canShowFileBrowser) {[39m
+[31m+             fullMenu.push({[39m
+[31m+                 label: "File Browser",[39m
+[31m+                 click: () => {[39m
+[31m+                     const blockData = globalStore.get(this.blockAtom);[39m
+[31m+                     const connection = blockData?.meta?.connection;[39m
+[31m+                     const cwd = blockData?.meta?.["cmd:cwd"];[39m
+[31m+                     const meta: Record<string, any> = {[39m
+[31m+                         view: "preview",[39m
+[31m+                         file: cwd,[39m
+[31m+                     };[39m
+[31m+                     if (connection) {[39m
+[31m+                         meta.connection = connection;[39m
+[31m+                     }[39m
+[31m+                     const blockDef: BlockDef = { meta };[39m
+[31m+                     createBlock(blockDef);[39m
+[31m+                 },[39m
+[31m+             });[39m
+[31m+             fullMenu.push({ type: "separator" });[39m
+[31m+         }[39m
+[31m+[39m
+[31m+         fullMenu.push({[39m
+[31m+             label: "Save Session As...",[39m
+[31m+             click: () => {[39m
+[31m+                 if (this.termRef.current) {[39m
+[31m+                     const content = this.termRef.current.getScrollbackContent();[39m
+[31m+                     if (content) {[39m
+[31m+                         fireAndForget(async () => {[39m
+[31m+                             try {[39m
+[31m+                                 const success = await getApi().saveTextFile("session.log", content);[39m
+[31m+                                 if (!success) {[39m
+[31m+                                     console.log("Save scrollback cancelled by user");[39m
+[31m+                                 }[39m
+[31m+                             } catch (error) {[39m
+[31m+                                 console.error("Failed to save scrollback:", error);[39m
+[31m+                                 const errorMessage = error?.message || "An unknown error occurred";[39m
+[31m+                                 modalsModel.pushModal("MessageModal", {[39m
+[31m+                                     children: `Failed to save session scrollback: ${errorMessage}`,[39m
+[31m+                                 });[39m
+[31m+                             }[39m
+[31m+                         });[39m
+[31m+                     } else {[39m
+[31m+                         modalsModel.pushModal("MessageModal", {[39m
+[31m+                             children: "No scrollback content to save.",[39m
+[31m+                         });[39m
+[31m+                     }[39m
+[31m+                 }[39m
+[31m+             },[39m
+[31m+         });[39m
+[31m+         fullMenu.push({ type: "separator" });[39m
+[31m+[39m
+[31m+         const submenu: ContextMenuItem[] = termThemeKeys.map((themeName) => {[39m
+[31m+             return {[39m
+[31m+                 label: termThemes[themeName]["display:name"] ?? themeName,[39m
+[31m+                 type: "checkbox",[39m
+[31m+                 checked: curThemeName == themeName,[39m
+[31m+                 click: () => this.setTerminalTheme(themeName),[39m
+[31m+             };[39m
+[31m+         });[39m
+[31m+         submenu.unshift({[39m
+[31m+             label: "Default (" + (termThemes[defaultThemeName]?.["display:name"] ?? defaultThemeName) + ")",[39m
+[31m+             type: "checkbox",[39m
+[31m+             checked: curThemeName == null,[39m
+[31m+             click: () => this.setTerminalTheme(null),[39m
+[31m+         });[39m
+[31m+         const transparencySubMenu: ContextMenuItem[] = [];[39m
+[31m+         transparencySubMenu.push({[39m
+[31m+             label: "Default",[39m
+[31m+             type: "checkbox",[39m
+[31m+             checked: transparencyMeta == null,[39m
+[31m+             click: () => {[39m
+[31m+                 RpcApi.SetMetaCommand(TabRpcClient, {[39m
+[31m+                     oref: WOS.makeORef("block", this.blockId),[39m
+[31m+                     meta: { "term:transparency": null },[39m
+[31m+                 });[39m
+[31m+             },[39m
+[31m+         });[39m
+[31m+         transparencySubMenu.push({[39m
+[31m+             label: "Transparent Background",[39m
+[31m+             type: "checkbox",[39m
+[31m+             checked: transparencyMeta == 0.5,[39m
+[31m+             click: () => {[39m
+[31m+                 RpcApi.SetMetaCommand(TabRpcClient, {[39m
+[31m+                     oref: WOS.makeORef("block", this.blockId),[39m
+[31m+                     meta: { "term:transparency": 0.5 },[39m
+[31m+                 });[39m
+[31m+             },[39m
+[31m+         });[39m
+[31m+         transparencySubMenu.push({[39m
+[31m+             label: "No Transparency",[39m
+[31m+             type: "checkbox",[39m
+[31m+             checked: transparencyMeta == 0,[39m
+[31m+             click: () => {[39m
+[31m+                 RpcApi.SetMetaCommand(TabRpcClient, {[39m
+[31m+                     oref: WOS.makeORef("block", this.blockId),[39m
+[31m+                     meta: { "term:transparency": 0 },[39m
+[31m+                 });[39m
+[31m+             },[39m
+[31m+         });[39m
+[31m+[39m
+[31m+         const fontSizeSubMenu: ContextMenuItem[] = [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18].map([39m
+[31m+             (fontSize: number) => {[39m
+[31m+                 return {[39m
+[31m+                     label: fontSize.toString() + "px",[39m
+[31m+                     type: "checkbox",[39m
+[31m+                     checked: overrideFontSize == fontSize,[39m
+[31m+                     click: () => {[39m
+[31m+                         RpcApi.SetMetaCommand(TabRpcClient, {[39m
+[31m+                             oref: WOS.makeORef("block", this.blockId),[39m
+[31m+                             meta: { "term:fontsize": fontSize },[39m
+[31m+                         });[39m
+[31m+                     },[39m
+[31m+                 };[39m
+[31m+             }[39m
+[31m+         );[39m
+[31m+         fontSizeSubMenu.unshift({[39m
+[31m+             label: "Default (" + defaultFontSize + "px)",[39m
+[31m+             type: "checkbox",[39m
+[31m+             checked: overrideFontSize == null,[39m
+[31m+             click: () => {[39m
+[31m+                 RpcApi.SetMetaCommand(TabRpcClient, {[39m
+[31m+                     oref: WOS.makeORef("block", this.blockId),[39m
+[31m+                     meta: { "term:fontsize": null },[39m
+[31m+                 });[39m
+[31m+             },[39m
+[31m+         });[39m
+[31m+         const fontFamilySubMenu: ContextMenuItem[] = TerminalFontFamilies.map((fontFamily) => {[39m
+[31m+             const available = isFontFamilyAvailable(fontFamily);[39m
+[31m+             return {[39m
+[31m+                 label: (available ? "✅ " : "❌ ") + fontFamily,[39m
+[31m+                 type: "checkbox",[39m
+[31m+                 checked: overrideFontFamily == fontFamily,[39m
+[31m+                 enabled: available,[39m
+[31m+                 sublabel: available ? undefined : i18n.t("term:fontNotInstalled"),[39m
+[31m+                 click: () => {[39m
+[31m+                     RpcApi.SetMetaCommand(TabRpcClient, {[39m
+[31m+                         oref: WOS.makeORef("block", this.blockId),[39m
+[31m+                         meta: { "term:fontfamily": fontFamily },[39m
+[31m+                     });[39m
+[31m+                 },[39m
+[31m+             };[39m
+[31m+         });[39m
+[31m+         fontFamilySubMenu.unshift({[39m
+[31m+             label: "Default (" + defaultFontFamily + ")",[39m
+[31m+             type: "checkbox",[39m
+[31m+             checked: overrideFontFamily == null,[39m
+[31m+             click: () => {[39m
+[31m+                 RpcApi.SetMetaCommand(TabRpcClient, {[39m
+[31m+                     oref: WOS.makeORef("block", this.blockId),[39m
+[31m+                     meta: { "term:fontfamily": null },[39m
+[31m+                 });[39m
+[31m+             },[39m
+[31m+         });[39m
+[31m+         const overrideCursor = blockData?.meta?.["term:cursor"] as string | null | undefined;[39m
+[31m+         const overrideCursorBlink = blockData?.meta?.["term:cursorblink"] as boolean | null | undefined;[39m
+[31m+         const isCursorDefault = overrideCursor == null && overrideCursorBlink == null;[39m
+[31m+         // normalize for comparison: null/undefined/"block" all mean "block"[39m
+[31m+         const effectiveCursor = overrideCursor === "underline" || overrideCursor === "bar" ? overrideCursor : "block";[39m
+[31m+         const effectiveCursorBlink = overrideCursorBlink === true;[39m
+[31m+         const cursorSubMenu: ContextMenuItem[] = [[39m
+[31m+             {[39m
+[31m+                 label: "Default",[39m
+[31m+                 type: "checkbox",[39m
+[31m+                 checked: isCursorDefault,[39m
+[31m+                 click: () => {[39m
+[31m+                     RpcApi.SetMetaCommand(TabRpcClient, {[39m
+[31m+                         oref: WOS.makeORef("block", this.blockId),[39m
+[31m+                         meta: { "term:cursor": null, "term:cursorblink": null },[39m
+[31m+                     });[39m
+[31m+                 },[39m
+[31m+             },[39m
+[31m+             {[39m
+[31m+                 label: "Block",[39m
+[31m+                 type: "checkbox",[39m
+[31m+                 checked: !isCursorDefault && effectiveCursor === "block" && !effectiveCursorBlink,[39m
+[31m+                 click: () => {[39m
+[31m+                     RpcApi.SetMetaCommand(TabRpcClient, {[39m
+[31m+                         oref: WOS.makeORef("block", this.blockId),[39m
+[31m+                         meta: { "term:cursor": "block", "term:cursorblink": false },[39m
+[31m+                     });[39m
+[31m+                 },[39m
+[31m+             },[39m
+[31m+             {[39m
+[31m+                 label: "Block (Blinking)",[39m
+[31m+                 type: "checkbox",[39m
+[31m+                 checked: !isCursorDefault && effectiveCursor === "block" && effectiveCursorBlink,[39m
+[31m+                 click: () => {[39m
+[31m+                     RpcApi.SetMetaCommand(TabRpcClient, {[39m
+[31m+                         oref: WOS.makeORef("block", this.blockId),[39m
+[31m+                         meta: { "term:cursor": "block", "term:cursorblink": true },[39m
+[31m+                     });[39m
+[31m+                 },[39m
+[31m+             },[39m
+[31m+             {[39m
+[31m+                 label: "Bar",[39m
+[31m+                 type: "checkbox",[39m
+[31m+                 checked: !isCursorDefault && effectiveCursor === "bar" && !effectiveCursorBlink,[39m
+[31m+                 click: () => {[39m
+[31m+                     RpcApi.SetMetaCommand(TabRpcClient, {[39m
+[31m+                         oref: WOS.makeORef("block", this.blockId),[39m
+[31m+                         meta: { "term:cursor": "bar", "term:cursorblink": false },[39m
+[31m+                     });[39m
+[31m+                 },[39m
+[31m+             },[39m
+[31m+             {[39m
+[31m+                 label: "Bar (Blinking)",[39m
+[31m+                 type: "checkbox",[39m
+[31m+                 checked: !isCursorDefault && effectiveCursor === "bar" && effectiveCursorBlink,[39m
+[31m+                 click: () => {[39m
+[31m+                     RpcApi.SetMetaCommand(TabRpcClient, {[39m
+[31m+                         oref: WOS.makeORef("block", this.blockId),[39m
+[31m+                         meta: { "term:cursor": "bar", "term:cursorblink": true },[39m
+[31m+                     });[39m
+[31m+                 },[39m
+[31m+             },[39m
+[31m+             {[39m
+[31m+                 label: "Underline",[39m
+[31m+                 type: "checkbox",[39m
+[31m+                 checked: !isCursorDefault && effectiveCursor === "underline" && !effectiveCursorBlink,[39m
+[31m+                 click: () => {[39m
+[31m+                     RpcApi.SetMetaCommand(TabRpcClient, {[39m
+[31m+                         oref: WOS.makeORef("block", this.blockId),[39m
+[31m+                         meta: { "term:cursor": "underline", "term:cursorblink": false },[39m
+[31m+                     });[39m
+[31m+                 },[39m
+[31m+             },[39m
+[31m+             {[39m
+[31m+                 label: "Underline (Blinking)",[39m
+[31m+                 type: "checkbox",[39m
+[31m+                 checked: !isCursorDefault && effectiveCursor === "underline" && effectiveCursorBlink,[39m
+[31m+                 click: () => {[39m
+[31m+                     RpcApi.SetMetaCommand(TabRpcClient, {[39m
+[31m+                         oref: WOS.makeORef("block", this.blockId),[39m
+[31m+                         meta: { "term:cursor": "underline", "term:cursorblink": true },[39m
+[31m+                     });[39m
+[31m+                 },[39m
+[31m+             },[39m
+[31m+         ];[39m
+[31m+         fullMenu.push({[39m
+[31m+             label: "Themes",[39m
+[31m+             submenu: submenu,[39m
+[31m+         });[39m
+[31m+         fullMenu.push({[39m
+[31m+             label: "Font Size",[39m
+[31m+             submenu: fontSizeSubMenu,[39m
+[31m+         });[39m
+[31m+         fullMenu.push({[39m
+[31m+             label: "Font Family",[39m
+[31m+             submenu: fontFamilySubMenu,[39m
+[31m+         });[39m
+[31m+         fullMenu.push({[39m
+[31m+             label: "Cursor",[39m
+[31m+             submenu: cursorSubMenu,[39m
+[31m+         });[39m
+[31m+         fullMenu.push({[39m
+[31m+             label: "Transparency",[39m
+[31m+             submenu: transparencySubMenu,[39m
+[31m+         });[39m
+[31m+         const isAgentBlock = isAgentTerminalMeta(blockData?.meta);[39m
+[31m+         fullMenu.push({[39m
+[31m+             label: isAgentBlock ? "Restart Agent Session" : "Restart Shell",[39m
+[31m+             click: () => {[39m
+[31m+                 modalsModel.pushModal("RestartConfirmModal", {[39m
+[31m+                     blockId: this.blockId,[39m
+[31m+                     isAgent: isAgentBlock,[39m
+[31m+                     onResolve: (restart: boolean) => {[39m
+[31m+                         if (restart) {[39m
+[31m+                             fireAndForget(() => this.forceRestartController());[39m
+[31m+                         }[39m
+[31m+                     },[39m
+[31m+                 });[39m
+[31m+             },[39m
+[31m+         });[39m
+[31m+         fullMenu.push({ type: "separator" });[39m
+[31m+         const advancedSubmenu: ContextMenuItem[] = [];[39m
+[31m+         const allowBracketedPaste = blockData?.meta?.["term:allowbracketedpaste"];[39m
+[31m+         advancedSubmenu.push({[39m
+[31m+             label: "Allow Bracketed Paste Mode",[39m
+[31m+             submenu: [[39m
+[31m+                 {[39m
+[31m+                     label: "Default (" + (defaultAllowBracketedPaste ? "On" : "Off") + ")",[39m
+[31m+                     type: "checkbox",[39m
+[31m+                     checked: allowBracketedPaste == null,[39m
+[31m+                     click: () => {[39m
+[31m+                         RpcApi.SetMetaCommand(TabRpcClient, {[39m
+[31m+                             oref: WOS.makeORef("block", this.blockId),[39m
+[31m+                             meta: { "term:allowbracketedpaste": null },[39m
+[31m+                         });[39m
+[31m+                     },[39m
+[31m+                 },[39m
+[31m+                 {[39m
+[31m+                     label: "On",[39m
+[31m+                     type: "checkbox",[39m
+[31m+                     checked: allowBracketedPaste === true,[39m
+[31m+                     click: () => {[39m
+[31m+                         RpcApi.SetMetaCommand(TabRpcClient, {[39m
+[31m+                             oref: WOS.makeORef("block", this.blockId),[39m
+[31m+                             meta: { "term:allowbracketedpaste": true },[39m
+[31m+                         });[39m
+[31m+                     },[39m
+[31m+                 },[39m
+[31m+                 {[39m
+[31m+                     label: "Off",[39m
+[31m+                     type: "checkbox",[39m
+[31m+                     checked: allowBracketedPaste === false,[39m
+[31m+                     click: () => {[39m
+[31m+                         RpcApi.SetMetaCommand(TabRpcClient, {[39m
+[31m+                             oref: WOS.makeORef("block", this.blockId),[39m
+[31m+                             meta: { "term:allowbracketedpaste": false },[39m
+[31m+                         });[39m
+[31m+                     },[39m
+[31m+                 },[39m
+[31m+             ],[39m
+[31m+         });[39m
+[31m+         const isClearOnStart = blockData?.meta?.["cmd:clearonstart"];[39m
+[31m+         advancedSubmenu.push({[39m
+[31m+             label: "Clear Output On Restart",[39m
+[31m+             submenu: [[39m
+[31m+                 {[39m
+[31m+                     label: "On",[39m
+[31m+                     type: "checkbox",[39m
+[31m+                     checked: isClearOnStart,[39m
+[31m+                     click: () => {[39m
+[31m+                         RpcApi.SetMetaCommand(TabRpcClient, {[39m
+[31m+                             oref: WOS.makeORef("block", this.blockId),[39m
+[31m+                             meta: { "cmd:clearonstart": true },[39m
+[31m+                         });[39m
+[31m+                     },[39m
+[31m+                 },[39m
+[31m+                 {[39m
+[31m+                     label: "Off",[39m
+[31m+                     type: "checkbox",[39m
+[31m+                     checked: !isClearOnStart,[39m
+[31m+                     click: () => {[39m
+[31m+                         RpcApi.SetMetaCommand(TabRpcClient, {[39m
+[31m+                             oref: WOS.makeORef("block", this.blockId),[39m
+[31m+                             meta: { "cmd:clearonstart": false },[39m
+[31m+                         });[39m
+[31m+                     },[39m
+[31m+                 },[39m
+[31m+             ],[39m
+[31m+         });[39m
+[31m+         const runOnStart = blockData?.meta?.["cmd:runonstart"];[39m
+[31m+         advancedSubmenu.push({[39m
+[31m+             label: "Run On Startup",[39m
+[31m+             submenu: [[39m
+[31m+                 {[39m
+[31m+                     label: "On",[39m
+[31m+                     type: "checkbox",[39m
+[31m+                     checked: runOnStart,[39m
+[31m+                     click: () => {[39m
+[31m+                         RpcApi.SetMetaCommand(TabRpcClient, {[39m
+[31m+                             oref: WOS.makeORef("block", this.blockId),[39m
+[31m+                             meta: { "cmd:runonstart": true },[39m
+[31m+                         });[39m
+[31m+                     },[39m
+[31m+                 },[39m
+[31m+                 {[39m
+[31m+                     label: "Off",[39m
+[31m+                     type: "checkbox",[39m
+[31m+                     checked: !runOnStart,[39m
+[31m+                     click: () => {[39m
+[31m+                         RpcApi.SetMetaCommand(TabRpcClient, {[39m
+[31m+                             oref: WOS.makeORef("block", this.blockId),[39m
+[31m+                             meta: { "cmd:runonstart": false },[39m
+[31m+                         });[39m
+[31m+                     },[39m
+[31m+                 },[39m
+[31m+             ],[39m
+[31m+         });[39m
+[31m+         const debugConn = blockData?.meta?.["term:conndebug"];[39m
+[31m+         advancedSubmenu.push({[39m
+[31m+             label: "Debug Connection",[39m
+[31m+             submenu: [[39m
+[31m+                 {[39m
+[31m+                     label: "Off",[39m
+[31m+                     type: "checkbox",[39m
+[31m+                     checked: !debugConn,[39m
+[31m+                     click: () => {[39m
+[31m+                         RpcApi.SetMetaCommand(TabRpcClient, {[39m
+[31m+                             oref: WOS.makeORef("block", this.blockId),[39m
+[31m+                             meta: { "term:conndebug": null },[39m
+[31m+                         });[39m
+[31m+                     },[39m
+[31m+                 },[39m
+[31m+                 {[39m
+[31m+                     label: "Info",[39m
+[31m+                     type: "checkbox",[39m
+[31m+                     checked: debugConn == "info",[39m
+[31m+                     click: () => {[39m
+[31m+                         RpcApi.SetMetaCommand(TabRpcClient, {[39m
+[31m+                             oref: WOS.makeORef("block", this.blockId),[39m
+[31m+                             meta: { "term:conndebug": "info" },[39m
+[31m+                         });[39m
+[31m+                     },[39m
+[31m+                 },[39m
+[31m+                 {[39m
+[31m+                     label: "Verbose",[39m
+[31m+                     type: "checkbox",[39m
+[31m+                     checked: debugConn == "debug",[39m
+[31m+                     click: () => {[39m
+[31m+                         RpcApi.SetMetaCommand(TabRpcClient, {[39m
+[31m+                             oref: WOS.makeORef("block", this.blockId),[39m
+[31m+                             meta: { "term:conndebug": "debug" },[39m
+[31m+                         });[39m
+[31m+                     },[39m
+[31m+                 },[39m
+[31m+             ],[39m
+[31m+         });[39m
+[31m+[39m
+[31m+         const isDurable = globalStore.get(getBlockTermDurableAtom(this.blockId));[39m
+[31m+         if (isDurable) {[39m
+[31m+             advancedSubmenu.push({[39m
+[31m+                 label: "Session Durability",[39m
+[31m+                 submenu: [[39m
+[31m+                     {[39m
+[31m+                         label: "Restart Session in Standard Mode",[39m
+[31m+                         click: () => fireAndForget(() => this.restartSessionWithDurability(false)),[39m
+[31m+                     },[39m
+[31m+                 ],[39m
+[31m+             });[39m
+[31m+         } else if (isDurable === false) {[39m
+[31m+             advancedSubmenu.push({[39m
+[31m+                 label: "Session Durability",[39m
+[31m+                 submenu: [[39m
+[31m+                     {[39m
+[31m+                         label: "Restart Session in Durable Mode",[39m
+[31m+                         click: () => fireAndForget(() => this.restartSessionWithDurability(true)),[39m
+[31m+                     },[39m
+[31m+                 ],[39m
+[31m+             });[39m
+[31m+         }[39m
+[31m+[39m
+[31m+         fullMenu.push({[39m
+[31m+             label: "Advanced",[39m
+[31m+             submenu: advancedSubmenu,[39m
+[31m+         });[39m
+[31m+         if (blockData?.meta?.["term:vdomtoolbarblockid"]) {[39m
+[31m+             fullMenu.push({ type: "separator" });[39m
+[31m+             fullMenu.push({[39m
+[31m+                 label: "Close Toolbar",[39m
+[31m+                 click: () => {[39m
+[31m+                     RpcApi.DeleteSubBlockCommand(TabRpcClient, { blockid: blockData.meta["term:vdomtoolbarblockid"] });[39m
+[31m+                 },[39m
+[31m+             });[39m
+[31m+         }[39m
+[31m+         return fullMenu;[39m
+[31m+     }[39m
+[31m+ }[39m
+[31m+[39m
+[31m+ export function getAllBasicTermModels(): TermViewModel[] {[39m
+[31m+     const termModels: TermViewModel[] = [];[39m
+[31m+     const bcms = getAllBlockComponentModels();[39m
+[31m+     for (const bcm of bcms) {[39m
+[31m+         if (bcm?.viewModel?.viewType == "term") {[39m
+[31m+             const tvm = bcm.viewModel as TermViewModel;[39m
+[31m+             if (tvm.isBasicTerm((atom) => globalStore.get(atom))) {[39m
+[31m+                 termModels.push(tvm);[39m
+[31m+             }[39m
+[31m+         }[39m
+[31m+     }[39m
+[31m+     return termModels;[39m
+[31m+ }[39m
+[31m+[39m
+
+[36m [2m❯[22m frontend/app/view/term/term-header-emoji-only.test.ts:[2m126:24[22m[39m
+    [90m124| [39m        expect(source).toContain("buildCmdCwdHeaderElem(cmdCwd, get(th…
+    [90m125| [39m        [90m// header 必须复用同一个去重函数，不许再裸读 hero:name 把 emoji 带进胶囊。[39m
+    [90m126| [39m        [34mexpect[39m(source)[33m.[39m[34mtoContain[39m([32m"heroHeaderName(blockMeta)"[39m)[33m;[39m
+    [90m   | [39m                       [31m^[39m
+    [90m127| [39m        expect(source).not.toContain('typeof blockMeta?.["hero:name"]'…
+    [90m128| [39m        [90m// 且 emojiOnlyHeaderAtom 必须由会话感知的工厂产出（不是直接恒 false / 全局设置）。[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/4]⎯[22m[39m
+
+
+[2m Test Files [22m [1m[31m3 failed[39m[22m[90m (3)[39m
+[2m      Tests [22m [1m[31m4 failed[39m[22m[2m | [22m[1m[32m32 passed[39m[22m[90m (36)[39m
+[2m   Start at [22m 13:32:54
+[2m   Duration [22m 25.97s[2m (transform 8.61s, setup 207ms, collect 23.38s, tests 195ms, environment 5.72s, prepare 1.91s)[22m
+

@@ -21,7 +21,7 @@ import { useAgentStatusView } from "@/app/agent-status/use-agent-status-view";
 import { AgentStatusChip } from "@/app/session-overview/agent-status-chip";
 import { getAgentIcon } from "@/app/view/term/agent-logo";
 import { normalizeAgentProvider } from "@/app/view/term/agent-meta";
-import { humanizeKey } from "@/app/view/aisessions/property/property-model";
+import { AgentCardTitleSourceMark } from "@/app/view/term/agent-card-title-source-mark";
 import { modalsModel } from "@/app/store/modalmodel";
 import { copyText } from "@/util/clipboard";
 import { i18n } from "@/i18n/config";
@@ -29,8 +29,10 @@ import { cn } from "@/util/util";
 import * as React from "react";
 import { useTranslation } from "react-i18next";
 import {
+    formatAgentModel,
     getAgentProviderKey,
     resolveAgentModel,
+    resolveAgentModelIdentity,
     resolveAgentProviderLabel,
     resolveAgentVendorName,
     resolveAnyAgentVendorName,
@@ -93,7 +95,6 @@ const AgentHoverCard = React.memo(({ blockId, blockData, mode, embedded = false,
     const providerKey = getAgentProviderKey(rawProvider);
     const vendorName = resolveAgentVendorName(metaRecord, providerKey) || resolveAnyAgentVendorName(metaRecord);
     const providerLabel = resolveAgentProviderLabel(metaRecord, agentStatus);
-    const displayProvider = vendorName || providerLabel;
 
     // 异步增强真实模型：立即显示请求模型，live 会话模型到达后增量替换；失败保留原值、不阻塞。
     const runtimeEntry = React.useSyncExternalStore(
@@ -110,6 +111,10 @@ const AgentHoverCard = React.memo(({ blockId, blockData, mode, embedded = false,
     const liveModel = runtimeEntry?.source === "live" ? runtimeEntry.model : undefined;
     const sessionResolvedModel = runtimeEntry?.source === "session" ? runtimeEntry.model : undefined;
     const model = resolveAgentModel({ liveModel, requestedModel, sessionModel: sessionResolvedModel });
+    const identity = resolveAgentModelIdentity(model, runtimeEntry?.provider);
+    // vendor 仍优先；模型串自带的供应商补位，最后才是 agent/provider label。
+    const displayProvider = vendorName || identity.provider || providerLabel;
+    const modelText = formatAgentModel(identity, displayProvider);
     const modelLoading = runtimeEntry?.loading ?? false;
     const statusView = useAgentStatusView(blockId, agentStatus);
     // read 由 AgentStatusView 统一判定（ack 指纹 + Done 完成态已读时刻），
@@ -179,11 +184,11 @@ const AgentHoverCard = React.memo(({ blockId, blockData, mode, embedded = false,
     // 无任何来源时的兜底展示，不能拿它当“有信息”的判据，否则空会话也会长出空白头。
     const showMetaRow =
         providerLabel !== "Agent" || model !== "" || modelLoading || statusView != null;
-    // 星标与标题来源从属性区上移：星标进右上角，titleSource 并入副标题。
+    // 星标与标题来源从属性区上移：星标进右上角，titleSource 只留一个小标记。
     const starred = noteState.summary?.marked === true;
     const titleSource = noteState.summary?.titleSource ?? "";
-    const modelText = model || (modelLoading ? t("term:hoverCard.modelLoading") : t("term:hoverCard.modelUnspecified"));
-    const subline = titleSource !== "" ? `${modelText} · ${humanizeKey(titleSource)}` : modelText;
+    const resolvedModelText =
+        modelText || (modelLoading ? t("term:hoverCard.modelLoading") : t("term:hoverCard.modelUnspecified"));
     // session id 只留头尾，全文进 title：340px 宽的 hover 卡放不下完整 uuid。
     const shortSessionId =
         sessionId.length > 14 ? `${sessionId.slice(0, 8)}…${sessionId.slice(-4)}` : sessionId;
@@ -246,9 +251,14 @@ const AgentHoverCard = React.memo(({ blockId, blockData, mode, embedded = false,
                             </span>
                             <span
                                 className="agent-card-sub"
-                                title={titleSource !== "" ? i18n.t("term:hoverCard.titleSource", { source: titleSource }) : modelText}
+                                title={
+                                    titleSource !== ""
+                                        ? i18n.t("term:hoverCard.titleSource", { source: titleSource })
+                                        : resolvedModelText
+                                }
                             >
-                                {subline}
+                                {resolvedModelText}
+                                <AgentCardTitleSourceMark titleSource={titleSource} className="ml-1 align-baseline" />
                             </span>
                         </div>
                         {/* 右上角：状态 / 收藏 / 放大，同一基线右对齐 */}

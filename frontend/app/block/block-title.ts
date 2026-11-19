@@ -9,10 +9,16 @@
  * `basename(cmd:cwd)` 当默认标题，于是 Tab / Block 头部显示
  * `E:\primary\heros/hero-feaa3f86` 这种既哈希又混合分隔符的目录名。
  *
- * 启动时 `buildHeroLaunchBlockDef` 已把 roster label（emoji + name）写进
- * `hero:name`；这里只做读取与空白收敛，没有身份时返回空串让调用方回退原逻辑。
+ * 启动时 `buildHeroLaunchBlockDef` 已把纯名字写进 `hero:name`；老块可能带
+ * `emoji + name`，这里按同块 `agent:emoji` 剥掉重复前缀。没有身份时返回空串。
  */
 export function heroHeaderName(meta: Record<string, unknown> | null | undefined): string {
     const raw = meta?.["hero:name"];
-    return typeof raw === "string" ? raw.trim() : "";
+    const name = typeof raw === "string" ? raw.trim() : "";
+    const blockEmoji = meta?.["agent:emoji"];
+    if (name === "" || typeof blockEmoji !== "string" || blockEmoji.trim() === "") {
+        return name;
+    }
+    const prefix = `${blockEmoji.trim()} `;
+    return name.startsWith(prefix) ? name.slice(prefix.length).trim() : name;
 }

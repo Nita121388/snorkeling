@@ -237,3 +237,52 @@ merge 后 go build ./... 通过、四包测试全绿、`task generate` 无 diff�
 - 调查页：`docs/answers/tab-switch-perf-20261119-131307.html`、
   `tab-switch-risk-20261119-131626.html`、`next-step-recommendation-*.html`、
   `child1-effect-assessment-*.html`。
+
+## 2026-11-19 agent card set --prop-add-option（写值同时追加候选，代码+测试完成，真机待验）
+
+- 问题：`--prop-scope agent` 走 `upsertSchemaDef` 只改 key/name/type/scope、Options 保留原样，
+  新值进不了下拉候选；加候选只能整条重写 agent:propertyschema（易丢其它属性、setconfig 无 dry-run）。
+- 实现：`--prop-add-option key=v1,v2`（可重复、逗号分隔）；合并单点 `agentdata.MergePropertyOptions`
+  （幂等/保序/大小写不敏感去重/绝不删已有）；schema 侧 `appendSchemaOptions/upsertSchemaDef`
+  无新增时返回原 slice（settings 字节级不变）；dry-run `propOptionPreview` 现算 `prop:<key>.options` diff。
+  两条不变量：scope 必须 agent/all（CLI 报错 + agentcontrol E_USAGE 兜底）；key 必须同时出现在 --prop。
+  wshrpc/agentdata/agentdata patch 管线（dry-run/expectedHash/backup/audit）全复用；gotypes.d.ts 已重新生成。
+- 判据：`go test ./pkg/agentdata ./pkg/agentcontrol ./cmd/wsh/cmd` 全绿 + `go build ./...` 通过 + go vet 通过；
+  新 e2e `TestAgentCardEndToEndAppendsPropOptions` 覆盖 dry-run→E_USAGE→真写→读回→重复不重复。
+- 真机未验：运行中的 dev wavesrv 是旧二进制，会静默丢弃 addoptions（实测 dry-run 无 option diff）；
+  进程内链路已全验。今晚先重启 app 再按文档 §7 六条验收。
+- 顺手发现未改：`patchDomains` 不给纯 props 补丁打 SQLite backup（title/prop 均不在列），既有缺口，
+  归 11-09-agentdata-backup-granularity。
+- 文档：`docs/project/agent-card-prop-add-option.md`（全量：改动/测试/验收清单/今晚待做/提交文件清单）。
+  HANDOFF.md 已置顶一节。未 commit/push；提交时只带本包 10 文件（清单见文档 §6）。
+
+## 2026-11-19 CommonText 弹窗性能整改（进行中，晚上继续）
+
+- 任务 `.trellis/tasks/11-19-commontext-compose-perf/` 已 `in_progress`；用户下班，进度已写入 `implement.md` 的 Progress Snapshot。
+- 基线：commontext 三个目标测试 82 例全绿。
+- 已完成 model 层：`caretContextSignature`（当前行+当前词）、`searchCommonTextComposeItemsFromBase`、搜索字段 WeakMap；model 测试 61 例全绿。
+- 已完成 modal 大部分骨架：三开关、searchText/searchCaret/caretTokenRevision、pendingSearchRef、flushSearch、baseItems memo、关闭态 guard、CommonTextRow、listWindow/scroll 换算、nowMinute。
+- 16:15 更新：列表渲染已切到 `listWindow + CommonTextRow + 上下 spacer`；旧全量行 DOM 保留在开关 false 分支作回滚基线。Enter/行内插入已先 flushSearch；行回调用 ref 稳定化。
+- 未完成：ResizeObserver 150ms 静默提交未做；DOM/source 的 Enter flush/关闭态断言未补；perf 探针未建；verify 台未适配；tsc baseline 未跑。已跑 source+dom 25 例全绿，model 61 例全绿。下次先补测试与 tsc。
+- 注意事项：本机性能差，用户豁免真机；只跑 commontext 目标文件，不跑全量 vitest。
+
+## 2026-11-19 16:0x：闪退时「PowerShell 未处理异常」根因查清（fsmonitor 泄漏，纯调查，未改代码）
+
+- **结论**：PS 弹窗 = `powershell.exe` 的 `System.OutOfMemoryException`，整机 commit 耗尽（26.4GB 上限用掉 24.9GB）
+  的受害者，不是凶手；同一分钟 dwm.exe 崩 + wavesrv `fatal error: out of memory`（errno=1455=ERROR_COMMITMENT_LIMIT）。
+  用户报的「闪退时弹 PS 未处理异常」= 旧版 emain 在 wavesrv exit 就 `app.quit()`，弹窗压在整窗消失那一瞬。
+- **OOM 频次**：11-16~11-19 共 8 次（11-19 三次：09:26/11:12/13:36）；当前这套 Snorkeling 进程全是 14:55 那次闪退后重启的。
+- **新泄漏（2.85GB）**：67 个 `git fsmonitor--daemon`，父进程全退出、最老 434 分钟、无空闲超时、一仓一只。
+  根因三层：① `D:/SoftWare/Git/etc/gitconfig` 系统级 `core.fsmonitor=true`（Git for Windows 默认）；
+  ② 任何刷索引的 git 命令首跑即拉起 per-worktree daemon 且永不退；
+  ③ `pkg/wshrpc/wshremote/vcs.go detectRepoRoots`（`MaxVcsRepos=64` / `scanDepth=3`）对目录 WalkDir 后逐仓跑
+  `git status --porcelain=1 -uall`，把几十个仓的 daemon 一次全拉起 —— 观测 ~60 个真实仓 daemon 与 64 上限吻合。
+  临时仓也中招：data-guardian 的 `dgdb_check.py` 用 `mkdtemp` 建仓不清理，%TEMP% 已 225 个 `dgdb-check-*`。
+- **顺手记下**：`%LOCALAPPDATA%\snorkeling-agentstatus-hook.log` 230MB/145万行无轮转；PRD 说 pagefile 已调 16/24GB 但实测上限仅 26.4GB，需复查。
+- **改动**：无代码改动。证据、时间线、复现命令、今晚待办全文见
+  `.trellis/tasks/11-19-wavesrv-oom-flash-quit/findings-fsmonitor-leak-20261119.md`；可视化页
+  `docs/answers/crash-powershell-oom-20261119-1532.html`。
+- **今晚第一步**：按 command line 过滤 PID 清掉 67 个 fsmonitor daemon（回收 ~2.9GB），再决定系统级关 `core.fsmonitor`
+  还是产品侧 `newVcsCommand` 统一加 `-c core.fsmonitor=false`（那一行已有 `core.quotePath=false`，改一处即全量生效）。
+- **是否开 Trellis 包**：未开（等用户拍）。建议新包承载「git 调用带 fsmonitor=false + detectRepoRoots 扫描收敛 + dgdb 清理」，
+  不塞进 11-19-wavesrv-oom-flash-quit（那包的 R1/R2/R3 已交付且 GOMEMLIMIT 治不了本根因）。

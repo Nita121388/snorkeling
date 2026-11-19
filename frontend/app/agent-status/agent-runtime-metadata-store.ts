@@ -17,17 +17,29 @@ import { AISessionsService } from "@/app/store/services";
 export type AgentRuntimeModelSource = "requested" | "live" | "session" | "unknown";
 
 export type AgentRuntimeMetadataEntry = {
-    // live model (from a live GUI chat session), when available
+    // canonical raw model id (modelId || modelName), kept verbatim for tooltip/copy
     model?: string;
+    rawModel?: string;
     provider?: string;
     thinkingLevel?: string;
     source: AgentRuntimeModelSource;
     loading: boolean;
+    /** blockId|sessionId|source this entry belongs to. */
+    sessionKey?: string;
+    /** Stamped only when a model was resolved; a failed/empty attempt must not block retries. */
     loadedAt?: number;
+    /** Last attempt time (success or failure), diagnostics only. */
+    lastAttemptAt?: number;
 };
 
 const entries = new Map<string, AgentRuntimeMetadataEntry>();
 const pending = new Map<string, Promise<void>>();
+
+const SUCCESS_TTL_MS = 5000;
+
+function sessionCacheKey(blockId: string, sessionId: string, source: string): string {
+    return `${blockId}|${sessionId}|${source || "pi"}`;
+}
 const listenersByBlock = new Map<string, Set<() => void>>();
 
 function emit(blockId: string) {
@@ -70,36 +82,74 @@ export function ensureAgentRuntimeMetadata(blockId: string, sessionId: string, s
     if (!sessionId || !blockId) {
         return;
     }
+    const cacheKey = sessionCacheKey(blockId, sessionId, source);
     const existing = entries.get(blockId);
-    if (existing?.loading || pending.has(blockId)) {
+    // Only a successful resolution inside the TTL is served from cache. A
+    // failed/empty attempt leaves loadedAt unset, so the next open retries.
+    if (
+        existing?.sessionKey === cacheKey &&
+        existing.loadedAt != null &&
+        Date.now() - existing.loadedAt < SUCCESS_TTL_MS
+    ) {
         return;
     }
-    setEntry(blockId, (cur) => ({ ...cur, loading: true }));
+    if (existing?.loading && existing.sessionKey === cacheKey) {
+        return;
+    }
+    if (pending.has(cacheKey)) {
+        return;
+    }
+    // Different session/source on the same block: drop the old session's model
+    // so it cannot bleed into the new card until the fresh response arrives.
+    setEntry(blockId, (cur) =>
+        cur?.sessionKey === cacheKey
+            ? { ...cur, loading: true }
+            : { model: undefined, rawModel: undefined, provider: undefined, thinkingLevel: undefined, source: "unknown", loading: true, sessionKey: cacheKey }
+    );
     const p = AISessionsService.LiveSessionState({ source: source || "pi", sessionId })
         .then((resp) => {
+            const attemptedAt = Date.now();
             if (resp.modelId || resp.modelName) {
+                // canonical raw is the id; name is a friendly label and is not split-safe.
+                const rawModel = resp.modelId || resp.modelName;
                 setEntry(blockId, () => ({
-                    model: resp.modelName || resp.modelId,
+                    model: rawModel,
+                    rawModel,
                     provider: resp.modelProvider,
                     thinkingLevel: resp.thinkingLevel,
                     source: resp.live ? "live" : "session",
                     loading: false,
-                    loadedAt: Date.now(),
+                    sessionKey: cacheKey,
+                    loadedAt: attemptedAt,
+                    lastAttemptAt: attemptedAt,
                 }));
                 return;
             }
             // Live/session not present or no model reported: keep the existing
-            // value (e.g. requested model from block meta), just finish loading.
-            setEntry(blockId, (cur) => ({ ...cur, loading: false, loadedAt: Date.now() }));
+            // value (e.g. requested model from block meta), but do NOT stamp
+            // loadedAt — the next open must retry.
+            setEntry(blockId, (cur) => ({
+                ...(cur?.sessionKey === cacheKey
+                    ? cur
+                    : { source: "unknown" as AgentRuntimeModelSource, sessionKey: cacheKey }),
+                loading: false,
+                lastAttemptAt: attemptedAt,
+            }));
         })
         .catch(() => {
-            // Query failed: never clear/block. Keep fallback, mark done.
-            setEntry(blockId, (cur) => ({ ...cur, loading: false, loadedAt: Date.now() }));
+            // Query failed: never clear/block the fallback, and never cache it.
+            setEntry(blockId, (cur) => ({
+                ...(cur?.sessionKey === cacheKey
+                    ? cur
+                    : { source: "unknown" as AgentRuntimeModelSource, sessionKey: cacheKey }),
+                loading: false,
+                lastAttemptAt: Date.now(),
+            }));
         })
         .finally(() => {
-            pending.delete(blockId);
+            pending.delete(cacheKey);
         });
-    pending.set(blockId, p);
+    pending.set(cacheKey, p);
 }
 
 // test/diagnostics helper

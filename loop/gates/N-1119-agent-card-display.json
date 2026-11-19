@@ -1,0 +1,6 @@
+{
+  "g2": {
+    "redProof": "Go 新测试 compile red（undefined: ModelState/ModelStateProvider/CurrentModelState，两包 build failed）；vitest 3 文件 8 failed（resolveAgentModelIdentity/formatAgentModel/TTL 复合键/标题标记未实现）；真实会话 2026-10-16T06-22-34-590Z 切模型后无新回复（lastMC=kimi-k3 09:35 > lastA=deepseek-v4.1-flash 06:22）→卡片必显旧模型。详见 loop/red/N-1119-agent-card-display.txt",
+    "at": "2026-11-19T07:20:10Z"
+  }
+}

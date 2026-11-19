@@ -1,0 +1,73 @@
+# G2 红证 — N-1119-agent-card-display（agent card 模型展示 + 标题来源）
+
+日期：2026-11-19 · 采集环境：本机 E:\code\snorkeling @ main fc0491f59（产品逻辑未改，仅新增测试）
+
+## 1. Go 新测试（compile red：规划的接口不存在）
+
+命令：
+
+    export PATH="/e/code/snorkeling/.tools/go/bin:$PATH"
+    export GOCACHE="E:/code/snorkeling/.cache/go-build" GOMODCACHE="E:/code/snorkeling/.cache/gomod" GOPATH="E:/code/snorkeling/.cache/gopath" GOENV=off GOTOOLCHAIN=local GOPROXY="https://goproxy.cn,direct"
+    go test ./pkg/aisessions/ ./pkg/service/aisessionsservice/ -run 'TestPiCurrentModelState|TestCodexCurrentModelState|TestLiveSessionStateCurrentModel|TestCurrentModelStateDoesNotLoadMessages' -v
+
+关键输出（完整见 tmp/go-red.txt）：
+
+    pkg\service\aisessionsservice\chatcontrol_test.go:97:98: undefined: aisessions.ModelState
+    pkg\service\aisessionsservice\chatcontrol_test.go:99:22: c.PiProvider.CurrentModelState undefined
+    pkg\service\aisessionsservice\chatcontrol_test.go:132:23: manager.CurrentModelState undefined
+    pkg\aisessions\provider_codex_test.go:44:8: undefined: ModelStateProvider
+    pkg\aisessions\provider_codex_test.go:48:38: NewCodexProvider(root).CurrentModelState undefined
+    pkg\aisessions\provider_pi_test.go:775:8: undefined: ModelStateProvider
+    pkg\aisessions\provider_pi_test.go:780:35: NewPiProvider(dir).CurrentModelState undefined
+    FAIL  github.com/wavetermdev/waveterm/pkg/aisessions [build failed]
+    FAIL  github.com/wavetermdev/waveterm/pkg/service/aisessionsservice [build failed]
+
+结论：红。当前模型来源链不存在，测试无法编译。
+
+## 2. 前端拆分/刷新/标记（assertion red）
+
+命令：
+
+    npx vitest run frontend/app/view/term/agent-identity.test.ts frontend/app/agent-status/agent-runtime-metadata-store.test.ts frontend/app/view/term/agent-card-title-source-mark.test.tsx
+
+关键输出（完整见 tmp/vitest-red.txt）：
+
+    FAIL frontend/app/view/term/agent-identity.test.ts > resolveAgentModelIdentity > case-1 splits on the first slash
+      TypeError: (0 , resolveAgentModelIdentity) is not a function
+    FAIL ... case-2 .. case-6（同因：resolveAgentModelIdentity / formatAgentModel 未实现）
+    FAIL frontend/app/agent-status/agent-runtime-metadata-store.test.ts（TTL 复合键 / 失败不盖 loadedAt 未实现）
+    FAIL frontend/app/view/term/agent-card-title-source-mark.test.tsx（AgentCardTitleSourceMark 未实现）
+    Test Files  3 failed (3)
+    Tests  8 failed | 1 passed (9)
+
+结论：红。共享拆分函数、TTL 复合键失效、标题来源短标记都不存在。
+
+## 3. 真实数据：切模型后无新回复 → 卡片必然显示旧模型
+
+命令：`node tmp/find-pi-model-switch.mjs`（扫 ~/.pi/agent/sessions，找“最后 model_change 晚于最后 assistant 回复且模型不同”的真实会话）
+
+输出（完整见 tmp/pi-model-switch-red.txt）：
+
+    candidates 4
+    file: ~/.pi/agent/sessions/--D--Code-LiCASmart--/2026-10-16T06-22-34-590Z_11f5898e-bb08-41ac-8dc9-4a52b4e6929e.jsonl
+    mcs: 3
+    lastMC: provider=httpsllmgoaichattopv1  model=kimi-k3                 ts=2026-10-17T09:35:46.393Z
+    lastA:  provider=deepseek               model=deepseek-v4.1-flash     ts=2026-10-17T06:22:00.385Z
+
+结论：红。当前实现取“最后一条 assistant 消息的 model”（deepseek-v4.1-flash），
+而会话当前模型是 kimi-k3（09:35 切换后没有新回复）——Agent 卡片会持续显示旧模型。
+
+## 4. 真实数据：供应商不展示（mydeepseek/deepseek-v4.1-flash 整串当模型）
+
+PRD 记录（已核实）：`~/.pi/agent/sessions/--E--primary-heros-hero-feaa3f86--/2026-11-16T05-22-40-435Z_...jsonl`
+里 `model_change.provider=magpie, modelId=mydeepseek/deepseek-v4.1-flash`，74/74 条 assistant
+消息 `provider=magpie, model=mydeepseek/deepseek-v4.1-flash`。当前卡片把整串当模型显示，
+`resp.modelProvider` 被写进 store 但无 UI 消费（agent-runtime-metadata-store.ts:83），
+且被写成 `summary.Source="pi"`（chatcontrol.go:128）。
+
+结论：红。供应商与模型未拆分展示，真实 supplier（mydeepseek/magpie）不可见。
+
+## 总结论
+
+G2 红证成立：新模型来源链、共享拆分函数、TTL 复合键、标题来源短标记均不存在，
+真实会话存在“切模型无新回复 → 卡片旧模型”与“供应商不展示”的坏样本。

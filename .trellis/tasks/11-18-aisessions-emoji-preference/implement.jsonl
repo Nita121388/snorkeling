@@ -1,0 +1,6 @@
+{"file": ".trellis/spec/snorkeling-docs/backend/agent-control-surface-contract.md", "reason": "session emoji get/set/recommend 的 CLI/MCP 分层、dry-run、expectedHash、错误码必须对齐控制面契约"}
+{"file": ".trellis/spec/snorkeling-docs/backend/aisessions-annotation-contract.md", "reason": "推荐信号 3 读时间线注解（kind/status/source），需遵守批注存储不变量与 idx.db 单连接池约束"}
+{"file": ".trellis/spec/snorkeling-docs/backend/aisessions-title-contract.md", "reason": "source=user 永不覆盖的既有先例（title 契约），emoji 的 user 槽保护要与之一致"}
+{"file": ".trellis/spec/snorkeling-docs/frontend/state-management.md", "reason": "session-persona-store 读穿改造：external store + useSyncExternalStore 快照稳定性与乐观更新回滚"}
+{"file": ".trellis/spec/snorkeling-docs/frontend/quality-guidelines.md", "reason": "性能预算（Picker 打开不等推荐）、九面一致性、验证台账出口"}
+{"file": ".trellis/spec/snorkeling-docs/frontend/type-safety.md", "reason": "Properties / source / if-absent 新类型的类型安全与 TS 严格模式约束"}

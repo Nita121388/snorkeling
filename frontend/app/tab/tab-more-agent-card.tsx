@@ -27,8 +27,9 @@ import { getAgentIcon } from "@/app/view/term/agent-logo";
 import { useAgentPersonas } from "@/app/agent-persona/use-agent-personas";
 import { useSessionEmojis } from "@/app/agent-persona/use-session-personas";
 import {
+    formatAgentModel,
     getAgentProviderKey,
-    resolveAgentModel,
+    resolveAgentModelIdentity,
     resolveAgentProviderLabel,
     resolveAgentVendorName,
     resolveAnyAgentVendorName,
@@ -113,10 +114,13 @@ const AgentMiniRow = memo(({ blockId }: { blockId: string }) => {
     const providerKey = getAgentProviderKey(rawProvider);
     const vendorName = resolveAgentVendorName(meta, providerKey) || resolveAnyAgentVendorName(meta);
     const providerLabel = resolveAgentProviderLabel(meta, agentStatus);
-    const displayProvider = vendorName || providerLabel;
     const requestedModel =
         (meta["agent:requestedmodel"] as string)?.trim() || (meta["model"] as string)?.trim() || "";
-    const model = resolveAgentModel({ requestedModel });
+    // Mini row is deliberately sync-only (zero RPC): split the launch model string
+    // with the same shared helper, but never call ensureAgentRuntimeMetadata here.
+    const identity = resolveAgentModelIdentity(requestedModel, "");
+    const displayProvider = vendorName || identity.provider || providerLabel;
+    const model = formatAgentModel(identity, displayProvider);
     const sessionId = resolveBlockSessionId(meta);
     const statusView = useAgentStatusView(blockId, agentStatus);
     // 与悬浮卡共用同一 read 判定：unread 的 Done 才用 done 绿 + 脉冲，已读收敛到 muted。

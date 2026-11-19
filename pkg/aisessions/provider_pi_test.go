@@ -716,3 +716,120 @@ func TestPiProviderScanTitleStillParsesLargeButUnderLimit(t *testing.T) {
 		t.Fatalf("expected non-empty normalized title")
 	}
 }
+
+// ── CurrentModelState (G2 red: the ModelState/ModelStateProvider shape from
+// design.md §3 does not exist in the current code, so this test cannot compile
+// until the fix lands) ────────────────────────────────────────────────────────
+
+// writePiJSONLNamed writes content to <dir>/<name>.jsonl (a per-session name,
+// unlike writePiJSONL's fixed pi-sess-1.jsonl) and returns the file path.
+func writePiJSONLNamed(t *testing.T, dir string, name string, content string) string {
+	t.Helper()
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("mkdir %s: %v", dir, err)
+	}
+	path := filepath.Join(dir, name)
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("write %s: %v", path, err)
+	}
+	return path
+}
+
+// piCurrentModelFresh: the session ends with a /model switch (model_change) AFTER
+// the last assistant reply and only a user message afterwards. The current model
+// is the switch target, not the model of the last assistant message. The active
+// chain is mc0 → u1 → a1 → mcB → u2 → a2 → mcC → u3; the last assistant a2 ran
+// on mydeepseek/deepseek-v4.1-flash, the switch target is kimi-k3.
+const piCurrentModelFresh = `{"type":"session","version":3,"id":"pi-model-fresh","timestamp":1700000000,"cwd":"/home/user/project"}` + "\n" +
+	`{"type":"model_change","id":"mc0","parentId":null,"timestamp":"2026-10-16T06:22:49.555Z","provider":"opencode-go","modelId":"deepseek-v4.1-flash"}` + "\n" +
+	`{"type":"message","id":"u1","parentId":"mc0","timestamp":"2026-10-16T06:23:00.000Z","message":{"role":"user","content":[{"type":"text","text":"hello"}]}}` + "\n" +
+	`{"type":"message","id":"a1","parentId":"u1","timestamp":"2026-10-16T06:23:10.000Z","message":{"role":"assistant","model":"deepseek-v4.1-flash","provider":"opencode-go","content":[{"type":"text","text":"hi"}]}}` + "\n" +
+	`{"type":"model_change","id":"mcB","parentId":"a1","timestamp":"2026-10-17T09:30:00.000Z","provider":"magpie","modelId":"mydeepseek/deepseek-v4.1-flash"}` + "\n" +
+	`{"type":"message","id":"u2","parentId":"mcB","timestamp":"2026-10-17T09:30:10.000Z","message":{"role":"user","content":[{"type":"text","text":"second question"}]}}` + "\n" +
+	`{"type":"message","id":"a2","parentId":"u2","timestamp":"2026-10-17T09:31:00.000Z","message":{"role":"assistant","model":"mydeepseek/deepseek-v4.1-flash","provider":"magpie","content":[{"type":"text","text":"second answer"}]}}` + "\n" +
+	`{"type":"model_change","id":"mcC","parentId":"a2","timestamp":"2026-10-17T09:35:46.393Z","provider":"httpsllmgoaichattopv1","modelId":"kimi-k3"}` + "\n" +
+	`{"type":"message","id":"u3","parentId":"mcC","timestamp":"2026-10-17T09:35:50.000Z","message":{"role":"user","content":[{"type":"text","text":"after the switch, no reply yet"}]}}` + "\n"
+
+// piCurrentModelAbandonedBranch: same file carries an abandoned branch whose
+// model_change (mcX, parent a1) appears in the file AFTER the active branch's
+// own model_change (mcC). The file's LAST model_change line is mcX, but the
+// active chain is mcC → a2 → u2 → mcB → a1 → u1 → mc0, so the current model is
+// kimi-k3, never gpt-abandoned. Blindly taking "the file's last model_change"
+// would return the wrong model — this is the in-file abandoned-branch
+// counterexample from design.md §3.2.
+const piCurrentModelAbandonedBranch = `{"type":"session","version":3,"id":"pi-model-branch","timestamp":1700000000,"cwd":"/home/user/project"}` + "\n" +
+	`{"type":"model_change","id":"mc0","parentId":null,"timestamp":"2026-10-16T06:22:49.555Z","provider":"opencode-go","modelId":"deepseek-v4.1-flash"}` + "\n" +
+	`{"type":"message","id":"u1","parentId":"mc0","timestamp":"2026-10-16T06:23:00.000Z","message":{"role":"user","content":[{"type":"text","text":"hello"}]}}` + "\n" +
+	`{"type":"message","id":"a1","parentId":"u1","timestamp":"2026-10-16T06:23:10.000Z","message":{"role":"assistant","model":"deepseek-v4.1-flash","provider":"opencode-go","content":[{"type":"text","text":"hi"}]}}` + "\n" +
+	`{"type":"model_change","id":"mcB","parentId":"a1","timestamp":"2026-10-17T09:30:00.000Z","provider":"magpie","modelId":"mydeepseek/deepseek-v4.1-flash"}` + "\n" +
+	`{"type":"message","id":"u2","parentId":"mcB","timestamp":"2026-10-17T09:30:10.000Z","message":{"role":"user","content":[{"type":"text","text":"second question"}]}}` + "\n" +
+	`{"type":"message","id":"a2","parentId":"u2","timestamp":"2026-10-17T09:31:00.000Z","message":{"role":"assistant","model":"mydeepseek/deepseek-v4.1-flash","provider":"magpie","content":[{"type":"text","text":"second answer"}]}}` + "\n" +
+	`{"type":"model_change","id":"mcC","parentId":"a2","timestamp":"2026-10-17T09:35:46.393Z","provider":"httpsllmgoaichattopv1","modelId":"kimi-k3"}` + "\n" +
+	`{"type":"model_change","id":"mcX","parentId":"a1","timestamp":"2026-10-17T10:00:00.000Z","provider":"openai","modelId":"gpt-abandoned"}` + "\n" +
+	`{"type":"message","id":"u3","parentId":"mcC","timestamp":"2026-10-17T09:35:50.000Z","message":{"role":"user","content":[{"type":"text","text":"continues the active branch"}]}}` + "\n"
+
+func TestPiCurrentModelState(t *testing.T) {
+	// The planned optional interface (design.md §3.1): pi provider must implement
+	// CurrentModelState. This assertion is the red proof — the type does not
+	// exist today, so the package fails to compile until the fix lands.
+	var _ ModelStateProvider = (*PiProvider)(nil)
+
+	t.Run("model_change_after_last_assistant", func(t *testing.T) {
+		dir := t.TempDir()
+		path := writePiJSONLNamed(t, dir, "pi-model-fresh.jsonl", piCurrentModelFresh)
+		state, ok := NewPiProvider(dir).CurrentModelState(context.Background(), path)
+		if !ok {
+			t.Fatalf("expected CurrentModelState ok=true")
+		}
+		if state.Model != "kimi-k3" {
+			t.Fatalf("expected current model kimi-k3 (model_change after the last assistant message), got %q", state.Model)
+		}
+		if state.Provider != "httpsllmgoaichattopv1" {
+			t.Fatalf("expected provider httpsllmgoaichattopv1, got %q", state.Provider)
+		}
+	})
+
+	t.Run("abandoned_branch_counterexample", func(t *testing.T) {
+		dir := t.TempDir()
+		path := writePiJSONLNamed(t, dir, "pi-model-branch.jsonl", piCurrentModelAbandonedBranch)
+		state, ok := NewPiProvider(dir).CurrentModelState(context.Background(), path)
+		if !ok {
+			t.Fatalf("expected CurrentModelState ok=true")
+		}
+		if state.Model != "kimi-k3" {
+			t.Fatalf("expected active-branch model kimi-k3, got %q (a naive last-model_change read would return gpt-abandoned)", state.Model)
+		}
+		if state.Provider != "httpsllmgoaichattopv1" {
+			t.Fatalf("expected active-branch provider httpsllmgoaichattopv1, got %q", state.Provider)
+		}
+	})
+
+	t.Run("oversized_line_then_model_change", func(t *testing.T) {
+		dir := t.TempDir()
+		// >1 MiB base64-image line (pi inlines images into the transcript),
+		// followed by a real model_change. The bounded tail read must skip the
+		// oversized line and keep scanning (bufio.Reader.ReadBytes, NOT a
+		// 1 MiB-token bufio.Scanner which stops with ErrTooLong), so the
+		// model_change after it is still found.
+		bigPayload := strings.Repeat("A", (1<<20)+4096)
+		content := `{"type":"session","version":3,"id":"pi-model-big","timestamp":1700000000,"cwd":"/home/user/project"}` + "\n" +
+			`{"type":"message","id":"a-big","parentId":"","timestamp":"2026-10-17T09:31:00.000Z","message":{"role":"toolResult","content":[{"type":"image","data":"` + bigPayload + `"}]}}` + "\n" +
+			`{"type":"message","id":"u2","parentId":"a-big","timestamp":"2026-10-17T09:32:00.000Z","message":{"role":"user","content":[{"type":"text","text":"next"}]}}` + "\n" +
+			`{"type":"model_change","id":"mcBig","parentId":"u2","timestamp":"2026-10-17T09:35:46.393Z","provider":"magpie","modelId":"mydeepseek/kimi-k3"}` + "\n"
+		path := writePiJSONLNamed(t, dir, "pi-model-big.jsonl", content)
+		start := time.Now()
+		state, ok := NewPiProvider(dir).CurrentModelState(context.Background(), path)
+		if elapsed := time.Since(start); elapsed > 5*time.Second {
+			t.Fatalf("CurrentModelState took %v on a >1MiB line; expected fast skip", elapsed)
+		}
+		if !ok {
+			t.Fatalf("expected CurrentModelState ok=true past the oversized line")
+		}
+		if state.Model != "mydeepseek/kimi-k3" {
+			t.Fatalf("expected model mydeepseek/kimi-k3 after the oversized line, got %q", state.Model)
+		}
+		if state.Provider != "magpie" {
+			t.Fatalf("expected provider magpie, got %q", state.Provider)
+		}
+	})
+}

@@ -180,6 +180,8 @@ A2.5 的 7 条判据（PROPOSE/QUOTA/MEMORY_DISCIPLINE/JOURNAL/GUIDE_PERSONA 等
 |---|---|---|
 | `hero` | `<id>` | 恒写（A4 名册 / 悬浮卡读它） |
 | `cmd:cwd` | `<heroroot>/<id>` | 恒写（继承 agent-launch 的 context） |
+| `agent:emoji` | Hero emoji | Hero 有 emoji 时写；Block header 左上角图标的唯一来源 |
+| `hero:name` / `display:name` | Hero 纯名字（无 emoji） | 启动时写；老块读取时按 `agent:emoji` 剥掉重复前缀 |
 | `hero:injectworkdir` | 本次主工作目录绝对路径 | 勾选注入时 |
 | `cmd:args` 末尾一项 | `[登场上下文] 本次主工作目录: …` | 勾选注入 **且** provider ∈ {pi, codex, claude, gemini}（位置参数被当首轮 prompt）；allowlist 外跳过注入、meta 仍写 |
 

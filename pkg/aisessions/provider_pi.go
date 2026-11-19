@@ -11,6 +11,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 )
 
 const SourcePi = "pi"
@@ -693,4 +694,100 @@ func (p *PiProvider) LoadToolCalls(ctx context.Context, filePath string) ([]Tool
 
 func (p *PiProvider) LoadMessageDelta(ctx context.Context, filePath string, cursor SessionMessageCursor, maxBytes int64) (MessageDelta, error) {
 	return loadLocalMessageDelta(ctx, p.Source(), filePath, cursor, maxBytes, parsePiMessageDeltaLine)
+}
+
+// ── CurrentModelState (design.md §3.2) ───────────────────────────────────────
+//
+// The agent card must show the session's CURRENT model, so a /model switch that
+// has not produced a new assistant reply yet still wins. pi writes a
+// `model_change` entry on every switch; the effective model is the latest
+// model_change / assistant message on the ACTIVE leaf chain (walking parentId
+// backwards from the file's last entry), not merely the last line of the file —
+// a single JSONL can carry abandoned branches. The read is bounded (≤1 MiB,
+// ≤2000 lines, 250ms) and never loads the full message list.
+
+func (p *PiProvider) CurrentModelState(ctx context.Context, filePath string) (ModelState, bool) {
+	ctx, cancel := context.WithTimeout(ctx, 250*time.Millisecond)
+	defer cancel()
+
+	lines, err := readModelStateTailLines(ctx, filePath, maxModelStateScanBytes, maxModelStateScanLines)
+	if err != nil || len(lines) == 0 {
+		return ModelState{}, false
+	}
+
+	type piModelEntry struct {
+		id       string
+		parentID string
+		provider string
+		model    string
+	}
+	entries := make([]piModelEntry, 0, len(lines))
+	for _, line := range lines {
+		value := parseModelStateLine(line)
+		if value == nil {
+			continue
+		}
+		id := strings.TrimSpace(strValue(value, "id"))
+		if id == "" {
+			continue
+		}
+		entry := piModelEntry{id: id, parentID: strings.TrimSpace(strValue(value, "parentId"))}
+		switch strValue(value, "type") {
+		case "model_change":
+			entry.provider = strings.TrimSpace(strValue(value, "provider"))
+			entry.model = strings.TrimSpace(strValue(value, "modelId"))
+		case "message":
+			msgMap := piMsgMap(value)
+			if normalizeRole(strValue(msgMap, "role")) == RoleAssistant {
+				entry.provider = strings.TrimSpace(strValue(msgMap, "provider"))
+				entry.model = strings.TrimSpace(strValue(msgMap, "model"))
+			}
+		}
+		entries = append(entries, entry)
+	}
+	if len(entries) == 0 {
+		return ModelState{}, false
+	}
+	byID := make(map[string]int, len(entries))
+	for i, entry := range entries {
+		byID[entry.id] = i
+	}
+
+	// Walk from the file's last entry back via parentId. The window may start
+	// mid-history (or an oversized line inside it may be unparseable), so the
+	// chain may end before the session root — that is fine: the partial chain
+	// from the leaf is still the active branch's newest segment, and the latest
+	// model-bearing entry on it is the current model. Stop (not fail) when a
+	// parent is outside the window; failing here would push a switch-without-
+	// reply session back onto the full-load fallback the task exists to avoid.
+	chain := make([]int, 0, len(entries))
+	visited := make(map[string]bool, len(entries))
+	for id := entries[len(entries)-1].id; id != ""; {
+		idx, ok := byID[id]
+		if !ok || visited[id] {
+			break
+		}
+		visited[id] = true
+		chain = append(chain, idx)
+		id = entries[idx].parentID
+	}
+
+	// chain is leaf → root; the latest model-bearing entry along the active
+	// branch (model_change or assistant message) wins.
+	state := ModelState{}
+	for _, idx := range chain {
+		entry := entries[idx]
+		if state.Model == "" && entry.model != "" {
+			state.Model = entry.model
+			if state.Provider == "" && entry.provider != "" {
+				state.Provider = entry.provider
+			}
+		}
+		if state.Provider == "" && entry.provider != "" {
+			state.Provider = entry.provider
+		}
+	}
+	// ok is strictly about the model: a provider-only model_change (no modelId)
+	// may contribute Provider but must never short-circuit the fallback path.
+	return state, state.Model != ""
 }

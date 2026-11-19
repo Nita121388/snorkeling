@@ -16,6 +16,7 @@ import { AgentStatusStore } from "@/app/agent-status/agent-status-store";
 import type { AgentStatus } from "@/app/agent-status/agent-status-types";
 import { deriveAgentStatusView } from "@/app/agent-status/agent-status-view";
 import { WaveAIModel } from "@/app/aipanel/waveai-model";
+import { heroHeaderName } from "@/app/block/block-title";
 import { BlockNodeModel } from "@/app/block/blocktypes";
 import { makeSelectionSearchInFilesMenuItem } from "@/app/element/selection-copy-overlay";
 import { SessionOverviewModel } from "@/app/session-overview/session-overview-model";
@@ -373,8 +374,7 @@ export class TermViewModel implements ViewModel {
                 // 「仅显示 Emoji」开启时头部不显示项目路径（仅留图标与状态）。
                 // 该开关是会话级的，非 Agent 会话（无 sessionId）永远为 false，不受影响。
                 // Hero 登场块显示身份（hero:name）而非据点哈希目录名。
-                const heroName =
-                    typeof blockMeta?.["hero:name"] === "string" ? (blockMeta["hero:name"] as string) : "";
+                const heroName = heroHeaderName(blockMeta);
                 const cwdElem = buildCmdCwdHeaderElem(cmdCwd, get(this.emojiOnlyHeaderAtom), heroName);
                 if (cwdElem != null) {
                     rtn.push(cwdElem);

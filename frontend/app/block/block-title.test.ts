@@ -8,9 +8,10 @@
 // 直接用 `basename(cmd:cwd)` 当标题，于是 Tab / Block 头部显示
 // `E:\primary\heros/hero-feaa3f86` 这类既哈希又混合分隔符的目录名。
 //
-// 锁两件事：
+// 锁三件事：
 //   1. `heroHeaderName` 只认启动时写下的 `hero:name`，空白一律回空串（回退现状）；
-//   2. `block.tsx` 的 defaultTitle 在 cwd basename 之前真的用了它（源码锚点）。
+//   2. 老块 `hero:name` 带重复 emoji 时，按 `agent:emoji` 剥掉前缀；
+//   3. `block.tsx` 的 defaultTitle 在 cwd basename 之前真的用了它（源码锚点）。
 
 import { readFileSync } from "node:fs";
 import path from "node:path";
@@ -20,6 +21,14 @@ import { heroHeaderName } from "./block-title";
 describe("heroHeaderName", () => {
     it("returns the stamped hero identity", () => {
         expect(heroHeaderName({ "hero:name": "🦸 状态维护Hero" })).toBe("🦸 状态维护Hero");
+    });
+
+    it("strips the duplicated hero emoji from legacy stamps", () => {
+        expect(heroHeaderName({ "agent:emoji": "🦸", "hero:name": "🦸 状态维护Hero" })).toBe("状态维护Hero");
+    });
+
+    it("keeps a leading emoji when it differs from the block emoji", () => {
+        expect(heroHeaderName({ "agent:emoji": "🤖", "hero:name": "🦸 状态维护Hero" })).toBe("🦸 状态维护Hero");
     });
 
     it("returns empty for blocks without hero identity", () => {

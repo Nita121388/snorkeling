@@ -24,7 +24,9 @@
     "starAdd": "收藏",
     "starRemove": "取消收藏",
     "openInDialog": "在弹窗中打开卡片",
-    "titleSource": "标题来源：{{source}}"
+    "titleSource": "标题来源：{{source}}",
+    "titleFromAI": "AI 生成的标题",
+    "titleFromFirstMessage": "标题来自首条用户消息"
   },
   "env": {
     "title": "终端环境变量",

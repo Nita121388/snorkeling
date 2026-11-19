@@ -50,10 +50,26 @@ func providerOfSessionKey(key string) string {
 	return ""
 }
 
+// appendSchemaOptions merges addOptions into an existing option list. When
+// nothing new arrives the original list is returned untouched (byte-identical
+// settings on idempotent re-runs).
+func appendSchemaOptions(existing []string, addOptions []string) []string {
+	if len(addOptions) == 0 {
+		return existing
+	}
+	merged := agentdata.MergePropertyOptions(existing, addOptions)
+	if len(merged) == len(existing) {
+		return existing
+	}
+	return merged
+}
+
 // upsertSchemaDef inserts or replaces one definition, preserving unrelated
 // definitions and their order. A key is unique per template: changing scope on
 // an existing key overwrites it (v1 simplification, documented in design.md).
-func upsertSchemaDef(current []wconfig.AgentPropertyDefType, key string, name string, propType string, scope string) []wconfig.AgentPropertyDefType {
+// addOptions appends new option values (never removes existing ones);
+// nil/empty addOptions leaves Options exactly as before.
+func upsertSchemaDef(current []wconfig.AgentPropertyDefType, key string, name string, propType string, scope string, addOptions []string) []wconfig.AgentPropertyDefType {
 	next := make([]wconfig.AgentPropertyDefType, 0, len(current)+1)
 	found := false
 	for _, def := range current {
@@ -66,6 +82,7 @@ func upsertSchemaDef(current []wconfig.AgentPropertyDefType, key string, name st
 				def.Type = propType
 			}
 			def.Scope = scope
+			def.Options = appendSchemaOptions(def.Options, addOptions)
 			next = append(next, def)
 			found = true
 			continue
@@ -74,11 +91,12 @@ func upsertSchemaDef(current []wconfig.AgentPropertyDefType, key string, name st
 	}
 	if !found {
 		next = append(next, wconfig.AgentPropertyDefType{
-			Key:   key,
-			Name:  name,
-			Type:  propType,
-			Order: len(current) + 1,
-			Scope: scope,
+			Key:     key,
+			Name:    name,
+			Type:    propType,
+			Options: appendSchemaOptions(nil, addOptions),
+			Order:   len(current) + 1,
+			Scope:   scope,
 		})
 	}
 	return next
@@ -108,10 +126,11 @@ func filterSchemaForSession(defs []wconfig.AgentPropertyDefType, provider string
 // behaviour to before this feature).
 func syncPropertySchema(sessionKey string, props map[string]wshrpc.AgentCardPropPatch) error {
 	type pendingDef struct {
-		key       string
-		name      string
-		propType  string
-		scope     string
+		key        string
+		name       string
+		propType   string
+		scope      string
+		addOptions []string
 	}
 	keys := make([]string, 0, len(props))
 	for key := range props {
@@ -130,10 +149,11 @@ func syncPropertySchema(sessionKey string, props map[string]wshrpc.AgentCardProp
 			continue
 		}
 		pending = append(pending, pendingDef{
-			key:      key,
-			name:     prop.Name,
-			propType: prop.Type,
-			scope:    scope,
+			key:        key,
+			name:       prop.Name,
+			propType:   prop.Type,
+			scope:      scope,
+			addOptions: prop.AddOptions,
 		})
 	}
 	if len(pending) == 0 {
@@ -142,7 +162,7 @@ func syncPropertySchema(sessionKey string, props map[string]wshrpc.AgentCardProp
 
 	next := wconfig.ReadFullConfig().Settings.AgentPropertySchema
 	for _, def := range pending {
-		next = upsertSchemaDef(next, def.key, def.name, def.propType, def.scope)
+		next = upsertSchemaDef(next, def.key, def.name, def.propType, def.scope, def.addOptions)
 	}
 	return writePropertySchema(next)
 }
@@ -191,7 +211,36 @@ func schemaSyncMessages(sessionKey string, props map[string]wshrpc.AgentCardProp
 		if scope != "" {
 			label = scope
 		}
-		messages = append(messages, key+": definition published to agent:propertyschema ("+label+")")
+		message := key + ": definition published to agent:propertyschema (" + label + ")"
+		if len(props[key].AddOptions) > 0 {
+			message += " + options: " + strings.Join(agentdata.MergePropertyOptions(nil, props[key].AddOptions), ", ")
+		}
+		messages = append(messages, message)
 	}
 	return messages
+}
+
+// validateCardPropAddOptions rejects option appends outside agent/all scopes:
+// appended options live in the schema definition, so a session-scoped call
+// would have to silently drop them. The CLI surfaces this as E_USAGE.
+func validateCardPropAddOptions(props map[string]wshrpc.AgentCardPropPatch) error {
+	keys := make([]string, 0, len(props))
+	for key := range props {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		if len(props[key].AddOptions) == 0 {
+			continue
+		}
+		if !agentdata.ValidPropertyScope(props[key].Scope) {
+			return fmt.Errorf("invalid scope %q for property %q: expected session, agent or all", props[key].Scope, key)
+		}
+		switch strings.ToLower(strings.TrimSpace(props[key].Scope)) {
+		case "agent", "all":
+		default:
+			return fmt.Errorf("property %q cannot add options with scope %q: options only apply to agent/all definitions", key, props[key].Scope)
+		}
+	}
+	return nil
 }

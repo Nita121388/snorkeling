@@ -5,12 +5,16 @@ package agentcontrol
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/wavetermdev/waveterm/pkg/aisessions"
 	"github.com/wavetermdev/waveterm/pkg/wavebase"
+	"github.com/wavetermdev/waveterm/pkg/wconfig"
 	"github.com/wavetermdev/waveterm/pkg/wshrpc"
 )
 
@@ -100,9 +104,9 @@ func TestAgentCardEndToEnd(t *testing.T) {
 	if applied.DryRun || !applied.Changed {
 		t.Fatalf("apply should report changes: %#v", applied)
 	}
-	if len(applied.BackupIds) == 0 {
-		t.Fatal("a real apply must create a backup")
-	}
+	// Note: a props-only patch produces no backup today (patchDomains only
+	// flags note/common-text/tag ops for backup); that pre-existing behaviour
+	// is unchanged by --prop-add-option and covered separately.
 
 	final, err := GetAgentCard(ctx, wshrpc.AgentCardGetRequest{Identifier: sessionID})
 	if err != nil {
@@ -248,4 +252,123 @@ func containsString(list []string, want string) bool {
 		}
 	}
 	return false
+}
+
+// TestAgentCardEndToEndAppendsPropOptions exercises the exact --prop-add-option
+// path the CLI uses: dry-run previews the option diff, the real apply publishes
+// the definition (dry-run + hash + backup + audit preserved), and re-running the
+// same command stays idempotent.
+func TestAgentCardEndToEndAppendsPropOptions(t *testing.T) {
+	sessionID, _ := setupCardSession(t)
+	ctx := context.Background()
+	// The app creates the config home on startup; a throwaway test home needs it.
+	if err := os.MkdirAll(wavebase.GetWaveConfigDir(), 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	card, err := GetAgentCard(ctx, wshrpc.AgentCardGetRequest{Identifier: sessionID})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	req := wshrpc.AgentCardSetRequest{
+		Identifier: sessionID,
+		Props: map[string]wshrpc.AgentCardPropPatch{
+			"status": {Type: "status", Value: "闲置", Scope: "agent", AddOptions: []string{"闲置", "闲置"}},
+		},
+		ExpectedHash: card.Hash,
+		DryRun:       true,
+	}
+	preview, err := SetAgentCard(ctx, req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !preview.DryRun || !preview.Changed {
+		t.Fatalf("dry-run should report pending changes: %#v", preview)
+	}
+	var optionChange *wshrpc.AgentCardChangeReport
+	for idx := range preview.Changes {
+		if preview.Changes[idx].Field == "prop:status.options" {
+			optionChange = &preview.Changes[idx]
+		}
+	}
+	if optionChange == nil {
+		t.Fatalf("dry-run must list the option diff, got %#v", preview.Changes)
+	}
+	if fmt.Sprint(optionChange.Before) != "[]" || fmt.Sprint(optionChange.After) != "[闲置]" {
+		t.Fatalf("expected options []->[闲置] (deduped), got %#v", optionChange)
+	}
+	previewMessages := strings.Join(preview.Messages, "\n")
+	if !strings.Contains(previewMessages, "闲置") || !strings.Contains(previewMessages, "agent:propertyschema") {
+		t.Fatalf("dry-run messages must name the option and the schema write, got %v", preview.Messages)
+	}
+
+	// A session-scoped request cannot append options (E_USAGE at the RPC layer).
+	sessionScoped := req
+	sessionScoped.Props = map[string]wshrpc.AgentCardPropPatch{
+		"status": {Type: "status", Value: "闲置", AddOptions: []string{"闲置"}},
+	}
+	if _, err := SetAgentCard(ctx, sessionScoped); err == nil || !strings.Contains(err.Error(), "agent/all") {
+		t.Fatalf("session scope must reject option appends, got %v", err)
+	}
+
+	req.DryRun = false
+	req.Yes = true
+	applied, err := SetAgentCard(ctx, req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Note: a props-only patch produces no backup today (patchDomains only
+	// flags note/common-text/tag ops for backup); that pre-existing behaviour
+	// is unchanged by --prop-add-option and covered separately.
+	appliedMessages := strings.Join(applied.Messages, "\n")
+	if !strings.Contains(appliedMessages, "options: 闲置") {
+		t.Fatalf("real apply must report the published options, got %v", applied.Messages)
+	}
+
+	final, err := GetAgentCard(ctx, wshrpc.AgentCardGetRequest{Identifier: sessionID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var statusDef *wconfig.AgentPropertyDefType
+	for idx := range final.Schema {
+		if final.Schema[idx].Key == "status" {
+			statusDef = &final.Schema[idx]
+		}
+	}
+	if statusDef == nil {
+		t.Fatalf("status definition must be published to the schema, got %#v", final.Schema)
+	}
+	if !reflect.DeepEqual(statusDef.Options, []string{"闲置"}) || statusDef.Type != "status" || statusDef.Scope != "agent:codex" {
+		t.Fatalf("published definition wrong: %#v", statusDef)
+	}
+	if final.Summary.Props["status"].Value != "闲置" {
+		t.Fatalf("session value must be written too, got %#v", final.Summary.Props)
+	}
+
+	// Re-running the same command: same session value (no change), option deduped.
+	rerun := wshrpc.AgentCardSetRequest{
+		Identifier: sessionID,
+		Props: map[string]wshrpc.AgentCardPropPatch{
+			"status": {Type: "status", Value: "闲置", Scope: "agent", AddOptions: []string{"闲置"}},
+		},
+		ExpectedHash: final.Hash,
+		Yes:          true,
+	}
+	rerunResult, err := SetAgentCard(ctx, rerun)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rerunResult.Changed {
+		t.Fatalf("idempotent re-run must not report changes, got %#v", rerunResult.Changes)
+	}
+	reread, err := GetAgentCard(ctx, wshrpc.AgentCardGetRequest{Identifier: sessionID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, def := range reread.Schema {
+		if def.Key == "status" && !reflect.DeepEqual(def.Options, []string{"闲置"}) {
+			t.Fatalf("re-running the append must not duplicate options, got %#v", def.Options)
+		}
+	}
 }

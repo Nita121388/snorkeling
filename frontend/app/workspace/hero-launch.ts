@@ -170,11 +170,13 @@ export function buildHeroLaunchBlockDef(params: BuildHeroLaunchBlockDefParams): 
     if (heroEmoji !== "") {
         meta[AgentEmojiMetaKey] = heroEmoji;
     }
-    // Hero identity for display: `hero:name` feeds the Agent Block header / Tab
-    // title, `display:name` feeds the generic title fallback chains (Overview
-    // card, block sidebar, minimized float). Both are one-shot launch stamps —
-    // `frame:title` still wins wherever the user renames the block manually.
-    const heroLabel = heroRosterLabel(hero);
+    // Hero identity for display: emoji stays in `agent:emoji` (header icon).
+    // `hero:name` feeds the Agent Block header / Tab title, `display:name`
+    // feeds generic title fallbacks. Both carry the plain name only — the
+    // header must not show the same emoji twice. `frame:title` still wins
+    // wherever the user renames the block manually.
+    const displayName = isBlank(hero.name) ? hero.id : hero.name;
+    const heroLabel = isBlank(displayName) ? "" : displayName.trim();
     if (!isBlank(heroLabel)) {
         meta[AgentHeroNameMetaKey] = heroLabel;
         meta["display:name"] = heroLabel;

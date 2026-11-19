@@ -86,6 +86,10 @@ func SetAgentCard(ctx context.Context, req wshrpc.AgentCardSetRequest) (*wshrpc.
 		return nil, newError(CodeUsage, "%s", err.Error()).
 			WithHint("scope must be session (default), agent or all")
 	}
+	if err := validateCardPropAddOptions(req.Props); err != nil {
+		return nil, newError(CodeUsage, "%s", err.Error()).
+			WithHint("adding options requires --prop-scope agent or all")
+	}
 	operations, err := buildCardOperations(summary.Key, req)
 	if err != nil {
 		return nil, err
@@ -167,7 +171,7 @@ func buildCardOperations(sessionKey string, req wshrpc.AgentCardSetRequest) ([]a
 	if len(req.Props) > 0 {
 		props := make(map[string]agentdata.PropPatch, len(req.Props))
 		for key, prop := range req.Props {
-			props[key] = agentdata.PropPatch{Type: prop.Type, Value: prop.Value, Name: prop.Name, Scope: prop.Scope}
+			props[key] = agentdata.PropPatch{Type: prop.Type, Value: prop.Value, Name: prop.Name, Scope: prop.Scope, AddOptions: prop.AddOptions}
 		}
 		operations = append(operations, agentdata.PatchOperation{
 			Type:       "session_prop.update",

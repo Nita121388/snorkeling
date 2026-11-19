@@ -120,14 +120,21 @@ func (svc *AISessionsService) LiveSessionState(ctx context.Context, request *AIS
 	if err != nil || manager == nil {
 		return resp, nil
 	}
-	summary, err := manager.Summary(ctx, request.SessionID, false)
-	if err != nil {
+	// Current model first: a bounded tail read resolves the model that is in
+	// effect now (latest model_change / turn_context on the active branch), so a
+	// /model switch without a new reply still shows the new model. A hit must
+	// return immediately — never fall through to a full Load.
+	if state, ok := manager.CurrentModelState(ctx, request.SessionID); ok {
+		resp.ModelID = state.Model
+		resp.ModelName = state.Model
+		// ModelProvider is the session-level supplier only; never summary.Source
+		// ("pi"/"codex" is a session source, not a model vendor).
+		if strings.TrimSpace(state.Provider) != "" {
+			resp.ModelProvider = state.Provider
+		}
 		return resp, nil
 	}
-	if strings.TrimSpace(summary.Source) != "" {
-		resp.ModelProvider = summary.Source
-	}
-	// Try to load messages to find the last assistant message model.
+	// Miss: legacy fallback — last assistant message that carries a model.
 	detail, err := manager.Load(ctx, request.SessionID, aisessions.LoadOptions{})
 	if err != nil {
 		return resp, nil

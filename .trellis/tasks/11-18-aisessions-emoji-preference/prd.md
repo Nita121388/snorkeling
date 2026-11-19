@@ -86,6 +86,12 @@ Picker -> 缓存: 同步读 (<5ms)
 - [ ] AC7 GUI 显示「AI 设置 · 点击修改」标记；用户改选后 `source=user` 且再次 `--if-absent` 写入被拒
 - [ ] AC8 现有 persona / session-row 测试全绿；localStorage key 兼容读取不破坏老工作区
 
+## 规划工件
+
+- 实现层设计（现状解剖 / 数据模型 / 接口 / 算法 / Picker / 风险）：`design.md`
+- 分批执行计划（P0–P5、每批验收命令、回滚点、测试清单）：`implement.md`
+- **开工前待拍板**：`design.md` §8 四项；`implement.md` §0 取件前置（T2 批次须先落库）
+
 ## Notes
 
 - 相关代码：`frontend/app/agent-persona/`（`session-persona-store.ts`、`picker-host.ts`、`persona-store.ts`）、`frontend/app/view/term/agent-logo.tsx`（`getAgentIcon` 解析链）、`frontend/app/view/aisessions/session-row.tsx`（入口）、`pkg/aisessions/sqlite_index.go`（props / tags 表）、`pkg/agentmcp/tools.go`。

@@ -4,8 +4,12 @@
 package aisessions
 
 import (
+	"bufio"
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
+	"os"
 	"path/filepath"
 	"strings"
 )
@@ -229,6 +233,117 @@ type Provider interface {
 	List(ctx context.Context) ([]SessionSummary, error)
 	LoadMessages(ctx context.Context, filePath string) ([]Message, error)
 }
+
+// ModelState is the current model of a persisted AI session: the model that
+// is in effect NOW on the active branch (e.g. after a /model switch that has
+// not produced a new reply yet), plus the session-level model supplier
+// ("who provides this model", e.g. a cc-switch vendor), NOT the session source
+// ("pi"/"codex").
+type ModelState struct {
+	Provider string
+	Model    string
+}
+
+// ModelStateProvider is the optional provider capability that answers a
+// session's current model from a bounded tail read of the session file,
+// without loading the full message list. Providers that do not implement it
+// simply report ok=false and the caller falls back to the legacy last-message
+// path.
+type ModelStateProvider interface {
+	CurrentModelState(ctx context.Context, filePath string) (ModelState, bool)
+}
+
+// CurrentModelState resolves the session by identifier and asks its provider
+// (matched by summary.Source) for the current model state. ok=false when the
+// session cannot be resolved, the provider has no model-state capability, or
+// the bounded tail read cannot establish a model — the caller must then fall
+// back to the legacy last-assistant-message path.
+func (m *Manager) CurrentModelState(ctx context.Context, identifier string) (ModelState, bool) {
+	summary, err := m.Summary(ctx, identifier, false)
+	if err != nil {
+		return ModelState{}, false
+	}
+	provider := providerBySource(m.Providers, summary.Source)
+	if provider == nil {
+		return ModelState{}, false
+	}
+	stateProvider, ok := provider.(ModelStateProvider)
+	if !ok {
+		return ModelState{}, false
+	}
+	return stateProvider.CurrentModelState(ctx, summary.FilePath)
+}
+
+// Bounded model-state tail-read budget (design.md §3.2 / §5):
+// at most 1 MiB and 2000 complete lines; the window starts after the last
+// newline boundary when it begins mid-line, so the first partial line is
+// discarded instead of being parsed as garbage.
+const (
+	maxModelStateScanBytes int64 = 1 << 20
+	maxModelStateScanLines       = 2000
+)
+
+// readModelStateTailLines returns the complete, non-empty lines from the last
+// maxBytes of filePath (bounded to maxLines reads). A window that starts in the
+// middle of a line skips the remainder of that partial line. ctx cancellation
+// aborts the read; callers wrap it with their own deadline.
+func readModelStateTailLines(ctx context.Context, filePath string, maxBytes int64, maxLines int) ([]string, error) {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+	info, err := file.Stat()
+	if err != nil {
+		return nil, err
+	}
+	start := info.Size() - maxBytes
+	if start < 0 {
+		start = 0
+	}
+	if _, err := file.Seek(start, io.SeekStart); err != nil {
+		return nil, err
+	}
+	reader := bufio.NewReaderSize(file, 64*1024)
+	if start > 0 {
+		// Discard the window's first partial line: it begins mid-entry and must
+		// never be parsed. ReadBytes (not a token-limited Scanner) so an
+		// oversized base64 image line cannot abort the scan with ErrTooLong.
+		if _, err := reader.ReadBytes('\n'); err != nil && err != io.EOF {
+			return nil, err
+		}
+	}
+	lines := make([]string, 0, 64)
+	for read := 0; read < maxLines; read++ {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		raw, err := reader.ReadBytes('\n')
+		if len(raw) > 0 {
+			if trimmed := strings.TrimSpace(string(raw)); trimmed != "" {
+				lines = append(lines, trimmed)
+			}
+		}
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			return nil, err
+		}
+	}
+	return lines, nil
+}
+
+// parseModelStateLine decodes one JSONL line into a map, or nil for blank or
+// malformed lines.
+func parseModelStateLine(line string) map[string]any {
+	var value map[string]any
+	if err := json.Unmarshal([]byte(line), &value); err != nil {
+		return nil
+	}
+	return value
+}
+
 
 type SummaryFileProvider interface {
 	ListFiles(ctx context.Context) ([]SessionFile, error)

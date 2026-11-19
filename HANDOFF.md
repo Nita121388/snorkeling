@@ -5,6 +5,40 @@
 > **夜间无人值守开发的逐段记录在 `docs/project/night-run.md`**（计划 / 约束 / 看板 / 已知红灯），
 > 接手先看那一页，再看本页。
 
+## 2026-11-19（下班前）：闪退根因查清 = 整机 commit 耗尽 + git fsmonitor 常驻泄漏（纯调查，未改代码）
+
+> 用户报「闪退时提示 PowerShell 未处理异常」，此前怀疑内存。**内存判断是对的**。
+
+- **PS 弹窗不是凶手**：`powershell.exe` 崩的是 `System.OutOfMemoryException`。同一分钟（11-19 11:12）
+  dwm.exe APPCRASH + wavesrv `fatal error: out of memory`（errno=1455 = ERROR_COMMITMENT_LIMIT）。
+  旧版 emain 在 wavesrv exit 就 `app.quit()`，弹窗正好压在整窗消失那一瞬，所以看起来像「PS 异常导致闪退」。
+- **账本**：物理 14.8GB + pagefile 11.5GB = 提交上限 26.4GB，实测已用 24.9GB（94%）。
+  ⚠️ PRD 称 pagefile 已人工调 16/24GB、上限 38.8GB，实测只有 26.4GB，需复查。
+- **新发现 2.85GB 纯泄漏**：67 个 `git fsmonitor--daemon` 常驻（每个 36-80MB，无空闲超时，一仓一只）。
+  根因：系统级 `core.fsmonitor=true`（`D:/SoftWare/Git/etc/gitconfig`）+ 任何刷索引的 git 命令首跑即拉 daemon
+  + `pkg/wshrpc/wshremote/vcs.go detectRepoRoots`（`MaxVcsRepos=64`/`scanDepth=3`）逐仓跑 `git status` 把几十仓 daemon 一次全拉起。
+- **全文**（含时间线、证据、复现命令、今晚待办）：`.trellis/tasks/11-19-wavesrv-oom-flash-quit/findings-fsmonitor-leak-20261119.md`
+  可视化页：`docs/answers/crash-powershell-oom-20261119-1532.html`
+- **今晚第一步**：按 command line 过滤 PID 清掉 67 个 fsmonitor daemon（回收 ~2.9GB）；再定系统级关 `core.fsmonitor`
+  还是产品侧 `newVcsCommand` 统一加 `-c core.fsmonitor=false`（同处已有 `core.quotePath=false`，改一行全量生效）。
+
+## 2026-11-19（晚）：`agent card set --prop-add-option`（写值同时追加候选项）— 代码+测试完成，真机待验
+
+- **细节全文**：`docs/project/agent-card-prop-add-option.md`（含验收清单与今晚待做）。
+- **要解决的问题**：`--prop-scope agent` 走 `upsertSchemaDef` 只改 key/name/type/scope、Options 保持不变，
+  新值进不了下拉候选；加候选只能整条重写 `agent:propertyschema`（易丢其它属性、无 dry-run）。
+- **落地**：`--prop-add-option key=v1,v2`（可重复、逗号分隔、幂等、保序、大小写不敏感去重、绝不删已有）。
+  合并实现单点 `pkg/agentdata/patch.go:MergePropertyOptions`；schema 写入 `card_schema.go:appendSchemaOptions/upsertSchemaDef`
+  （无新增时返回原 slice → settings 字节级不变）；dry-run 由 `propOptionPreview` 现算 `prop:<key>.options` diff。
+  两条 CLI 不变量：scope 必须 agent/all（否则 E_USAGE）、key 必须同时出现在 `--prop`。
+- **判据**：`go test ./pkg/agentdata ./pkg/agentcontrol ./cmd/wsh/cmd` 全绿；`go build ./...` 通过；
+  e2e `TestAgentCardEndToEndAppendsPropOptions` 覆盖 dry-run→真写→读回→重复执行不重复。
+- **未提交**；工作区还有其他 agent 在途改动，提交时只带本包 10 个文件（清单见文档 §6）。
+- **今晚第一件事**：重启 app/wavesrv 后按文档 §7 走真机验收（新 CLI 打旧 server 时 `addoptions` 会被静默丢弃，
+  所以本轮只验证到进程内链路）。
+- **顺手发现（未改）**：`patchDomains` 不给纯 props 补丁打 SQLite backup（title/prop 都不在列），属既有缺口，
+  归 `11-09-agentdata-backup-granularity`，勿顺手改。
+
 ## 2026-11-19：Tab 切换卡顿调查 + reinitWave 减负（child1 已提交）
 
 - **用户反馈**：页面加载时影响切 Tab、有时切换卡断。只读调查定位两个叠加原因：

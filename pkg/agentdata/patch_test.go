@@ -817,3 +817,152 @@ func TestPropScopeMessages(t *testing.T) {
 		t.Fatalf("session scope must stay silent: %v", messages)
 	}
 }
+
+// --- property option appends (--prop-add-option) ------------------------------
+
+// seedAgentDataPropertySchema writes agent:propertyschema into the isolated
+// config home so the dry-run preview can read a real existing definition.
+func seedAgentDataPropertySchema(t *testing.T, defs string) {
+	t.Helper()
+	configDir := wavebase.GetWaveConfigDir()
+	if configDir == "" {
+		t.Fatal("config home is not isolated for this test")
+	}
+	if err := os.MkdirAll(configDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	settings := `{"agent:propertyschema":` + defs + `}`
+	if err := os.WriteFile(filepath.Join(configDir, "settings.json"), []byte(settings), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestValidatePropAddOptions(t *testing.T) {
+	build := func(add []string, propType string) PatchOperation {
+		return PatchOperation{
+			Type:  "session_prop.update",
+			Props: map[string]PropPatch{"status": {Type: propType, Value: "Idle", AddOptions: add}},
+		}
+	}
+	for _, propType := range []string{"select", "multi_select", "status", " Status "} {
+		if err := validatePropAddOptions(build([]string{"Idle"}, propType)); err != nil {
+			t.Fatalf("type %q must accept options, got %v", propType, err)
+		}
+	}
+	err := validatePropAddOptions(build([]string{"Idle"}, "text"))
+	if err == nil || !strings.Contains(err.Error(), "text") {
+		t.Fatalf("text properties must reject options with the offending type, got %v", err)
+	}
+	err = validatePropAddOptions(build([]string{"  "}, "status"))
+	if err == nil || !strings.Contains(err.Error(), "empty option") {
+		t.Fatalf("blank option values must be rejected, got %v", err)
+	}
+	legacy := PatchOperation{Type: "session_prop.update", Props: map[string]PropPatch{"a": {Type: "text", Value: "v"}}}
+	if err := validatePropAddOptions(legacy); err != nil {
+		t.Fatalf("calls without options must stay valid: %v", err)
+	}
+}
+
+func TestApplyPatchPreviewReportsAppendedOption(t *testing.T) {
+	sessionID, manager := setupAgentDataSession(t)
+	seedAgentDataPropertySchema(t, `[{"key":"status","name":"Status","type":"status","options":["Active"],"order":1},{"key":"owner","name":"Owner","type":"text","order":2,"aiManaged":true}]`)
+	before, err := manager.Summary(context.Background(), sessionID, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	patch := Patch{
+		Version: PatchVersion,
+		Source:  "test-prop-add-option",
+		Operations: []PatchOperation{{
+			Type:       "session_prop.update",
+			SessionKey: sessionID,
+			Props: map[string]PropPatch{
+				"status": {Type: "status", Value: "闲置", Scope: "agent", AddOptions: []string{"闲置", "Active"}},
+			},
+			ExpectedHash: HashSession(before),
+		}},
+	}
+	report, err := ApplyPatch(context.Background(), patch, ApplyOptions{DryRun: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(report.Operations) != 1 {
+		t.Fatalf("expected one operation report, got %#v", report.Operations)
+	}
+	opReport := report.Operations[0]
+	if !opReport.Changed {
+		t.Fatalf("option append must count as a change: %#v", opReport)
+	}
+	byField := changesByField(opReport.Changes)
+	optionChange, found := byField["prop:status.options"]
+	if !found {
+		t.Fatalf("dry-run must report the option diff, got %#v", opReport.Changes)
+	}
+	if fmt.Sprint(optionChange.Before) != "[Active]" || fmt.Sprint(optionChange.After) != "[Active 闲置]" {
+		t.Fatalf("expected options []->[Active 闲置] (appended, deduped, order kept), got %#v", optionChange)
+	}
+	if valueChange := byField["prop:status"]; valueChange.After != "闲置" {
+		t.Fatalf("the session value change must still be reported, got %#v", valueChange)
+	}
+	joined := strings.Join(opReport.Messages, "\n")
+	if !strings.Contains(joined, "闲置") || !strings.Contains(joined, "status") {
+		t.Fatalf("dry-run message must name the property and the new option, got %v", opReport.Messages)
+	}
+}
+
+func TestApplyPatchPreviewIsSilentWhenOptionAlreadyPresent(t *testing.T) {
+	sessionID, manager := setupAgentDataSession(t)
+	seedAgentDataPropertySchema(t, `[{"key":"status","type":"status","options":["Active","闲置"],"order":1}]`)
+	before, err := manager.Summary(context.Background(), sessionID, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	patch := Patch{
+		Version: PatchVersion,
+		Source:  "test-prop-add-option-idempotent",
+		Operations: []PatchOperation{{
+			Type:       "session_prop.update",
+			SessionKey: sessionID,
+			Props: map[string]PropPatch{
+				"status": {Type: "status", Value: "Active", Scope: "agent", AddOptions: []string{"闲置"}},
+			},
+			ExpectedHash: HashSession(before),
+		}},
+	}
+	report, err := ApplyPatch(context.Background(), patch, ApplyOptions{DryRun: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	opReport := report.Operations[0]
+	if _, found := changesByField(opReport.Changes)["prop:status.options"]; found {
+		t.Fatalf("re-appending an existing option must not report a diff, got %#v", opReport.Changes)
+	}
+	joined := strings.Join(opReport.Messages, "\n")
+	if !strings.Contains(joined, "already present") {
+		t.Fatalf("idempotent re-run must say the option is already present, got %v", opReport.Messages)
+	}
+}
+
+func TestApplyPatchRejectsOptionsOnTextProperty(t *testing.T) {
+	sessionID, manager := setupAgentDataSession(t)
+	before, err := manager.Summary(context.Background(), sessionID, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	patch := Patch{
+		Version: PatchVersion,
+		Source:  "test-prop-add-option-invalid",
+		Operations: []PatchOperation{{
+			Type:       "session_prop.update",
+			SessionKey: sessionID,
+			Props: map[string]PropPatch{
+				"owner": {Type: "text", Value: "nita", Scope: "agent", AddOptions: []string{"nita"}},
+			},
+			ExpectedHash: HashSession(before),
+		}},
+	}
+	_, err = ApplyPatch(context.Background(), patch, ApplyOptions{DryRun: true})
+	if err == nil || !strings.Contains(err.Error(), "cannot add options") {
+		t.Fatalf("expected a validation error for options on a text property, got %v", err)
+	}
+}

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -23,6 +24,7 @@ var (
 	agentCardTagsAdd      []string
 	agentCardTagsRemove   []string
 	agentCardProps        []string
+	agentCardPropAddOpts  []string
 	agentCardPropScope    string
 	agentCardForce        bool
 	agentCardExpectedHash string
@@ -66,7 +68,8 @@ Examples:
   wsh agent card set this --title "ACS 设计" --yes --expected-hash <hash>
   wsh agent card set this --title "ACS 设计" --force --yes --expected-hash <hash>
   wsh agent card set this --prop 优先级=select:P1 --yes --expected-hash <hash>
-  wsh agent card set this --prop 优先级=select:P1 --prop-scope agent --dry-run`,
+  wsh agent card set this --prop 优先级=select:P1 --prop-scope agent --dry-run
+  wsh agent card set this --prop status=status:闲置 --prop-add-option status=闲置 --prop-scope agent --yes --expected-hash <hash>`,
 	Args:    cobra.ExactArgs(1),
 	RunE:    agentCardSetRun,
 	PreRunE: preRunSetupRpcClient,
@@ -86,6 +89,7 @@ func init() {
 	agentCardSetCmd.Flags().StringSliceVar(&agentCardTagsAdd, "tags-add", nil, "add tags (idempotent)")
 	agentCardSetCmd.Flags().StringSliceVar(&agentCardTagsRemove, "tags-remove", nil, "remove tags")
 	agentCardSetCmd.Flags().StringArrayVar(&agentCardProps, "prop", nil, "set a custom property as key=type:value (repeatable)")
+	agentCardSetCmd.Flags().StringArrayVar(&agentCardPropAddOpts, "prop-add-option", nil, "append option values to a select/multi_select/status property definition as key=v1,v2 (repeatable, idempotent; requires --prop-scope agent|all)")
 	agentCardSetCmd.Flags().StringVar(&agentCardPropScope, "prop-scope", "session", "visibility of this call's --prop definitions: session | agent | all")
 	agentCardSetCmd.Flags().BoolVar(&agentCardForce, "force", false, "overwrite user-authored title / property values")
 	agentCardSetCmd.Flags().StringVar(&agentCardExpectedHash, "expected-hash", "", "precondition hash from 'agent card get' (required for --yes)")
@@ -179,6 +183,10 @@ func agentCardSetRun(cmd *cobra.Command, args []string) (rtnErr error) {
 	if err != nil {
 		return err
 	}
+	props, err = mergeCardPropAddOptions(props, agentCardPropAddOpts, propScope)
+	if err != nil {
+		return err
+	}
 	for key, prop := range props {
 		prop.Scope = propScope
 		props[key] = prop
@@ -213,6 +221,78 @@ func normalizePropScope(raw string) (string, error) {
 		return "all", nil
 	}
 	return "", fmt.Errorf("invalid --prop-scope %q: expected session, agent or all", raw)
+}
+
+// mergeCardPropAddOptions folds repeated --prop-add-option key=v1,v2 flags into
+// the parsed --prop map. It enforces the two CLI-level invariants: options only
+// ride agent/all scoped definitions (a session-scoped call would have to drop
+// them silently), and the property key must also be set with --prop in the same
+// call, because one call writes one value plus its definition update.
+func mergeCardPropAddOptions(props map[string]wshrpc.AgentCardPropPatch, raw []string, propScope string) (map[string]wshrpc.AgentCardPropPatch, error) {
+	addOptions, err := parseCardPropAddOptions(raw)
+	if err != nil {
+		return nil, err
+	}
+	if len(addOptions) == 0 {
+		return props, nil
+	}
+	if propScope != "agent" && propScope != "all" {
+		return nil, fmt.Errorf("--prop-add-option requires --prop-scope agent or all (current scope %q): options live in agent:propertyschema, so a session-scoped call cannot store them", propScope)
+	}
+	keys := make([]string, 0, len(addOptions))
+	for key := range addOptions {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		prop, ok := props[key]
+		if !ok {
+			return nil, fmt.Errorf("--prop-add-option %q has no matching --prop entry: pass --prop %s=type:value in the same call", key, key)
+		}
+		prop.AddOptions = addOptions[key]
+		props[key] = prop
+	}
+	return props, nil
+}
+
+// parseCardPropAddOptions parses repeated --prop-add-option key=v1,v2 flags.
+// Values are comma-separated, trimmed and deduplicated (case-insensitive,
+// first-seen order); repeated flags for the same key accumulate.
+func parseCardPropAddOptions(raw []string) (map[string][]string, error) {
+	if len(raw) == 0 {
+		return nil, nil
+	}
+	collected := make(map[string][]string, len(raw))
+	for _, entry := range raw {
+		key, rest, ok := strings.Cut(entry, "=")
+		if !ok || strings.TrimSpace(key) == "" {
+			return nil, fmt.Errorf("invalid --prop-add-option %q: expected key=v1,v2", entry)
+		}
+		key = strings.TrimSpace(key)
+		for _, part := range strings.Split(rest, ",") {
+			if option := strings.TrimSpace(part); option != "" {
+				collected[key] = append(collected[key], option)
+			}
+		}
+		if len(collected[key]) == 0 {
+			return nil, fmt.Errorf("invalid --prop-add-option %q: expected key=v1,v2", entry)
+		}
+	}
+	out := make(map[string][]string, len(collected))
+	for key, options := range collected {
+		seen := make(map[string]bool, len(options))
+		unique := make([]string, 0, len(options))
+		for _, option := range options {
+			lower := strings.ToLower(option)
+			if seen[lower] {
+				continue
+			}
+			seen[lower] = true
+			unique = append(unique, option)
+		}
+		out[key] = unique
+	}
+	return out, nil
 }
 
 // parseCardProps parses repeated --prop key=type:value flags. A bare key=value

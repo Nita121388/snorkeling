@@ -901,6 +901,10 @@ type AgentCardPropPatch struct {
 	// Scope is "session" (default/empty), "agent" or "all". agent/all also
 	// upsert the property definition into agent:propertyschema.
 	Scope string `json:"scope,omitempty"`
+	// AddOptions appends option values to the property definition
+	// (select/multi_select/status only). Requires scope agent or all, because
+	// the appended options live in agent:propertyschema.
+	AddOptions []string `json:"addoptions,omitempty"`
 }
 
 // AgentCardChangeReport mirrors agentdata.ChangeReport.

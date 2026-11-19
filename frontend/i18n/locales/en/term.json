@@ -24,7 +24,9 @@
     "starAdd": "Add to favorites",
     "starRemove": "Remove from favorites",
     "openInDialog": "Open card in dialog",
-    "titleSource": "Title source: {{source}}"
+    "titleSource": "Title source: {{source}}",
+    "titleFromAI": "AI-generated title",
+    "titleFromFirstMessage": "Title from the first user message"
   },
   "env": {
     "title": "Terminal Environment",

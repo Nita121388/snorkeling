@@ -56,7 +56,8 @@ describe("CommonTextComposeModal hook order", () => {
     });
 
     it("feeds the chosen sort key into the search pipeline", () => {
-        expect(source).toContain("sortKey: state.sortKey");
+        expect(source).toContain("state.sortKey");
+        expect(source).toContain("searchCommonTextComposeItemsFromBase");
         expect(source).toContain("loadCommonTextSortKey()");
         expect(source).toContain("saveCommonTextSortKey(sortKey)");
     });
@@ -89,7 +90,8 @@ describe("CommonTextComposeModal hook order", () => {
         // 列表右槽原本是「时钟图标 + 相对时间文字」；图形化后不应再出现那个图标。
         // 相对时间现在以紧凑数字（`3d`）常显在方块旁，完整句只走 aria-label / tooltip。
         expect(source).not.toContain('<i className="fa fa-regular fa-clock text-[9px]" />');
-        expect(source.match(/<CommonTextFreshnessSquare/g)?.length).toBe(1);
+        // 行组件与开关关闭时的旧行 DOM 各有一份方块；至少不能再出现时钟图标。
+        expect(source.match(/<CommonTextFreshnessSquare/g)?.length).toBeGreaterThanOrEqual(1);
     });
 
     it("shows created / updated / last-used / usage metadata in the detail footer", () => {

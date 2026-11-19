@@ -22,6 +22,7 @@ import (
 	"github.com/wavetermdev/waveterm/pkg/aisessions"
 	"github.com/wavetermdev/waveterm/pkg/commontextstore"
 	"github.com/wavetermdev/waveterm/pkg/wavebase"
+	"github.com/wavetermdev/waveterm/pkg/wconfig"
 	"github.com/wavetermdev/waveterm/pkg/wstore"
 )
 
@@ -69,6 +70,41 @@ type PropPatch struct {
 	// written per-session; agent/all additionally upsert agent:propertyschema
 	// (done by the command layer, not by this data pipeline).
 	Scope string `json:"scope,omitempty"`
+	// AddOptions appends new option values to this property's definition in
+	// agent:propertyschema (select/multi_select/status only). The append is
+	// idempotent, order-preserving and never removes existing options. Only
+	// the command layer writes the schema (after a real apply); this field is
+	// carried through the patch pipeline so dry-run can preview the diff.
+	AddOptions []string `json:"addoptions,omitempty"`
+}
+
+// MergePropertyOptions appends new option values to an existing option list:
+// order-preserving, idempotent, case-insensitive dedupe, never removes an
+// existing entry. Both the dry-run preview and the real schema write go
+// through it, so both agree on the final list. When nothing new arrives the
+// input list is returned unchanged (nil stays nil).
+func MergePropertyOptions(existing []string, add []string) []string {
+	if len(add) == 0 {
+		return existing
+	}
+	seen := make(map[string]bool, len(existing)+len(add))
+	next := make([]string, 0, len(existing)+len(add))
+	for _, opt := range existing {
+		next = append(next, opt)
+		seen[strings.ToLower(strings.TrimSpace(opt))] = true
+	}
+	for _, opt := range add {
+		trimmed := strings.TrimSpace(opt)
+		if trimmed == "" || seen[strings.ToLower(trimmed)] {
+			continue
+		}
+		seen[strings.ToLower(trimmed)] = true
+		next = append(next, trimmed)
+	}
+	if len(next) == 0 {
+		return existing
+	}
+	return next
 }
 
 // ValidPropertyScope reports whether scope is one of the three supported
@@ -423,6 +459,9 @@ func validateOperation(idx int, op PatchOperation, opts ApplyOptions) error {
 				return fmt.Errorf("operation %d property %q has unsupported type %q", idx, key, prop.Type)
 			}
 		}
+		if err := validatePropAddOptions(op); err != nil {
+			return fmt.Errorf("operation %d %w", idx, err)
+		}
 		if !opts.DryRun && !operationHasPrecondition(op) {
 			return fmt.Errorf("operation %d session_prop.update requires expectedHash or expectedUpdatedAt for real apply", idx)
 		}
@@ -633,6 +672,9 @@ func previewSessionProps(ctx context.Context, report OperationReport, op PatchOp
 	if err := validatePropScopes(op); err != nil {
 		return report, err
 	}
+	if err := validatePropAddOptions(op); err != nil {
+		return report, err
+	}
 	summary, err := loadSessionForControl(ctx, op.SessionKey)
 	if err != nil {
 		return report, err
@@ -645,19 +687,24 @@ func previewSessionProps(ctx context.Context, report OperationReport, op PatchOp
 	}
 	report.Target = summary.Key
 	changes, skipped := sessionPropChanges(summary.Props, op)
-	report.Changes = changes
+	optionChanges, optionMessages := propOptionPreview(op)
+	report.Changes = append(changes, optionChanges...)
 	report.Skipped = skipped
-	report.Changed = len(changes) > 0
+	report.Changed = len(report.Changes) > 0
 	if report.Changed {
 		report.AffectedCount = 1
 	}
 	report.Messages = append(report.Messages, "session properties validated")
 	report.Messages = append(report.Messages, propScopeMessages(op)...)
+	report.Messages = append(report.Messages, optionMessages...)
 	return report, nil
 }
 
 func applySessionProps(ctx context.Context, report OperationReport, op PatchOperation) (OperationReport, error) {
 	if err := validatePropScopes(op); err != nil {
+		return report, err
+	}
+	if err := validatePropAddOptions(op); err != nil {
 		return report, err
 	}
 	summary, err := loadSessionForControl(ctx, op.SessionKey)
@@ -696,6 +743,105 @@ func validatePropScopes(op PatchOperation) error {
 		}
 	}
 	return nil
+}
+
+// validAddOptionPropertyType reports whether a property type carries an option
+// list that --prop-add-option may extend.
+func validAddOptionPropertyType(propType string) bool {
+	switch strings.ToLower(strings.TrimSpace(propType)) {
+	case "select", "multi_select", "status":
+		return true
+	}
+	return false
+}
+
+// validatePropAddOptions rejects option appends for unsupported property types
+// and for blank option values before anything is written. It deliberately does
+// not require the written value to be one of the options: that stays a UI
+// concern and the value/option semantics stay independent.
+func validatePropAddOptions(op PatchOperation) error {
+	keys := make([]string, 0, len(op.Props))
+	for key := range op.Props {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		prop := op.Props[key]
+		if len(prop.AddOptions) == 0 {
+			continue
+		}
+		if !validAddOptionPropertyType(prop.Type) {
+			return fmt.Errorf("property %q of type %q cannot add options: expected select, multi_select or status", key, prop.Type)
+		}
+		for _, opt := range prop.AddOptions {
+			if strings.TrimSpace(opt) == "" {
+				return fmt.Errorf("property %q has an empty option value", key)
+			}
+		}
+	}
+	return nil
+}
+
+// currentSchemaDef finds a definition by key (case-insensitive) in the global
+// settings schema. A nil result means the command layer would create the
+// definition from scratch.
+func currentSchemaDef(key string) (wconfig.AgentPropertyDefType, bool) {
+	defs := wconfig.ReadFullConfig().Settings.AgentPropertySchema
+	for _, def := range defs {
+		if strings.EqualFold(strings.TrimSpace(def.Key), strings.TrimSpace(key)) {
+			return def, true
+		}
+	}
+	return wconfig.AgentPropertyDefType{}, false
+}
+
+// propOptionPreview reports the option appends for the dry-run reader: one
+// change per property whose option list actually gains values, plus a message
+// per property. The schema write itself happens in the command layer after a
+// real apply, so the preview reads the current settings schema.
+func propOptionPreview(op PatchOperation) ([]ChangeReport, []string) {
+	keys := make([]string, 0, len(op.Props))
+	for key := range op.Props {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	var candidates []ChangeReport
+	var messages []string
+	for _, key := range keys {
+		prop := op.Props[key]
+		if len(prop.AddOptions) == 0 {
+			continue
+		}
+		before := []string{}
+		if def, found := currentSchemaDef(key); found && len(def.Options) > 0 {
+			before = def.Options
+		}
+		after := MergePropertyOptions(before, prop.AddOptions)
+		changes := buildChanges([]ChangeReport{{Field: "prop:" + key + ".options", Before: before, After: after}})
+		if len(changes) == 0 {
+			messages = append(messages, key+": options already present, nothing to append")
+			continue
+		}
+		candidates = append(candidates, changes...)
+		added := mergedOptionDelta(before, after)
+		messages = append(messages, fmt.Sprintf("%s: option(s) %s appended to the property definition on real apply", key, "["+strings.Join(added, ", ")+"]"))
+	}
+	return candidates, messages
+}
+
+// mergedOptionDelta returns the values that appeared in after but not before.
+func mergedOptionDelta(before []string, after []string) []string {
+	seen := make(map[string]bool, len(before))
+	for _, opt := range before {
+		seen[strings.ToLower(strings.TrimSpace(opt))] = true
+	}
+	var delta []string
+	for _, opt := range after {
+		if !seen[strings.ToLower(strings.TrimSpace(opt))] {
+			delta = append(delta, opt)
+		}
+	}
+	return delta
 }
 
 // propScopeMessages tells the dry-run reader which properties will touch the

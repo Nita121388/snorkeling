@@ -4,6 +4,7 @@
 import { describe, expect, it } from "vitest";
 import {
     DefaultCommonTextSortKey,
+    caretContextSignature,
     filterCommonTextItemsByTags,
     findDuplicateCommonText,
     getCommonTextDeviceSummaries,
@@ -16,6 +17,7 @@ import {
     normalizeCommonTextTags,
     normalizeCommonTextTitle,
     searchCommonTextComposeItems,
+    searchCommonTextComposeItemsFromBase,
     searchCommonTextItems,
     sortCommonTextItems,
     sortCommonTextItemsBy,
@@ -336,6 +338,67 @@ describe("commontext-model", () => {
                 "pinned",
                 "recent",
             ]);
+        });
+    });
+
+    describe("caretContextSignature", () => {
+        it("stays stable inside one line and one word", () => {
+            const editor = "deploy refund";
+            expect(caretContextSignature(editor, 2)).toBe(caretContextSignature(editor, 4));
+        });
+
+        it("changes when the caret moves to another word", () => {
+            const editor = "deploy refund";
+            expect(caretContextSignature(editor, 2)).not.toBe(caretContextSignature(editor, 9));
+        });
+
+        it("changes when the same word appears on another line", () => {
+            const editor = "deploy\nrefund deploy";
+            expect(caretContextSignature(editor, 2)).not.toBe(caretContextSignature(editor, 16));
+        });
+    });
+
+    describe("searchCommonTextComposeItemsFromBase", () => {
+        it("matches the legacy entry across filters, sort keys, and inserted ids", () => {
+            const items = [
+                makeItem({
+                    id: "ops-human",
+                    title: "Deploy ops",
+                    text: "deploy production",
+                    tags: ["ops"],
+                    usagecount: 2,
+                    createdby: { kind: "human", name: "nita" },
+                    origin: { deviceid: "dev-home", devicename: "Home", platform: "win32" },
+                }),
+                makeItem({
+                    id: "ops-agent",
+                    title: "Deploy agent",
+                    text: "deploy helper",
+                    tags: ["ops"],
+                    usagecount: 9,
+                    createdby: { kind: "agent", name: "pi" },
+                    origin: { deviceid: "dev-work", devicename: "Work", platform: "win32" },
+                }),
+                makeItem({
+                    id: "plain",
+                    title: "Refund reply",
+                    text: "refund processed",
+                    usagecount: 1,
+                }),
+            ];
+            const cases: { editor: string; options: Parameters<typeof searchCommonTextComposeItems>[3] }[] = [
+                { editor: "deploy", options: { selectedTags: ["ops"] } },
+                { editor: "refund", options: { untagged: true } },
+                { editor: "deploy", options: { creator: "agent", device: "dev-work" } },
+                { editor: "deploy", options: { sortKey: "title-asc" } },
+                { editor: "deploy", options: { insertedIds: ["ops-human"] } },
+            ];
+            for (const { editor, options } of cases) {
+                const base = searchCommonTextComposeItems(items, "", "", options);
+                const legacy = searchCommonTextComposeItems(items, editor, "", options);
+                const fromBase = searchCommonTextComposeItemsFromBase(base, editor, "", options);
+                expect(fromBase.map((item) => item.id)).toEqual(legacy.map((item) => item.id));
+            }
         });
     });
 

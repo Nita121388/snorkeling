@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/snorkeling-docs/backend/agent-control-surface-contract.md", "reason": "校验 CLI/MCP 对称、错误码冻结、写类默认 dry-run、有界输出"}
+{"file": ".trellis/spec/snorkeling-docs/backend/aisessions-title-contract.md", "reason": "校验 source=user 不可被机器覆盖（emoji 同型红线 R10）"}
+{"file": ".trellis/spec/snorkeling-docs/frontend/quality-guidelines.md", "reason": "校验验证台结论已入 verify-ledger、无静默省略"}
+{"file": ".trellis/spec/snorkeling-docs/frontend/state-management.md", "reason": "校验 store 快照稳定性与乐观更新失败回滚"}

@@ -260,3 +260,4 @@
 | 2026-11-19 01:44 | tab-collapse-cross-renderer | ✅ 1/1 | launch+reset | `20261119T01443-tab-collapse-cross-renderer` | 489b5c7da |
 | 2026-11-19 01:50 | tab-collapse-cross-renderer | ❌ fatal（未跑） | launch+reset | `20261119T01444-tab-collapse-cross-renderer` | 489b5c7da |
 | 2026-11-19 03:12 | commontext-send-background | ❌ fatal（未跑） | launch+reset | `20261119T03073-commontext-send-background` | 314ef270c |
+| 2026-11-19 05:43 | N-1119 Hero header emoji 去重（真机 skipped：用户本机性能差，明确暂不做） | ✅ 36/36 | vitest + queue prove | `loop/red/N-1119-hero-header-dup-emoji.txt` | working-tree |
