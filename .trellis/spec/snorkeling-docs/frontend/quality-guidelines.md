@@ -264,6 +264,28 @@ getApi().setActiveTab(targetTabId);   // 只负责把用户视线切过去
 
 ---
 
+## Tab 栏 UI 状态必须跨 renderer 共享：真源在 emain + IPC 广播 (2026-11-19, task 11-19-tab-collapse-cross-renderer)
+
+每个 Tab 是独立 `WebContentsView` / renderer 进程，**Tab 栏在每个 renderer 里各渲染一份**。任何影响
+Tab 栏可见性的状态（收起集合、openedThisLaunch、unread 集合等）如果只放 renderer 本地 jotai atom，
+就会出现「在当前 Tab 里改了，切到别的 Tab 又回到旧状态」的撕裂 —— `collapsedTabIdsAtom` 实踩此坑。
+
+- 硬规则：**跨 Tab 栏共享的状态真源必须在 emain 主进程**（内存 Set 即可，重启失效是可接受语义），
+  变更后遍历 `waveWindowMap → allLoadedTabViews → webContents.send("<name>-change", ...)` 广播，
+  结构对齐 `broadcastOpenedThisLaunchTabIds`。先例：`openedThisLaunchTabIds` / `collapsedTabIds`
+  （emain/emain-window.ts）。
+- renderer 侧模块保持「atom 初值同步读（sendSync）+ `init<X>Sync()` 订阅广播回写」+ 写函数
+  「本地乐观更新 → IPC 写穿」；无实际变更不发 IPC（幂等短路）。先例：`tab-open-state.ts` /
+  `tab-collapse-state.ts`。
+- 「真正打开 Tab」的联动语义（如打开即解除收起）收口在 main 侧 `markTabOpenedThisLaunch`，
+  不要只写在 renderer —— 广播自然把所有视图同步。
+- 新增这类状态时同步补四处：`emain/emain-window.ts`（真源+广播+IPC）、`emain/preload.ts`、
+  `frontend/types/custom.d.ts`、`frontend/preview/mock/preview-electron-api.ts`。
+- 验证台：`scripts/verify/tab-collapse-cross-renderer/verify.mjs`（遍历所有 renderer 断言一致；
+  注意 Electron 右键菜单是原生 menu-popup 不在 DOM，CDP 只能走 `window.api.*` 同 IPC 驱动）。
+
+---
+
 ## Code Review Checklist
 
 <!-- What reviewers should check -->

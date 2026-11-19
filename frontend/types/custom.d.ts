@@ -140,6 +140,11 @@ declare global {
         getOpenedThisLaunchTabIds: () => string[]; // get-opened-this-launch-tab-ids
         markTabOpenedThisLaunch: (tabId: string) => void; // mark-tab-opened-this-launch
         onOpenedThisLaunchTabIdsChange: (callback: (tabIds: string[]) => void) => void; // opened-this-launch-tab-ids-change
+        getCollapsedTabIds: () => string[]; // get-collapsed-tab-ids
+        collapseTabIds: (tabIds: string[]) => void; // collapse-tab-ids
+        expandCollapsedTabId: (tabId: string) => void; // expand-collapsed-tab-id
+        clearCollapsedTabIds: () => void; // clear-collapsed-tab-ids
+        onCollapsedTabIdsChange: (callback: (tabIds: string[]) => void) => void; // collapsed-tab-ids-change
         onExternalOpenPaths: (callback: (paths: string[]) => void) => void; // external-open-paths
         closeTab: (workspaceId: string, tabId: string, confirmClose: boolean) => Promise<boolean>; // close-tab
         moveTabToNewWindow: (tabId: string) => Promise<boolean>; // move-tab-to-new-window

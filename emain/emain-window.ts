@@ -41,6 +41,21 @@ export function getOpenedThisLaunchTabIds(): string[] {
 }
 
 /**
+ * 用户手动「收起到更多」的 Tab 集合（真源在主进程）。
+ *
+ * 必须放在主进程而不是 renderer: 每个 Tab 是独立 WebContentsView / renderer，Tab 栏在各
+ * renderer 各渲染一份，renderer 本地的集合互不相通 —— 结果就是「在当前 Tab 收起，切到别的
+ * Tab 又冒出来」。这里比照 openedThisLaunchTabIds 走 IPC + 广播，所有 Tab 栏视图口径一致。
+ *
+ * 语义: 仅本次启动有效（重启即清），与 openedThisLaunchTabIds 相同。
+ */
+const collapsedTabIds = new Set<string>();
+
+export function getCollapsedTabIds(): string[] {
+    return Array.from(collapsedTabIds);
+}
+
+/**
  * 启动/开窗恢复：把 workspace 里已存在的 Tab 全部标记为「本次启动已打开」。
  *
  * 必须在首个 Tab renderer 初始化之前调用 —— renderer 通过同步 IPC
@@ -68,13 +83,70 @@ function broadcastOpenedThisLaunchTabIds() {
     }
 }
 
+function broadcastCollapsedTabIds() {
+    const tabIds = getCollapsedTabIds();
+    for (const waveWindow of waveWindowMap.values()) {
+        for (const tabView of waveWindow.allLoadedTabViews.values()) {
+            if (!tabView.webContents.isDestroyed()) {
+                tabView.webContents.send("collapsed-tab-ids-change", tabIds);
+            }
+        }
+    }
+}
+
+/** 收起一批 Tab（幂等；无实际变更不广播）。 */
+export function collapseTabIdsMain(tabIds: readonly string[] | null | undefined): void {
+    if (tabIds == null || tabIds.length === 0) {
+        return;
+    }
+    let changed = false;
+    for (const tabId of tabIds) {
+        if (!tabId || collapsedTabIds.has(tabId)) {
+            continue;
+        }
+        collapsedTabIds.add(tabId);
+        changed = true;
+    }
+    if (changed) {
+        broadcastCollapsedTabIds();
+    }
+}
+
+/** 展开单个被收起的 Tab（例如从「更多」下拉点开）。 */
+export function expandCollapsedTabIdMain(tabId: string): void {
+    if (!tabId || !collapsedTabIds.has(tabId)) {
+        return;
+    }
+    collapsedTabIds.delete(tabId);
+    broadcastCollapsedTabIds();
+}
+
+/** 清空全部收起状态。 */
+export function clearCollapsedTabIdsMain(): void {
+    if (collapsedTabIds.size === 0) {
+        return;
+    }
+    collapsedTabIds.clear();
+    broadcastCollapsedTabIds();
+}
+
 function markTabOpenedThisLaunch(tabId: string): boolean {
-    if (!tabId || openedThisLaunchTabIds.has(tabId)) {
+    if (!tabId) {
         return false;
     }
-    openedThisLaunchTabIds.add(tabId);
-    broadcastOpenedThisLaunchTabIds();
-    return true;
+    let changed = false;
+    if (!openedThisLaunchTabIds.has(tabId)) {
+        openedThisLaunchTabIds.add(tabId);
+        broadcastOpenedThisLaunchTabIds();
+        changed = true;
+    }
+    // 真正被打开即解除「收起」状态（从「更多」下拉点开它, 主栏应重新露出）。
+    // 放在主进程: renderer 侧的 markTabOpenedThisLaunch 只需触发这里, 广播会把各视图同步。
+    if (collapsedTabIds.has(tabId)) {
+        collapsedTabIds.delete(tabId);
+        broadcastCollapsedTabIds();
+    }
+    return changed;
 }
 
 export function calculateWindowBounds(
@@ -525,6 +597,7 @@ export class WaveBrowserWindow extends BaseWindow {
             console.log("reusing an existing tab, calling wave-init", tabView.waveTabId);
             tabView.webContents.send("wave-init", tabView.savedInitOpts); // reinit
             tabView.webContents.send("opened-this-launch-tab-ids-change", getOpenedThisLaunchTabIds());
+            tabView.webContents.send("collapsed-tab-ids-change", getCollapsedTabIds());
             this.finalizePositioning();
         }
 
@@ -1003,6 +1076,22 @@ ipcMain.on("get-opened-this-launch-tab-ids", (event) => {
 
 ipcMain.on("mark-tab-opened-this-launch", (_event, tabId: string) => {
     markTabOpenedThisLaunch(tabId);
+});
+
+ipcMain.on("get-collapsed-tab-ids", (event) => {
+    event.returnValue = getCollapsedTabIds();
+});
+
+ipcMain.on("collapse-tab-ids", (_event, tabIds: string[]) => {
+    collapseTabIdsMain(tabIds);
+});
+
+ipcMain.on("expand-collapsed-tab-id", (_event, tabId: string) => {
+    expandCollapsedTabIdMain(tabId);
+});
+
+ipcMain.on("clear-collapsed-tab-ids", () => {
+    clearCollapsedTabIdsMain();
 });
 
 ipcMain.on("create-tab", async (event, _opts) => {

@@ -62,6 +62,12 @@ contextBridge.exposeInMainWorld("api", {
     createTab: () => ipcRenderer.send("create-tab"),
     getOpenedThisLaunchTabIds: () => ipcRenderer.sendSync("get-opened-this-launch-tab-ids"),
     markTabOpenedThisLaunch: (tabId) => ipcRenderer.send("mark-tab-opened-this-launch", tabId),
+    getCollapsedTabIds: () => ipcRenderer.sendSync("get-collapsed-tab-ids"),
+    collapseTabIds: (tabIds) => ipcRenderer.send("collapse-tab-ids", tabIds),
+    expandCollapsedTabId: (tabId) => ipcRenderer.send("expand-collapsed-tab-id", tabId),
+    clearCollapsedTabIds: () => ipcRenderer.send("clear-collapsed-tab-ids"),
+    onCollapsedTabIdsChange: (callback: (tabIds: string[]) => void) =>
+        ipcRenderer.on("collapsed-tab-ids-change", (_event, tabIds: string[]) => callback(tabIds)),
     onOpenedThisLaunchTabIdsChange: (callback: (tabIds: string[]) => void) =>
         ipcRenderer.on("opened-this-launch-tab-ids-change", (_event, tabIds: string[]) => callback(tabIds)),
     onExternalOpenPaths: (callback: (paths: string[]) => void) =>

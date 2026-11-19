@@ -27,6 +27,7 @@ import { RpcApi } from "@/app/store/wshclientapi";
 import { makeBuilderRouteId, makeTabRouteId } from "@/app/store/wshrouter";
 import { initWshrpc, TabRpcClient } from "@/app/store/wshrpcutil";
 import { initOpenedThisLaunchTabIdsSync } from "@/app/tab/tab-open-state";
+import { initCollapsedTabIdsSync } from "@/app/tab/tab-collapse-state";
 import { applyAppTheme, resolveAppTheme } from "@/app/theme-mode";
 import { BuilderApp } from "@/builder/builder-app";
 import { getLayoutModelForStaticTab } from "@/layout/index";
@@ -267,6 +268,7 @@ async function initWave(initOpts: WaveInitOpts) {
     registerElectronReinjectKeyHandler();
     registerControlShiftStateUpdateHandler();
     initOpenedThisLaunchTabIdsSync();
+    initCollapsedTabIdsSync();
     await loadMonaco();
     const fullConfig = await RpcApi.GetFullConfigCommand(TabRpcClient);
     console.log("fullconfig", fullConfig);
