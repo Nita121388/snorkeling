@@ -21,6 +21,7 @@ import {
     subscribeInfoCard,
     useInfoCardDismiss,
 } from "@/app/element/info-card";
+import { computeCardPos, type InfoCardSize } from "@/app/element/info-card/info-card-pos";
 import { getBlockBadgeAtom } from "@/app/store/badge";
 import {
     createBlockSplitHorizontally,
@@ -51,6 +52,7 @@ import * as util from "@/util/util";
 import { cn, makeIconClass } from "@/util/util";
 import * as jotai from "jotai";
 import * as React from "react";
+import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { minimizeBlockToFloat, restoreMinimizedBlockToLayout } from "./block-minimize";
 import { BlockEnv } from "./blockenv";
@@ -858,20 +860,20 @@ const BlockFrame_Header = ({
         }
         scheduleHideCard();
     }, [scheduleHideCard]);
-    // 点击外侧关闭：卡片容器是 header 的直接子节点，两者任一包含点击目标都算「内部」；
+    // 点击外侧关闭：卡片容器与 header 任一包含点击目标都算「内部」；
     // 附属浮层（portal 到 body 的属性值浮层）也算内部，否则在浮层里点选项会把卡片关掉。
+    // 卡片 portal 到 body 后不再是 header 的子节点（closest 找不到 header 了），
+    // header 判定改走 headerElRef（已有 ref，不新增）—— 语义与「closest header 再 contains」等价。
     const isInsideCardOrHeader = React.useCallback((target: Node) => {
         if (isInAttachedInfoCardLayer(target)) {
             return true;
         }
         const cardEl = cardElRef.current;
-        if (cardEl == null) {
-            return false;
-        }
-        if (cardEl.contains(target)) {
+        if (cardEl != null && cardEl.contains(target)) {
             return true;
         }
-        return cardEl.closest(".block-frame-default-header")?.contains(target) ?? false;
+        const headerEl = headerElRef.current;
+        return headerEl != null && headerEl.contains(target);
     }, []);
     useInfoCardDismiss({
         isOpen: isAgentBlock && isCardOpen,
@@ -947,6 +949,64 @@ const BlockFrame_Header = ({
         [dragHandleRef]
     );
 
+    // ── 卡片定位：header 目标矩形 + 卡片实测尺寸 + 视口 → 钳位坐标（bottom 首选位，翻侧 + 钳位）。
+    // 复用已测好的 computeCardPos（info-card-pos.ts，10 例单测）。卡片 portal 到 body 后
+    // 必须用 fixed 像素坐标 —— 祖先链上有 backdrop-filter / will-change，in-place fixed 的
+    // 包含块会被它们改写（2026-11-19 复发：blockframe-header 是第 5 个面，漏接了钳位）。
+    const [cardPos, setCardPos] = React.useState<{ top: number; left: number } | null>(null);
+    /** 卡片实测尺寸（首帧未知，先按 0 估算，layout effect 里测到真实值后重算）。 */
+    const cardSizeRef = React.useRef<InfoCardSize | null>(null);
+
+    const refreshCardPos = React.useCallback(() => {
+        const headerEl = headerElRef.current;
+        if (headerEl == null) {
+            return;
+        }
+        const rect = headerEl.getBoundingClientRect();
+        setCardPos(
+            computeCardPos({
+                rect,
+                card: cardSizeRef.current ?? { width: 0, height: 0 },
+                viewport: { width: window.innerWidth, height: window.innerHeight },
+                placement: "bottom",
+            })
+        );
+    }, []);
+
+    // 卡片挂上后实测尺寸，layout effect 在 paint 前纠正坐标（首帧按 0 尺寸估算→测到真实尺寸立即重算，
+    // 用户看不到跳动）。尺寸没变就不重算，避免 setState 循环。参考面：info-card-hover.tsx。
+    React.useLayoutEffect(() => {
+        if (!isCardOpen) {
+            cardSizeRef.current = null;
+            return;
+        }
+        const el = cardElRef.current;
+        if (el == null) {
+            return;
+        }
+        const box = el.getBoundingClientRect();
+        const next = { width: box.width, height: box.height };
+        const prev = cardSizeRef.current;
+        if (
+            prev == null ||
+            Math.abs(prev.width - next.width) > 0.5 ||
+            Math.abs(prev.height - next.height) > 0.5
+        ) {
+            cardSizeRef.current = next;
+            refreshCardPos();
+        }
+    }, [isCardOpen, refreshCardPos]);
+
+    // 窗口 resize 时若卡片还开着，重算坐标（保持卡在视口内）。
+    React.useEffect(() => {
+        if (!(isAgentBlock && isCardOpen)) {
+            return;
+        }
+        const onResize = () => refreshCardPos();
+        window.addEventListener("resize", onResize);
+        return () => window.removeEventListener("resize", onResize);
+    }, [isAgentBlock, isCardOpen, refreshCardPos]);
+
     return (
         <div
             className={cn("block-frame-default-header", useTermHeader && "!pl-[2px]")}
@@ -959,6 +1019,7 @@ const BlockFrame_Header = ({
                 claimInfoCard(claimTokenRef.current);
                 setIsHovered(true);
                 setIsCardOpen(true);
+                refreshCardPos();
                 hoverLatch.onPointerEnter(e);
             }}
             onPointerLeave={(e) => {
@@ -1038,62 +1099,66 @@ const BlockFrame_Header = ({
                 latchedZone={hoverLatch.latch.zone}
                 headerWidth={headerWidth}
             />
-            {/* Agent/Note hover card - 经 BlockInfoCard 分派（GUI 模式；TUI 用 TermAgentSessionRail） */}
-            {isAgentBlock && isCardOpen && (
-                <div
-                    ref={cardElRef}
-                    className="info-card-portal"
-                    style={{
-                        position: "absolute",
-                        top: "100%",
-                        left: 0,
-                        zIndex: 100,
-                        marginTop: 2,
-                    }}
-                    onMouseEnter={() => {
-                        cancelPendingHideCard();
-                        claimInfoCard(claimTokenRef.current);
-                        setIsCardOpen(true);
-                    }}
-                    onFocusCapture={() => {
-                        // 卡片内有焦点 = 钉住：鼠标移开也不关（note 编辑不被打断）。
-                        cardFocusRef.current = true;
-                        cancelPendingHideCard();
-                        claimInfoCard(claimTokenRef.current);
-                        setIsCardOpen(true);
-                    }}
-                    onBlurCapture={(event) => {
-                        if (event.relatedTarget instanceof Node) {
-                            // 附属浮层也是“卡内”：焦点从卡片走进浮层，不算离开。
-                            if (
-                                event.currentTarget.contains(event.relatedTarget) ||
-                                isInAttachedInfoCardLayer(event.relatedTarget)
-                            ) {
+            {/* Agent/Note hover card - 经 BlockInfoCard 分派（GUI 模式；TUI 用 TermAgentSessionRail）。
+                卡片 portal 到 body + fixed 钳位坐标（祖先链 backdrop-filter/will-change 会改写
+                in-place fixed 的包含块，所以不能留在 header 子树里）。交互一行未动：延迟隐藏 / 焦点钉住 /
+                InfoCardPinProvider / claimInfoCard 单例独占 / 点击外部关闭，全部沿用原 handler。 */}
+            {isAgentBlock && isCardOpen && cardPos != null &&
+                createPortal(
+                    <div
+                        ref={cardElRef}
+                        className="info-card-portal"
+                        style={{
+                            position: "fixed",
+                            top: cardPos.top,
+                            left: cardPos.left,
+                            zIndex: 200,
+                        }}
+                        onMouseEnter={() => {
+                            cancelPendingHideCard();
+                            claimInfoCard(claimTokenRef.current);
+                            setIsCardOpen(true);
+                        }}
+                        onFocusCapture={() => {
+                            // 卡片内有焦点 = 钉住：鼠标移开也不关（note 编辑不被打断）。
+                            cardFocusRef.current = true;
+                            cancelPendingHideCard();
+                            claimInfoCard(claimTokenRef.current);
+                            setIsCardOpen(true);
+                        }}
+                        onBlurCapture={(event) => {
+                            if (event.relatedTarget instanceof Node) {
+                                // 附属浮层也是“卡内”：焦点从卡片走进浮层，不算离开。
+                                if (
+                                    event.currentTarget.contains(event.relatedTarget) ||
+                                    isInAttachedInfoCardLayer(event.relatedTarget)
+                                ) {
+                                    return;
+                                }
+                            }
+                            cardFocusRef.current = false;
+                            // 指针还在卡片上就先不关，等 mouseleave；否则焦点走了就该收卡。
+                            if (cardElRef.current?.matches(":hover")) {
                                 return;
                             }
-                        }
-                        cardFocusRef.current = false;
-                        // 指针还在卡片上就先不关，等 mouseleave；否则焦点走了就该收卡。
-                        if (cardElRef.current?.matches(":hover")) {
-                            return;
-                        }
-                        scheduleHideCard();
-                    }}
-                    onMouseLeave={() => {
-                        cancelPendingHideCard();
-                        // 钉住期间（焦点在卡片内 / 附属浮层开着）不因鼠标移开而关闭；
-                        // 由「点击外侧」或失焦负责关闭。
-                        if (cardFocusRef.current || cardPinCountRef.current > 0) {
-                            return;
-                        }
-                        scheduleHideCard();
-                    }}
-                >
-                    <InfoCardPinProvider pin={pinCard} release={releaseCardPin}>
-                        {BlockInfoCard({ blockId: nodeModel.blockId, blockData: blockData ?? null, mode: "gui" })}
-                    </InfoCardPinProvider>
-                </div>
-            )}
+                            scheduleHideCard();
+                        }}
+                        onMouseLeave={() => {
+                            cancelPendingHideCard();
+                            // 钉住期间（焦点在卡片内 / 附属浮层开着）不因鼠标移开而关闭；
+                            // 由「点击外侧」或失焦负责关闭。
+                            if (cardFocusRef.current || cardPinCountRef.current > 0) {
+                                return;
+                            }
+                            scheduleHideCard();
+                        }}
+                    >
+                        <InfoCardPinProvider pin={pinCard} release={releaseCardPin}>
+                            {BlockInfoCard({ blockId: nodeModel.blockId, blockData: blockData ?? null, mode: "gui" })}
+                        </InfoCardPinProvider>
+                    </div>,
+                    document.body
+                )}
         </div>
     );
 };

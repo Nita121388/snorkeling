@@ -8,7 +8,7 @@ origin: self
 source: "nita 2026-11-05 截图"
 task: 11-06-tab-hover-clip
 order: 100
-touch: [frontend/app/element/info-card/**, frontend/app/tab/tab.tsx]
+touch: [frontend/app/element/info-card/**, frontend/app/tab/tab.tsx, frontend/app/block/blockframe-header.tsx, frontend/app/block/blockframe-header*.test.tsx]
 rollback: null
 budget: {minutes: 50, retries: 2}
 releaseCandidate: false
@@ -38,3 +38,9 @@ createdAt: "2026-11-06T00:21:39Z"
 
 - 2026-11-05 定位根因：`useInfoCardHover.refreshCardPos` 只做相对偏移（bottom: top=rect.bottom+2/left=rect.left；right: left=rect.right+8），无视口钳位、无翻转。四个面共用该 hook：workspace Tab（tab.tsx）、block 内 tab（block.tsx）、block 侧栏（block-sidebar.tsx）、Tab 更多菜单行（tab-more-menu.tsx）。
 - 修复：抽出 `info-card-pos.ts` 纯函数 `computeCardPos`（首选位 → 放不下翻对侧 → 仍不行夹进视口），hook 改为「挂载后实测尺寸 → layout effect 在 paint 前纠正坐标」。
+
+## 2026-11-19 追加：第 5 面复发（agent block header）
+
+- nita 实测 macOS 0.0.131：agent block 头部悬停卡仍被截断。
+- 根因：blockframe-header.tsx:1044 未接 computeCardPos（4 个面已修，此面漏）。
+- 范围扩展：白名单加 blockframe-header.tsx；判据见 .trellis/tasks/11-06-tab-hover-clip/prd.md 复发报告一节。
