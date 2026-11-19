@@ -286,3 +286,51 @@ merge 后 go build ./... 通过、四包测试全绿、`task generate` 无 diff�
   还是产品侧 `newVcsCommand` 统一加 `-c core.fsmonitor=false`（那一行已有 `core.quotePath=false`，改一处即全量生效）。
 - **是否开 Trellis 包**：未开（等用户拍）。建议新包承载「git 调用带 fsmonitor=false + detectRepoRoots 扫描收敛 + dgdb 清理」，
   不塞进 11-19-wavesrv-oom-flash-quit（那包的 R1/R2/R3 已交付且 GOMEMLIMIT 治不了本根因）。
+
+## 2026-11-19 晚：批量清账——19 个「已完成未关闭」任务归档（判据可复现）
+
+- 背景：活跃任务 115 个积压。用户提出「已随早期版本发布的任务应关闭」（当前 0.0.131）。
+- 判据（三重机器证据，不凭印象）：① 交付提交被 ≤0.0.129 的 tag 包含（`git tag --contains`）
+  ② loop 台账 runState ∈ {released, accepted, green, committed} 或文档「判据全绿」
+  ③ 关键代码在 HEAD 抽验通过（i18n locales / vcs-history-graph / hero CHARTER / persona 前端 / ErrorBoundary / tab-collapse 在 main）。
+- 归档 19 个（`task.py archive --no-commit`，避免把四个 worker agent 的在途改动一起提交）：
+  11-06-move-block-tab-menu、11-06-overview-board-motion、11-06-overview-board-card-actions、
+  11-06-agent-card-tag-picker、11-06-monochrome-degloom、11-07-commontext-sync-metadata、
+  11-09-agent-chip-conditional-hook、11-12-persona-{create-ui,journal,relocate,roster-block,sync,widget-launch}、
+  11-14-i18n-rollout、11-15-vcs-history-graph、11-16-hero-identity-inject、11-17-conn-typeahead-row-rail、
+  11-18-tab-collapse-active、10-21-frontend-ui-prompt-audit（本来就是 completed 未归档）。
+- 待用户确认的边界件：11-05-preview-pager-hover-hint（32/32 绿但 1 项未勾）、
+  11-06-tab-hover-clip（修复已发布但 loop parked）、10-27-aisessions-scroll-perf（主修复已发布，剩余疑似被 virtual-row-stability 接走）。
+- loop 台账滞后（引擎在 Windows）：N-1109-agent-chip-conditional-hook 修复已发布但 runState 仍 queued，
+  需引擎侧 `queue accept`；本次归档动作本身未动 loop/。
+- 归档时 task.py 的 node hook 报错（fail-open），归档本身全部生效（archive 目录 63→82，活跃 122→103 目录）。
+- 同时段：4 个 worker agent 块（A/B/D 仍在跑，C=reinitwave-relief 已结束待收结果）。
+
+## 2026-11-19 晚：agent launch --send 假成功（nita 实测）
+
+- 现象：`wsh agent launch --profile pi --model deepseek-v4-pro --tab active --split right --send-stdin`（F 块 818035e2，
+  任务 11-19-property-ui-add-option）返回 `send.ok=true injected=true submitted=true waitedms=403`，
+  **但 pi TUI 实际没有收到文本**（nita 肉眼确认块空转）。前五个块（A-E）同样方式都成功，本块失败。
+- 疑点：与 spec「ShellController 先报 running 后建 ShellInputCh」竞态一致，或 split 后目标块未聚焦/未挂载导致
+  注入进了别的 PTY；`--wait` 只等 layout，不等 TUI 真正可读。
+- 归属：`11-18-agent-block-send`（in_progress，其 verify 台 `scripts/verify/agent-send` 尚未建）。
+  建议该包补一条断言：launch --send 后必须从块 term 输出文件回读确认文本真的出现在 TUI 输入框。
+- 本次处置：nita 手动给该块发指令。后续 launch 大量并发的场景前，先修/先验这条链。
+
+### 追记：根因确认（同日，20:0x）
+
+- 上条「疑点」已证实：**就绪判定把「零输出」当「安静」**。F 的 `waitedms=403≈quietms+3` 是零输出指纹
+  （A-E 为 605/1106/1109/604/704ms，均有真实首屏）。当时 5 个 pi + vitest 满载，第 6 个 pi 首屏 >403ms。
+- 证据：filestore `db_wave_file` 里 F 的 term 输出 3.3MB（pi 后来正常起来）；输出内含 nita 手动发送后的
+  「11-19-property-ui-add-option」测试代码，说明手动发送通、原 launch 的 send 落在 TUI 起来之前。
+- 修复要求已落到 `.trellis/tasks/11-18-agent-block-send/FINDING-launch-send-race.md`：
+  首字节门槛 + 发后回读验证 + verify 台慢启动用例。
+
+## 2026-11-19 晚：归档 11-18-overview-select-component（AppSelect 统一下拉）
+
+- 判据：提交 `363d70eb9`（新增 AppSelect + 总览两处下拉迁移）在 main；`select.tsx/scss/test.tsx` 在 HEAD；
+  `session-overview.tsx` 两处 `<AppSelect>`（`data-overview-range` / `data-overview-group`）确认接线。
+- **未做真机验收**（implement.md 3.1-3.4 的 overview-board / overview-timeline 两个 verify area 没跑）——
+  nita 决定先归档。风险兜底：装 0.0.132 后若下拉异常，按 AppSelect 单测 + 新增真机台复查。
+- 范围说明：本次只迁移 2 处；仓库仍有 8 个文件十余处原生 `<select>`（commontext 弹窗、定时任务、waveconfig、
+  aiaudit、vcscommits 等），属后续「统一所有下拉」的独立工作。
