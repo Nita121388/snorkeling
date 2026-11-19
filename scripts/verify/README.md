@@ -98,6 +98,7 @@ node scripts/verify/vcs-panel-buttons/verify.mjs --port 9232
 | `vcshistory-rows`      | `verify.mjs` | vcshistory 块提交行：与 Outgoing 共享两行式 CommitRow（副行 hash·author·相对时间 + 2px 轨 + 分组头计数 chip）+ 行内展开 files 面板 | ✅       |
 | `vcs-history-graph`    | `verify.mjs` | VCS History tab 泳道提交图：泳道 cell/HEAD 光环/ref 徽章/头像首字母/展开 ±统计/分页 footer（fixture：tmp/ 两泳道 git 仓） | ✅       |
 | `agent-card-seen`      | `verify.mjs` | Agent 状态跨面一致性：Done ↔ ack/seen（头部徽章 / 悬浮卡 / Tab 悬浮卡）                                     | ✅       |
+| `agent-card-model`     | `verify.mjs` | Agent 卡片模型展示：切模型无新回复→卡片更新 / provider·模型分两处 / raw 进 tooltip / 标题来源短标记（first_user_message 标记 / ai ✨ / user 无标记）/ Tab mini 行零 RPC / hover↔modal 一致性（fixture pi 会话 + 索引全隔离，独立 profile + 端口 9253/51814） | ✅       |
 | `property-editor`      | `verify.mjs` | 属性值下拉编辑器：md 预览浮层（已选标签无描边 + 行尾 ✓）/ agent 悬浮卡浮层 + 「指针移入附属浮层卡片不收起」 | ✅       |
 | `agent-card-tags`      | `verify.mjs` | Agent 卡片 Tags 候选：全局清单并入（候选含本会话未选标签）+ 候选项数字计数 + hover 卡与 AgentCardModal 候选一致（独立 profile + 端口 9234） | ✅       |
 | `commontext-meta-sort` | `verify.mjs` | CommonText 列表元信息列 / 图标排序控件 / 搜索态禁用 / 次数写入（独立 profile + 端口 9251）                  | ✅       |

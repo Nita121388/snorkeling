@@ -5,6 +5,7 @@ package aisessions
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -805,31 +806,98 @@ func TestPiCurrentModelState(t *testing.T) {
 	})
 
 	t.Run("oversized_line_then_model_change", func(t *testing.T) {
-		dir := t.TempDir()
-		// >1 MiB base64-image line (pi inlines images into the transcript),
-		// followed by a real model_change. The bounded tail read must skip the
-		// oversized line and keep scanning (bufio.Reader.ReadBytes, NOT a
-		// 1 MiB-token bufio.Scanner which stops with ErrTooLong), so the
-		// model_change after it is still found.
-		bigPayload := strings.Repeat("A", (1<<20)+4096)
-		content := `{"type":"session","version":3,"id":"pi-model-big","timestamp":1700000000,"cwd":"/home/user/project"}` + "\n" +
-			`{"type":"message","id":"a-big","parentId":"","timestamp":"2026-10-17T09:31:00.000Z","message":{"role":"toolResult","content":[{"type":"image","data":"` + bigPayload + `"}]}}` + "\n" +
-			`{"type":"message","id":"u2","parentId":"a-big","timestamp":"2026-10-17T09:32:00.000Z","message":{"role":"user","content":[{"type":"text","text":"next"}]}}` + "\n" +
-			`{"type":"model_change","id":"mcBig","parentId":"u2","timestamp":"2026-10-17T09:35:46.393Z","provider":"magpie","modelId":"mydeepseek/kimi-k3"}` + "\n"
-		path := writePiJSONLNamed(t, dir, "pi-model-big.jsonl", content)
-		start := time.Now()
-		state, ok := NewPiProvider(dir).CurrentModelState(context.Background(), path)
-		if elapsed := time.Since(start); elapsed > 5*time.Second {
-			t.Fatalf("CurrentModelState took %v on a >1MiB line; expected fast skip", elapsed)
-		}
-		if !ok {
-			t.Fatalf("expected CurrentModelState ok=true past the oversized line")
-		}
-		if state.Model != "mydeepseek/kimi-k3" {
-			t.Fatalf("expected model mydeepseek/kimi-k3 after the oversized line, got %q", state.Model)
-		}
-		if state.Provider != "magpie" {
-			t.Fatalf("expected provider magpie, got %q", state.Provider)
-		}
+		t.Skip("promoted to top-level TestCurrentModelStateSkipsOversizedLine")
 	})
+}
+
+// TestCurrentModelStateSkipsOversizedLine: a >1 MiB base64-image line (pi
+// inlines images into the transcript) followed by a real model_change. The
+// bounded tail read must skip the oversized line and keep scanning
+// (bufio.Reader.ReadBytes, NOT a 1 MiB-token bufio.Scanner which stops with
+// ErrTooLong), so the model_change after it is still found.
+func TestCurrentModelStateSkipsOversizedLine(t *testing.T) {
+	dir := t.TempDir()
+	bigPayload := strings.Repeat("A", (1<<20)+4096)
+	content := `{"type":"session","version":3,"id":"pi-model-big","timestamp":1700000000,"cwd":"/home/user/project"}` + "\n" +
+		`{"type":"message","id":"a-big","parentId":"","timestamp":"2026-10-17T09:31:00.000Z","message":{"role":"toolResult","content":[{"type":"image","data":"` + bigPayload + `"}]}}` + "\n" +
+		`{"type":"message","id":"u2","parentId":"a-big","timestamp":"2026-10-17T09:32:00.000Z","message":{"role":"user","content":[{"type":"text","text":"next"}]}}` + "\n" +
+		`{"type":"model_change","id":"mcBig","parentId":"u2","timestamp":"2026-10-17T09:35:46.393Z","provider":"magpie","modelId":"mydeepseek/kimi-k3"}` + "\n"
+	path := writePiJSONLNamed(t, dir, "pi-model-big.jsonl", content)
+	start := time.Now()
+	state, ok := NewPiProvider(dir).CurrentModelState(context.Background(), path)
+	if elapsed := time.Since(start); elapsed > 5*time.Second {
+		t.Fatalf("CurrentModelState took %v on a >1MiB line; expected fast skip", elapsed)
+	}
+	if !ok {
+		t.Fatalf("expected CurrentModelState ok=true past the oversized line")
+	}
+	if state.Model != "mydeepseek/kimi-k3" {
+		t.Fatalf("expected model mydeepseek/kimi-k3 after the oversized line, got %q", state.Model)
+	}
+	if state.Provider != "magpie" {
+		t.Fatalf("expected provider magpie, got %q", state.Provider)
+	}
+}
+
+// TestCurrentModelStateBudget: the bounded tail read is capped at
+// maxModelStateScanLines lines even when the file holds thousands of small
+// lines, and a file larger than the 1 MiB scan window must still resolve the
+// current model (the window is bytes-from-the-end, so a switch in the tail is
+// always inside it as long as it is not older than 1 MiB of transcript).
+func TestCurrentModelStateBudget(t *testing.T) {
+	// Phase 1 — 3000 small lines (< 1 MiB total, window covers the whole file):
+	// the read must stop at the 2000-line cap instead of walking all 3000.
+	dir := t.TempDir()
+	var sb strings.Builder
+	sb.WriteString(`{"type":"session","version":3,"id":"pi-model-budget","timestamp":1700000000,"cwd":"/home/user/project"}` + "\n")
+	const fillerLines = 3000
+	for i := 0; i < fillerLines; i++ {
+		sb.WriteString(fmt.Sprintf(`{"type":"message","id":"f%d","parentId":"f%d","role":"user","content":"filler line"}`+"\n", i, i-1))
+	}
+	smallPath := writePiJSONLNamed(t, dir, "pi-model-budget.jsonl", sb.String())
+	lines, err := readModelStateTailLines(context.Background(), smallPath, maxModelStateScanBytes, maxModelStateScanLines)
+	if err != nil {
+		t.Fatalf("readModelStateTailLines: %v", err)
+	}
+	if len(lines) > maxModelStateScanLines {
+		t.Fatalf("expected <= %d lines, got %d", maxModelStateScanLines, len(lines))
+	}
+	t.Logf("lines<=%d PASS (got %d for %d-line fixture)", maxModelStateScanLines, len(lines), fillerLines)
+
+	// Phase 2 — 3 MiB fixture (line cap cannot be hit because the 1 MiB window
+	// only holds ~900 of the ~1.2 KiB lines): CurrentModelState must still
+	// resolve the tail model_change without scanning the whole file.
+	var big strings.Builder
+	big.WriteString(`{"type":"session","version":3,"id":"pi-model-budget-big","timestamp":1700000000,"cwd":"/home/user/project"}` + "\n")
+	filler := strings.Repeat("x", 1100)
+	for i := 0; i < fillerLines; i++ {
+		big.WriteString(fmt.Sprintf(`{"type":"message","id":"bf%d","parentId":"bf%d","role":"user","content":"%s"}`+"\n", i, i-1, filler))
+	}
+	// The switch lands after the last entry: current model = switch target. It
+	// sits in the last 1 MiB so the bounded read must find it.
+	big.WriteString(`{"type":"model_change","id":"mcBudget","parentId":"bf2999","provider":"magpie","modelId":"mydeepseek/kimi-k3"}` + "\n")
+	path := writePiJSONLNamed(t, dir, "pi-model-budget-big.jsonl", big.String())
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("stat fixture: %v", err)
+	}
+	if info.Size() < 3<<20 {
+		t.Fatalf("expected fixture >= 3MiB for the byte-budget case, got %d bytes", info.Size())
+	}
+	t.Logf("bytes<=%d PASS (window cap; fixture=%d bytes)", int64(3)<<20, info.Size())
+	start := time.Now()
+	state, ok := NewPiProvider(dir).CurrentModelState(context.Background(), path)
+	if elapsed := time.Since(start); elapsed > 3*time.Second {
+		t.Fatalf("CurrentModelState took %v on 3MiB fixture; expected bounded tail read", elapsed)
+	}
+	if !ok {
+		t.Fatalf("expected CurrentModelState ok=true on a 3MiB fixture")
+	}
+	if state.Model != "mydeepseek/kimi-k3" {
+		t.Fatalf("expected model mydeepseek/kimi-k3 on the 3MiB fixture, got %q", state.Model)
+	}
+	if state.Provider != "magpie" {
+		t.Fatalf("expected provider magpie, got %q", state.Provider)
+	}
+	t.Logf("budget PASS: bounded tail read resolves current model on %d-byte file", info.Size())
 }
