@@ -5,6 +5,25 @@
 > **夜间无人值守开发的逐段记录在 `docs/project/night-run.md`**（计划 / 约束 / 看板 / 已知红灯），
 > 接手先看那一页，再看本页。
 
+## 2026-11-19：Tab 切换卡顿调查 + reinitWave 减负（child1 已提交）
+
+- **用户反馈**：页面加载时影响切 Tab、有时切换卡断。只读调查定位两个叠加原因：
+  冷切换时主进程动作队列等 wave-ready（`emain/emain-window.ts:524-547`）；
+  温切换每次重跑 `reinitWave()` 的 5 次串行 RPC + N 次 tab reload（`frontend/wave.ts:175`）。
+- **任务树**：父 `11-19-tab-switch-perf`（planning 汇总）；child1 `11-19-reinitwave-relief`
+  已提交 `f61ad7c29`；child2 `11-19-tab-switch-queue-decouple`（planning，默认开关关，未 start）。
+- **child1 落地**：纯函数 `frontend/app/wave/reinit-wave-plan.ts` 把 reload 按依赖分 2 批并行，
+  tabids 未变时跳过 N 次 reload；7 项正确性副作用全保留。回滚开关 `REINITWAVE_RELIEF_ENABLED=false`。
+  13 单测绿 / 白名单 tsc 0 error / eslint 0 error；未跑真机（用户豁免本机性能差）。
+- **效果边界**：child1 改善温切换；冷切换「页面加载卡断」主因在队列（child2），未触及。
+  收益未量化——reinitWave 无分解计时日志，主进程 27-42ms 日志不含它（走 renderer WSH 通道）。
+- **下一步**：先补执行器级 mock 测试拿「RPC 次数下降」的机器证据；
+  再评估是否解锁 child2（6 项竞态，需真机 A/B 数据）。
+- **文档**：根因 `docs/answers/tab-switch-perf-20261119-131307.html`，
+  风险 `docs/answers/tab-switch-risk-20261119-131626.html`，
+  下一步建议 `docs/answers/next-step-recommendation-*.html`，
+  效果评估 `docs/answers/child1-effect-assessment-*.html`。
+
 ## 新增：昼夜循环工作流（`loop/`）
 
 开发流程已改为「白天决策/验收/原型 + 夜里 agent 执行/发版」，规则与台账在仓库根 `loop/`：

@@ -207,3 +207,33 @@ merge 后 go build ./... 通过、四包测试全绿、`task generate` 无 diff�
   70KB E_USAGE；bad model 块数 12→12；bad profile E_PROFILE_UNKNOWN）。
 - 待办：G7 人验收（nita 真机看 Tab 里新建 agent 块与消息落地）；`scripts/verify/agent-send` 验证台
   尚未建（当前证据是 wsh 直连 + filestore 核对，不是 verify 台）。
+
+## 2026-11-19 Tab 切换卡顿调查 + reinitWave 减负（child1 提交 f61ad7c29）
+
+- 用户反馈「页面加载时影响切 Tab / 切换卡断」。先只读调查（未改代码），定位两个叠加原因：
+  ① 冷切换（cache miss）在主进程串行动作队列里等 `initPromise` + `waveReadyPromise`
+  （`emain/emain-window.ts:524-547`）；② 温切换每次重跑 `reinitWave()` 的 5 次串行 RPC +
+  N 次 workspace tab reload（`frontend/wave.ts:175`）。
+- 已存在缓解 R9.1 乐观高亮 / R9.2 双入队去重（`tab-optimistic-active.ts` / `emain.ts:131`），
+  只治视觉高亮，不解根因。R9 任务明确把「队列插队（C）」与「reinitWave 减负（D）」列为后续片。
+- 建任务树：父 `11-19-tab-switch-perf` + child1 `11-19-reinitwave-relief` + child2
+  `11-19-tab-switch-queue-decouple`（deferred，默认关）。本机性能差，用户豁免真机验证。
+- child1 实现：新建纯函数 `frontend/app/wave/reinit-wave-plan.ts`（`planReinitWave` /
+  `planWorkspaceTabReload` / `forEachTabToReload` / `SIDE_EFFECT_ORDER` / 开关
+  `REINITWAVE_RELIEF_ENABLED=true`）。wave.ts 改为按批次 `Promise.all`，结果按 kind 存 map 传依赖
+  （window→workspace / tab→layout）；tabids 未变时跳过 N 次 reload；7 项副作用全保留。
+- 设计期微调：纯函数拆二 —— RPC 前只出批次/副作用，RPC 后用新鲜 ws.tabids 单独决策 tab reload，
+  避免伪造中间态入参。已回写 design.md 与 spec（state-management.md 新增「派生决策拆两纯函数」）。
+- 判据：13 单测全绿（含 A3「调用次数为 0」字面断言、off 路径逐项回归锁）；白名单 tsc 0 error；
+  eslint 0 error（仅 wave.ts:66 既有 prefer-const warning）。全仓 tsc 55>47 是共享工作区其他任务
+  的漂移，8 条全不在白名单。trellis-check 通过（4 条非阻断观察，A3 断言已补）。
+- 提交 `f61ad7c29`，只提交我的 14 文件；工作区其他 21 个在途改动未动。
+- 效果判断（诚实）：机制上有效，但未量化。最实在收益是跳过 N 次 tab reload（tab 越多越明显）；
+  5→2 批并行的收益量级未知。child1 只改善温切换，冷切换「页面加载卡断」主因在队列（child2）。
+  reinitWave 无分解计时日志，主进程 27-42ms 温切换日志不含它（renderer WSH 通道异步）。
+- 下一步建议：① 补执行器级 mock 测试拿「RPC 次数下降」机器证据；② 有真机数据后再评估解锁
+  child2（6 项竞态：activeTabView 覆盖 / finalizePositioning 移屏 / focus 守卫失效 /
+  wave-init 早于 handler / R9.2 去重依赖队列 / 半初始化 view 被 close）。
+- 调查页：`docs/answers/tab-switch-perf-20261119-131307.html`、
+  `tab-switch-risk-20261119-131626.html`、`next-step-recommendation-*.html`、
+  `child1-effect-assessment-*.html`。
