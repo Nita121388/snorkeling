@@ -60,6 +60,12 @@ export class RpcApiType {
         return client.wshRpcCall("agentlaunch", data, opts);
     }
 
+    // command "agentlaunchheadless" [call]
+    AgentLaunchHeadlessCommand(client: WshClient, data: AgentLaunchRequest, opts?: RpcOpts): Promise<ScheduledTaskRunResult> {
+        if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "agentlaunchheadless", data, opts);
+        return client.wshRpcCall("agentlaunchheadless", data, opts);
+    }
+
     // command "agentmcpconfig" [call]
     AgentMCPConfigCommand(client: WshClient, data: string, opts?: RpcOpts): Promise<AgentMCPConfigResult> {
         if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "agentmcpconfig", data, opts);
@@ -1102,6 +1108,12 @@ export class RpcApiType {
     ScheduledTaskListCommand(client: WshClient, opts?: RpcOpts): Promise<ScheduledTaskType[]> {
         if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "scheduledtasklist", null, opts);
         return client.wshRpcCall("scheduledtasklist", null, opts);
+    }
+
+    // command "scheduledtaskrun" [call]
+    ScheduledTaskRunCommand(client: WshClient, data: string, opts?: RpcOpts): Promise<ScheduledTaskRunResult> {
+        if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "scheduledtaskrun", data, opts);
+        return client.wshRpcCall("scheduledtaskrun", data, opts);
     }
 
     // command "scheduledtaskrunnow" [call]

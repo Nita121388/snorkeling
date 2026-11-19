@@ -1,0 +1,13 @@
+=== A3: --help shows create/run ===
+A task runs in one of two modes:
+  headless  run the agent CLI once into a log file (~/.snorkeling/scheduledtask-runs/)
+  block     create a visible agent block in a tab and deliver the prompt to its TUI
+Write commands (create/update/delete) are dry-run by default: add --yes to
+commit. Tasks created through an external agent token count against that
+  wsh scheduledtask list --json
+--- get/list help too ---
+Delete a scheduled task (dry-run unless --yes)
+
+Usage:
+  wsh scheduledtask delete <id> [flags]
+

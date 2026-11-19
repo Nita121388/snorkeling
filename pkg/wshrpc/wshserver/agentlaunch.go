@@ -5,13 +5,16 @@ package wshserver
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"strings"
 	"time"
 
 	"github.com/wavetermdev/waveterm/pkg/agentcatalog"
 	"github.com/wavetermdev/waveterm/pkg/blockcontroller"
+	"github.com/wavetermdev/waveterm/pkg/scheduler"
 	"github.com/wavetermdev/waveterm/pkg/waveobj"
+	"github.com/wavetermdev/waveterm/pkg/wconfig"
 	"github.com/wavetermdev/waveterm/pkg/wcore"
 	"github.com/wavetermdev/waveterm/pkg/wshrpc"
 	"github.com/wavetermdev/waveterm/pkg/wstore"
@@ -103,6 +106,45 @@ func (ws *WshServer) AgentLaunchCommand(ctx context.Context, data wshrpc.AgentLa
 		if sendErr != nil {
 			return rtn, sendErr
 		}
+	}
+	return rtn, nil
+}
+
+// AgentLaunchHeadlessCommand runs a catalog profile's CLI exactly once WITHOUT
+// creating a block. It reuses the scheduled-task runner's single headless
+// argument table (scheduler.HeadlessArgs) and the same catalog validation as
+// AgentLaunchCommand (unknown profile/model are refused up front, not run as
+// raw binaries). Output is written to
+// ~/.snorkeling/scheduledtask-runs/adhoc-<ts>.log; the result carries the log
+// path, exit code and duration. A non-zero exit is reported as E_AGENT_FAILED
+// so callers can distinguish "agent finished badly" from transport errors.
+func (ws *WshServer) AgentLaunchHeadlessCommand(ctx context.Context, data wshrpc.AgentLaunchRequest) (*wshrpc.ScheduledTaskRunResult, error) {
+	if strings.TrimSpace(data.Tab) != "" {
+		return nil, fmt.Errorf("E_USAGE: --headless and --tab are mutually exclusive (headless never creates a block)")
+	}
+	if data.Send == nil || strings.TrimSpace(data.Send.Text64) == "" {
+		return nil, fmt.Errorf("E_USAGE: --send text is required for --headless (the one-shot prompt)")
+	}
+	promptBytes, err := base64.StdEncoding.DecodeString(data.Send.Text64)
+	if err != nil {
+		return nil, fmt.Errorf("E_USAGE: --send text is not valid base64: %v", err)
+	}
+	// Same catalog validation the block path uses: unknown profile -> E_PROFILE_UNKNOWN,
+	// unknown model -> E_MODEL_NOT_IN_CATALOG (with provider expansion).
+	profile, resolvedModel, err := resolveLaunchProfile(data.Profile, data.Model)
+	if err != nil {
+		return nil, err
+	}
+	task := &wconfig.ScheduledTaskType{
+		AgentProfile: profile.Name,
+		Model:        resolvedModel,
+		Prompt:       string(promptBytes),
+		Workdir:      strings.TrimSpace(data.Cwd),
+	}
+	res := scheduler.RunHeadlessOnce(task, "adhoc")
+	rtn := scheduledRunResultToWsh(res)
+	if res.ExitCode != 0 {
+		return rtn, fmt.Errorf("E_AGENT_FAILED: agent exited with code %d (status %s; output log: %s)", res.ExitCode, res.Status, rtn.OutputPath)
 	}
 	return rtn, nil
 }

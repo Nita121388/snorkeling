@@ -10,6 +10,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/wavetermdev/waveterm/pkg/agentmcp"
+	"github.com/wavetermdev/waveterm/pkg/wconfig"
 	"github.com/wavetermdev/waveterm/pkg/wshrpc"
 	"github.com/wavetermdev/waveterm/pkg/wshrpc/wshclient"
 )
@@ -161,6 +162,20 @@ func (b rpcBackend) AgentLaunch(ctx context.Context, req wshrpc.AgentLaunchReque
 
 func (b rpcBackend) AgentSend(ctx context.Context, req wshrpc.AgentSendRequest) (*wshrpc.AgentSendResult, error) {
 	return wshclient.AgentSendCommand(RpcClient, req, b.opts())
+}
+
+func (b rpcBackend) ScheduledTaskList(ctx context.Context) ([]wconfig.ScheduledTaskType, error) {
+	return wshclient.ScheduledTaskListCommand(RpcClient, b.opts())
+}
+
+func (b rpcBackend) ScheduledTaskCreate(ctx context.Context, task wconfig.ScheduledTaskType) (wconfig.ScheduledTaskType, error) {
+	return wshclient.ScheduledTaskCreateCommand(RpcClient, task, b.opts())
+}
+
+func (b rpcBackend) ScheduledTaskRun(ctx context.Context, taskID string) (*wshrpc.ScheduledTaskRunResult, error) {
+	// A scheduled run can take up to 30 minutes; the MCP default (15s) would
+	// time out the moment the task actually starts.
+	return wshclient.ScheduledTaskRunCommand(RpcClient, taskID, &wshrpc.RpcOpts{Timeout: 35 * 60 * 1000})
 }
 
 func mcpServeRun(cmd *cobra.Command, args []string) (rtnErr error) {

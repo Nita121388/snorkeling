@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/wavetermdev/waveterm/pkg/agentscope"
+	"github.com/wavetermdev/waveterm/pkg/wconfig"
 	"github.com/wavetermdev/waveterm/pkg/wshrpc"
 )
 
@@ -28,6 +29,12 @@ type fakeBackend struct {
 	lastLaunchReq wshrpc.AgentLaunchRequest
 	sendCalls     int
 	lastSendReq   wshrpc.AgentSendRequest
+
+	schedListCalls   int
+	schedCreateCalls int
+	schedRunCalls    int
+	lastSchedReq     wconfig.ScheduledTaskType
+	lastSchedRunID   string
 }
 
 func (f *fakeBackend) SessionLive(ctx context.Context, req wshrpc.SessionLiveRequest) (*wshrpc.SessionLiveResult, error) {
@@ -126,6 +133,23 @@ func (f *fakeBackend) AgentSend(ctx context.Context, req wshrpc.AgentSendRequest
 	return &wshrpc.AgentSendResult{Version: 1, Ok: true, BlockId: req.BlockId, Injected: true, Submitted: true}, nil
 }
 
+func (f *fakeBackend) ScheduledTaskList(ctx context.Context) ([]wconfig.ScheduledTaskType, error) {
+	f.schedListCalls++
+	return []wconfig.ScheduledTaskType{{Id: "t1", Name: "digest", Mode: "headless", CreatedBy: "agent"}}, nil
+}
+
+func (f *fakeBackend) ScheduledTaskCreate(ctx context.Context, task wconfig.ScheduledTaskType) (wconfig.ScheduledTaskType, error) {
+	f.schedCreateCalls++
+	f.lastSchedReq = task
+	return task, nil
+}
+
+func (f *fakeBackend) ScheduledTaskRun(ctx context.Context, taskID string) (*wshrpc.ScheduledTaskRunResult, error) {
+	f.schedRunCalls++
+	f.lastSchedRunID = taskID
+	return &wshrpc.ScheduledTaskRunResult{TaskId: taskID, Status: "success", ExitCode: 0, DurationMs: 12}, nil
+}
+
 func newServer(scopes []string) (*Server, *bytes.Buffer) {
 	out := &bytes.Buffer{}
 	return &Server{Backend: &fakeBackend{}, Scopes: scopes, Out: out}, out
@@ -179,8 +203,8 @@ func TestToolsListShapeAndScopes(t *testing.T) {
 	s, _ := newServer(nil)
 	res := resultMap(t, mustHandle(t, s, `{"jsonrpc":"2.0","id":2,"method":"tools/list"}`))
 	tools, _ := res["tools"].([]any)
-	if len(tools) != 25 {
-		t.Fatalf("expected 24 tools, got %d", len(tools))
+	if len(tools) != 28 {
+		t.Fatalf("expected 28 tools, got %d", len(tools))
 	}
 	seen := map[string]bool{}
 	for _, raw := range tools {
@@ -514,5 +538,59 @@ func TestSessionAnnotateToolScopeGated(t *testing.T) {
 	}
 	if be.annotateCalls != 0 {
 		t.Fatal("backend must not be called when the data scope is missing")
+	}
+}
+
+func TestScheduledTaskToolsListAndRun(t *testing.T) {
+	s, _ := newServer([]string{ScopeObserve, ScopeData, ScopeLaunch})
+	be := s.Backend.(*fakeBackend)
+
+	res := resultMap(t, mustHandle(t, s, `{"jsonrpc":"2.0","id":30,"method":"tools/call","params":{"name":"snorkeling_scheduledtask_list","arguments":{"createdby":"agent"}}}`))
+	if res["isError"] == true {
+		t.Fatalf("list should not error: %v", res)
+	}
+	if be.schedListCalls != 1 {
+		t.Fatalf("list calls = %d, want 1", be.schedListCalls)
+	}
+
+	res = resultMap(t, mustHandle(t, s, `{"jsonrpc":"2.0","id":31,"method":"tools/call","params":{"name":"snorkeling_scheduledtask_run","arguments":{"taskid":"t1"}}}`))
+	if res["isError"] == true {
+		t.Fatalf("run should not error: %v", res)
+	}
+	if be.schedRunCalls != 1 || be.lastSchedRunID != "t1" {
+		t.Fatalf("run target = %q calls=%d, want t1/1", be.lastSchedRunID, be.schedRunCalls)
+	}
+}
+
+func TestScheduledTaskCreateToolDryRunByDefault(t *testing.T) {
+	s, _ := newServer([]string{ScopeObserve, ScopeData})
+	be := s.Backend.(*fakeBackend)
+	// No yes flag -> dry-run: backend must NOT be called.
+	mustHandle(t, s, `{"jsonrpc":"2.0","id":40,"method":"tools/call","params":{"name":"snorkeling_scheduledtask_create","arguments":{"name":"n","prompt":"p","schedule":"every:10m"}}}`)
+	if be.schedCreateCalls != 0 {
+		t.Fatalf("default create must be dry-run, backend called %d times", be.schedCreateCalls)
+	}
+	// yes=true -> real create reaches the backend with a parsed schedule.
+	res := mustHandle(t, s, `{"jsonrpc":"2.0","id":41,"method":"tools/call","params":{"name":"snorkeling_scheduledtask_create","arguments":{"name":"n","prompt":"p","schedule":"every:10m","yes":true}}}`)
+	if resultMap(t, res)["isError"] == true {
+		t.Fatalf("create with yes should not error: %v", res)
+	}
+	if be.schedCreateCalls != 1 {
+		t.Fatalf("create calls = %d, want 1", be.schedCreateCalls)
+	}
+	if be.lastSchedReq.Id == "" || be.lastSchedReq.Schedule.Type != "interval" || be.lastSchedReq.Schedule.IntervalMs == nil {
+		t.Fatalf("create payload malformed: %+v", be.lastSchedReq)
+	}
+}
+
+func TestScheduledTaskCreateToolScopeGated(t *testing.T) {
+	s, _ := newServer([]string{ScopeObserve})
+	be := s.Backend.(*fakeBackend)
+	res := resultMap(t, mustHandle(t, s, `{"jsonrpc":"2.0","id":50,"method":"tools/call","params":{"name":"snorkeling_scheduledtask_create","arguments":{"name":"n","prompt":"p","schedule":"daily@09:00","yes":true}}}`))
+	if res["isError"] != true {
+		t.Fatalf("observe scope must not create, got %v", res)
+	}
+	if be.schedCreateCalls != 0 {
+		t.Fatal("backend must not be called when data scope is missing")
 	}
 }

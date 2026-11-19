@@ -31,6 +31,7 @@ var (
 	agentLaunchSend      string
 	agentLaunchSendStdin bool
 	agentLaunchJSON      bool
+	agentLaunchHeadless  bool
 
 	agentSendBlock         string
 	agentSendText          string
@@ -95,6 +96,7 @@ func init() {
 	agentLaunchCmd.Flags().StringVar(&agentLaunchSend, "send", "", "text to deliver to the new block's TUI after launch")
 	agentLaunchCmd.Flags().BoolVar(&agentLaunchSendStdin, "send-stdin", false, "read the text to deliver from stdin")
 	agentLaunchCmd.Flags().BoolVar(&agentLaunchJSON, "json", false, "output the result as JSON")
+	agentLaunchCmd.Flags().BoolVar(&agentLaunchHeadless, "headless", false, "run the agent CLI once without creating a block (one-shot, log under ~/.snorkeling/scheduledtask-runs/)")
 	agentLaunchCmd.MarkFlagRequired("profile")
 	agentCmd.AddCommand(agentLaunchCmd)
 
@@ -114,6 +116,16 @@ func agentLaunchRun(cmd *cobra.Command, args []string) (rtnErr error) {
 	defer func() {
 		sendActivity("agent launch", rtnErr == nil)
 	}()
+
+	// --headless is a one-shot run: mutually exclusive with anything that picks
+	// a block location. --tab defaults to "active", so the flag must be tested
+	// with Changed() rather than by value.
+	if agentLaunchHeadless {
+		if cmd.Flags().Changed("tab") || agentLaunchSplit != "" {
+			return fmt.Errorf("E_USAGE: --headless and --tab/--split are mutually exclusive (headless never creates a block)")
+		}
+		return agentLaunchHeadlessRun(cmd, args)
+	}
 
 	req := wshrpc.AgentLaunchRequest{
 		Profile:     strings.TrimSpace(agentLaunchProfile),
@@ -167,6 +179,52 @@ func agentLaunchRun(cmd *cobra.Command, args []string) (rtnErr error) {
 	}
 	for _, warn := range res.Warnings {
 		WriteStdout("warning\t%s\n", warn)
+	}
+	return nil
+}
+
+// agentLaunchHeadlessRun runs the profile's CLI once (no block). The prompt
+// comes from --send/--send-stdin exactly like the block path; the RPC result
+// carries exit code, duration and the log file path, and a non-zero exit
+// arrives as a structured E_AGENT_FAILED error (CLI exit 1).
+func agentLaunchHeadlessRun(cmd *cobra.Command, args []string) error {
+	text := agentLaunchSend
+	if agentLaunchSendStdin {
+		stdinText, err := readStdinText()
+		if err != nil {
+			return err
+		}
+		text = stdinText
+	}
+	if strings.TrimSpace(text) == "" {
+		return fmt.Errorf("E_USAGE: --send/--send-stdin text is required for --headless (the one-shot prompt)")
+	}
+	req := wshrpc.AgentLaunchRequest{
+		Profile: strings.TrimSpace(agentLaunchProfile),
+		Model:   strings.TrimSpace(agentLaunchModel),
+		Cwd:     agentLaunchCwd,
+		Send: &wshrpc.AgentSendRequest{
+			Text64: base64.StdEncoding.EncodeToString([]byte(text)),
+		},
+	}
+	res, err := wshclient.AgentLaunchHeadlessCommand(RpcClient, req, &wshrpc.RpcOpts{Timeout: 35 * 60 * 1000})
+	if err != nil {
+		if agentLaunchJSON && res != nil {
+			_ = writeJSONResult(res)
+		}
+		return err
+	}
+	if agentLaunchJSON {
+		return writeJSONResult(res)
+	}
+	WriteStdout("status\t%s\n", res.Status)
+	WriteStdout("exitcode\t%d\n", res.ExitCode)
+	WriteStdout("durationms\t%d\n", res.DurationMs)
+	if res.OutputPath != "" {
+		WriteStdout("outputpath\t%s\n", res.OutputPath)
+	}
+	if res.Error != "" {
+		WriteStdout("error\t%s\n", res.Error)
 	}
 	return nil
 }

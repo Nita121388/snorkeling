@@ -198,6 +198,14 @@ type ScheduledTaskType struct {
 	RunCount         int                       `json:"runCount,omitempty"`
 	Tags             []string                  `json:"tags,omitempty"`
 	CreatedBy        string                    `json:"createdBy,omitempty"`
+	// Mode decides how a fired task executes: "" or "headless" runs the agent
+	// CLI once into a log file under ~/.snorkeling/scheduledtask-runs/; "block"
+	// creates an agent block in Tab and delivers Prompt through its TUI.
+	Mode string `json:"mode,omitempty"`
+	// Tab selects where a block-mode task lands: "current" (the active tab),
+	// "new" (a brand-new tab), or an explicit tab id. Only meaningful when Mode
+	// is "block"; empty/"current" resolve to the active tab.
+	Tab string `json:"tab,omitempty"`
 }
 
 // ScheduledTaskRunRecord is an execution history entry (Phase 1: kept in memory + optional file)

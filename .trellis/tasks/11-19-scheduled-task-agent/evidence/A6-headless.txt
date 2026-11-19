@@ -1,0 +1,8 @@
+=== db_block BEFORE ===
+0
+headless task: 6c1c50e0-6028-427b-b023-a30f89e00ca7
+=== run headless (pi one-shot, provider-expanded model) ===
+status: success | exitcode: None | durationms: 4478
+output: ACK 
+=== db_block AFTER (expect unchanged) ===
+0

@@ -62,6 +62,12 @@ func AgentLaunchCommand(w *wshutil.WshRpc, data wshrpc.AgentLaunchRequest, opts 
 	return resp, err
 }
 
+// command "agentlaunchheadless", wshserver.AgentLaunchHeadlessCommand
+func AgentLaunchHeadlessCommand(w *wshutil.WshRpc, data wshrpc.AgentLaunchRequest, opts *wshrpc.RpcOpts) (*wshrpc.ScheduledTaskRunResult, error) {
+	resp, err := sendRpcRequestCallHelper[*wshrpc.ScheduledTaskRunResult](w, "agentlaunchheadless", data, opts)
+	return resp, err
+}
+
 // command "agentmcpconfig", wshserver.AgentMCPConfigCommand
 func AgentMCPConfigCommand(w *wshutil.WshRpc, data string, opts *wshrpc.RpcOpts) (*wshrpc.AgentMCPConfigResult, error) {
 	resp, err := sendRpcRequestCallHelper[*wshrpc.AgentMCPConfigResult](w, "agentmcpconfig", data, opts)
@@ -1098,6 +1104,12 @@ func ScheduledTaskHistoryCommand(w *wshutil.WshRpc, data string, opts *wshrpc.Rp
 // command "scheduledtasklist", wshserver.ScheduledTaskListCommand
 func ScheduledTaskListCommand(w *wshutil.WshRpc, opts *wshrpc.RpcOpts) ([]wconfig.ScheduledTaskType, error) {
 	resp, err := sendRpcRequestCallHelper[[]wconfig.ScheduledTaskType](w, "scheduledtasklist", nil, opts)
+	return resp, err
+}
+
+// command "scheduledtaskrun", wshserver.ScheduledTaskRunCommand
+func ScheduledTaskRunCommand(w *wshutil.WshRpc, data string, opts *wshrpc.RpcOpts) (*wshrpc.ScheduledTaskRunResult, error) {
+	resp, err := sendRpcRequestCallHelper[*wshrpc.ScheduledTaskRunResult](w, "scheduledtaskrun", data, opts)
 	return resp, err
 }
 

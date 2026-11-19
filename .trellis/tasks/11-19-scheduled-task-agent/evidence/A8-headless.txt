@@ -1,0 +1,13 @@
+=== db_block BEFORE ===
+1
+
+=== A8a: launch --headless (pi one-shot) ===
+{"status":"success","durationms":4370,"exitcode":0,"outputpath":"/Users/nita/.snorkeling/scheduledtask-runs/adhoc-20261120-004735.log","output":"HEADLESS\n"}
+exit: 0
+
+=== A8b: db_block AFTER (expect unchanged — headless must not create a block) ===
+1
+
+=== A8c: --headless + --tab → E_USAGE ===
+Error: E_USAGE: --headless and --tab/--split are mutually exclusive (headless never creates a block)
+exit: 1

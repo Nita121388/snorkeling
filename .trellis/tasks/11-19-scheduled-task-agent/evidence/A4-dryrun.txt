@@ -1,0 +1,37 @@
+=== A4: create WITHOUT --yes = dry-run preview ===
+would create task (dry-run; pass --yes to commit)
+id	0e41a29e-ee07-4d01-b0c3-2a151014c246
+name	acc-dryrun
+enabled	true
+agent	-
+mode	-
+schedule	every:600000ms
+prompt	hello
+exit: 0
+
+=== A4: task count in settings after dry-run (expect: no scheduledtasks:items key / 0 tasks) ===
+[]
+settings.json exists: 1 files
+
+=== A4b: create WITH --yes commits ===
+created	5e2ea9cf-a09c-49d1-8fa4-6073aabbe0ca	acc-user-task
+createdby	user
+exit: 0
+
+=== A4c: list now shows 1 task, createdBy=user ===
+[
+  {
+    "id": "5e2ea9cf-a09c-49d1-8fa4-6073aabbe0ca",
+    "name": "acc-user-task",
+    "enabled": true,
+    "prompt": "say hi once",
+    "workdir": "/tmp",
+    "schedule": {
+      "type": "interval",
+      "intervalMs": 600000
+    },
+    "createdAt": "2026-11-19T16:32:54Z",
+    "updatedAt": "2026-11-19T16:32:54Z",
+    "createdBy": "user"
+  }
+]

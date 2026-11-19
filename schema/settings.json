@@ -383,6 +383,12 @@
         },
         "createdBy": {
           "type": "string"
+        },
+        "mode": {
+          "type": "string"
+        },
+        "tab": {
+          "type": "string"
         }
       },
       "additionalProperties": false,

@@ -1,0 +1,5 @@
+view: term
+agent:provider: pi
+cmd:cwd: /tmp/acc-sched/run3/home
+agent:requestedmodel: deepseek/deepseek-v4.1-flash
+cmd:args: ['--model', 'deepseek/deepseek-v4.1-flash']

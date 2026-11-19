@@ -3258,6 +3258,17 @@ declare global {
         output?: string;
     };
 
+    // wshrpc.ScheduledTaskRunResult
+    type ScheduledTaskRunResult = {
+        taskid?: string;
+        status: string;
+        error?: string;
+        durationms?: number;
+        exitcode: number;
+        outputpath?: string;
+        output?: string;
+    };
+
     // wconfig.ScheduledTaskScheduleType
     type ScheduledTaskScheduleType = {
         type: string;
@@ -3295,6 +3306,8 @@ declare global {
         runCount?: number;
         tags?: string[];
         createdBy?: string;
+        mode?: string;
+        tab?: string;
     };
 
     // wshrpc.SecretMeta

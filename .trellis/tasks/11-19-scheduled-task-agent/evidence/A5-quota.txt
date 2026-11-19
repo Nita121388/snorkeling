@@ -1,0 +1,6 @@
+=== A5: 11th agent create → E_QUOTA, exit 1 ===
+Error: E_QUOTA: agent task quota reached (10/10); delete an existing task (wsh scheduledtask delete <id>) before creating another
+exit: 1
+
+=== sanity: quota counts only agent tasks (user task doesn't count) ===
+user tasks: 1

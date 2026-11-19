@@ -1,0 +1,7 @@
+=== db_block BEFORE ===
+0
+block task id: 9b5468c5-4fa7-49d1-8a33-62c2bcbe3ed4
+=== run block task ===
+status: success | error:  | durationms: 1479
+=== db_block AFTER (expect +1) ===
+1

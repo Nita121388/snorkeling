@@ -9,8 +9,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
+	"github.com/google/uuid"
 	"github.com/wavetermdev/waveterm/pkg/agentscope"
+	"github.com/wavetermdev/waveterm/pkg/scheduler"
+	"github.com/wavetermdev/waveterm/pkg/wconfig"
 	"github.com/wavetermdev/waveterm/pkg/wshrpc"
 )
 
@@ -52,6 +56,9 @@ type Backend interface {
 	SessionEmojiRecommendations(ctx context.Context, req wshrpc.SessionEmojiRecommendationsRequest) (*wshrpc.SessionEmojiRecommendationsResult, error)
 	SessionEmojiPrefs(ctx context.Context, req wshrpc.SessionEmojiPrefsRequest) (*wshrpc.SessionEmojiPrefsResult, error)
 	RecordEmojiPick(ctx context.Context, req wshrpc.SessionEmojiRecordPickRequest) (*wshrpc.SessionEmojiRecordPickResult, error)
+	ScheduledTaskList(ctx context.Context) ([]wconfig.ScheduledTaskType, error)
+	ScheduledTaskCreate(ctx context.Context, task wconfig.ScheduledTaskType) (wconfig.ScheduledTaskType, error)
+	ScheduledTaskRun(ctx context.Context, taskID string) (*wshrpc.ScheduledTaskRunResult, error)
 }
 
 // toolSpec binds one MCP tool to one Backend call.
@@ -631,6 +638,145 @@ func toolSpecs() []toolSpec {
 				return be.AgentSend(ctx, req)
 			},
 		},
+
+		{
+			Name:        "snorkeling_scheduledtask_list",
+			Description: "List scheduled tasks, each with id/name/schedule/mode/enabled/createdBy/lastRunStatus. Same data as the Scheduled Tasks settings panel.",
+			Scope:       ScopeObserve,
+			Annotations: readOnly("Scheduled tasks: list"),
+			Schema: obj(map[string]any{
+				"createdby": str("filter rows by creator: agent | user"),
+			}),
+			Invoke: func(ctx context.Context, be Backend, args json.RawMessage) (any, error) {
+				var filter struct {
+					CreatedBy string `json:"createdby"`
+				}
+				if len(args) > 0 {
+					if err := json.Unmarshal(args, &filter); err != nil {
+						return nil, fmt.Errorf("invalid arguments: %w", err)
+					}
+				}
+				items, err := be.ScheduledTaskList(ctx)
+				if err != nil {
+					return nil, err
+				}
+				if filter.CreatedBy != "" {
+					filtered := items[:0]
+					for _, t := range items {
+						if t.CreatedBy == filter.CreatedBy {
+							filtered = append(filtered, t)
+						}
+					}
+					items = filtered
+				}
+				return items, nil
+			},
+		},
+		{
+			Name:        "snorkeling_scheduledtask_create",
+			Description: "Create a scheduled task that fires an agent on a schedule. Dry-run unless yes=true. External agents are limited to 10 tasks (E_QUOTA). schedule supports cron:<expr> / every:<n>s|m|h / once@<RFC3339> / daily@HH:MM / weekly@<0-6>@HH:MM. mode=headless runs the agent CLI once into a log; mode=block creates a visible agent block in tab (current|new|<tabid>) and delivers the prompt to its TUI.",
+			Scope:       ScopeData,
+			Annotations: &Annotations{Title: "Scheduled tasks: create", DestructiveHint: true},
+			Schema: obj(map[string]any{
+				"name":     str("task name (required)"),
+				"prompt":   str("prompt delivered to the agent (required)"),
+				"schedule": str("cron:<expr> | every:<n>s|m|h | once@<ISO> | daily@HH:MM | weekly@<0-6>@HH:MM (required)"),
+				"mode":     str("headless (default) | block"),
+				"agent":    str("agent profile from the catalog (default pi)"),
+				"model":    str("model id or provider/id (default: profile default)"),
+				"workdir":  str("working directory for the run / block"),
+				"tab":      str("current | new | <tabid> (block mode only)"),
+				"dryrun":   boolean("force a preview even with yes (default true)"),
+				"yes":      boolean("commit the write; default false = dry-run"),
+			}, "name", "prompt", "schedule"),
+			Invoke: func(ctx context.Context, be Backend, args json.RawMessage) (any, error) {
+				raw, err := decode[scheduledTaskCreateArgs](args)
+				if err != nil {
+					return nil, err
+				}
+				if !raw.Yes || raw.DryRun {
+					return map[string]any{"dryrun": true, "task": raw.summary()}, nil
+				}
+				sc, err := scheduler.ParseScheduleSpec(raw.Schedule)
+				if err != nil {
+					return nil, err
+				}
+				now := time.Now().UTC().Format(time.RFC3339)
+				task := wconfig.ScheduledTaskType{
+					Id:           uuid.NewString(),
+					Name:         raw.Name,
+					Enabled:      true,
+					AgentProfile: raw.Agent,
+					Model:        raw.Model,
+					Prompt:       raw.Prompt,
+					Workdir:      raw.Workdir,
+					Mode:         raw.Mode,
+					Tab:          raw.Tab,
+					Schedule:     sc,
+					CreatedAt:    now,
+					UpdatedAt:    now,
+				}
+				return be.ScheduledTaskCreate(ctx, task)
+			},
+		},
+		{
+			Name:        "snorkeling_scheduledtask_run",
+			Description: "Run a scheduled task now and wait for it to finish, returning status/exitCode/durationMs/outputPath (headless log under ~/.snorkeling/scheduledtask-runs/). Use it to verify a task before it goes live; block-mode runs create the agent block and deliver the prompt.",
+			Scope:       ScopeLaunch,
+			Annotations: &Annotations{Title: "Scheduled tasks: run now", DestructiveHint: true},
+			Schema: obj(map[string]any{
+				"taskid": str("task id from snorkeling_scheduledtask_list"),
+			}, "taskid"),
+			Invoke: func(ctx context.Context, be Backend, args json.RawMessage) (any, error) {
+				var raw struct {
+					TaskID string `json:"taskid"`
+				}
+				if len(args) > 0 {
+					if err := json.Unmarshal(args, &raw); err != nil {
+						return nil, fmt.Errorf("invalid arguments: %w", err)
+					}
+				}
+				if strings.TrimSpace(raw.TaskID) == "" {
+					return nil, fmt.Errorf("E_USAGE: taskid is required")
+				}
+				res, err := be.ScheduledTaskRun(ctx, raw.TaskID)
+				if err != nil {
+					return nil, err
+				}
+				if res != nil && len(res.Output) > 8192 {
+					res.Output = res.Output[:8192] + "...(truncated)"
+				}
+				return res, nil
+			},
+		},
+	}
+}
+
+// scheduledTaskCreateArgs is snorkeling_scheduledtask_create's wire shape.
+// summary() renders the dry-run preview (the task the tool WOULD create).
+type scheduledTaskCreateArgs struct {
+	Name     string `json:"name"`
+	Prompt   string `json:"prompt"`
+	Schedule string `json:"schedule"`
+	Mode     string `json:"mode"`
+	Agent    string `json:"agent"`
+	Model    string `json:"model"`
+	Workdir  string `json:"workdir"`
+	Tab      string `json:"tab"`
+	DryRun   bool   `json:"dryrun"`
+	Yes      bool   `json:"yes"`
+}
+
+func (a scheduledTaskCreateArgs) summary() map[string]any {
+	return map[string]any{
+		"name":     a.Name,
+		"prompt":   a.Prompt,
+		"schedule": a.Schedule,
+		"mode":     a.Mode,
+		"agent":    a.Agent,
+		"model":    a.Model,
+		"workdir":  a.Workdir,
+		"tab":      a.Tab,
 	}
 }
 

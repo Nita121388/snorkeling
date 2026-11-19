@@ -1,0 +1,8 @@
+target task: 6c1c50e0-6028-427b-b023-a30f89e00ca7
+settings updated: lastRunAt set 1h ago
+=== restarting server (startup catch-up pass should fire) ===
+server up (1s)
+=== server.log catch-up lines ===
+[wavesrv] [scheduler] catch-up: task id=6c1c50e0-6028-427b-b023-a30f89e00ca7 name="acc-headless" missed occurrence 2026-11-19T16:48:35Z; running once
+=== task status after catch-up ===
+lastRunStatus: missed-run | lastRunAt: 2026-11-19T16:48:48Z

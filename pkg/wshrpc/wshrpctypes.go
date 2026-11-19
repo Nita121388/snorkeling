@@ -127,6 +127,10 @@ type WshRpcInterface interface {
 	TabActivateCommand(ctx context.Context, data TabActivateRequest) (*TabActivateResult, error)
 	// agent block launch + text injection (programmatic agent-block creation)
 	AgentLaunchCommand(ctx context.Context, data AgentLaunchRequest) (*AgentLaunchResult, error)
+	// AgentLaunchHeadlessCommand runs the profile's CLI once WITHOUT creating a
+	// block (`agent launch --headless`). Tab must be empty (E_USAGE otherwise),
+	// Send carries the one-shot prompt, non-zero exit -> E_AGENT_FAILED.
+	AgentLaunchHeadlessCommand(ctx context.Context, data AgentLaunchRequest) (*ScheduledTaskRunResult, error)
 	AgentSendCommand(ctx context.Context, data AgentSendRequest) (*AgentSendResult, error)
 	// external agent access: mint a scoped token (in-app only)
 	AgentAuthGrantCommand(ctx context.Context, data AgentAuthGrantRequest) (*AgentAuthGrantResult, error)
@@ -261,6 +265,11 @@ type WshRpcInterface interface {
 	ScheduledTaskDeleteCommand(ctx context.Context, taskId string) error
 	ScheduledTaskRunNowCommand(ctx context.Context, taskId string) error
 	ScheduledTaskHistoryCommand(ctx context.Context, taskId string) ([]wconfig.ScheduledTaskRunRecord, error)
+	// ScheduledTaskRunCommand runs a task now and blocks until it finishes,
+	// returning the run outcome (status, exit code, duration, log path). It is
+	// the synchronous twin of RunNow (fire-and-forget); used by
+	// `wsh scheduledtask run` and the MCP run tool. Unknown id -> E_NOT_FOUND.
+	ScheduledTaskRunCommand(ctx context.Context, taskId string) (*ScheduledTaskRunResult, error)
 
 	// block focus
 	SetBlockFocusCommand(ctx context.Context, blockId string) error
@@ -1364,6 +1373,20 @@ type AgentSendResult struct {
 	QuietMs       int      `json:"quietms"`
 	SubmitDelayMs int      `json:"submitdelayms"`
 	Warnings      []string `json:"warnings,omitempty"`
+}
+
+// ScheduledTaskRunResult is the synchronous outcome of `wsh scheduledtask run`
+// and the MCP run tool (also reused by `agent launch --headless`). Output is
+// bounded for the wire; the full combined output lives in the file behind
+// OutputPath (headless runs only).
+type ScheduledTaskRunResult struct {
+	TaskId     string `json:"taskid,omitempty"`
+	Status     string `json:"status"` // success / error / timeout / cancelled / missed-run
+	Error      string `json:"error,omitempty"`
+	DurationMs int64  `json:"durationms,omitempty"`
+	ExitCode   int    `json:"exitcode"`
+	OutputPath string `json:"outputpath,omitempty"`
+	Output     string `json:"output,omitempty"` // bounded combined output
 }
 
 type TabListRequest struct {
