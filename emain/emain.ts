@@ -47,7 +47,7 @@ import {
     unamePlatform,
 } from "./emain-platform";
 import { ensureHotSpareTab, setMaxTabCacheSize } from "./emain-tabview";
-import { getIsWaveSrvDead, getWaveSrvProc, getWaveSrvReady, runWaveSrv } from "./emain-wavesrv";
+import { getIsWaveSrvDead, getWaveSrvProc, getWaveSrvReady, reloadAllWaveWindows, runWaveSrv, setRespawnReloadHook } from "./emain-wavesrv";
 import {
     createBrowserWindow,
     createNewWaveWindow,
@@ -437,6 +437,10 @@ async function appMain() {
     } catch (e) {
         console.log(e.toString());
     }
+    // D-A (wavesrv OOM 修复): wavesrv 异常死亡后主进程自动 respawn 新后端，
+    // 端口是随机的，新端点写入 process.env 后 reload 所有窗口让渲染进程的
+    // lazy 端点缓存失效重连；Tab/Workspace 状态由 wavesrv db 持久化自动恢复。
+    setRespawnReloadHook(reloadAllWaveWindows);
     const ready = await getWaveSrvReady();
     console.log("wavesrv ready signal received", ready, Date.now() - startTs, "ms");
     await electronApp.whenReady();
