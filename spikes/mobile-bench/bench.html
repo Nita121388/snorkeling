@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>mobile bench</title>
+<style>
+  /* 故意不做美化：这是同一把尺子的最薄壳，只测渲染与数据流 */
+  body{margin:0;font:15px -apple-system,"PingFang SC",sans-serif;background:#f5f6f7}
+  #list,#chat{height:calc(100vh - 40px);overflow-y:auto}
+  .row{display:flex;gap:12px;padding:13px 16px;background:#fff;border-bottom:1px solid #eaedf0;height:74px;box-sizing:border-box;overflow:hidden}
+  .av{width:46px;height:46px;border-radius:14px;background:#e5f1ee;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+  .mid{flex:1;min-width:0}
+  .m{font-size:13.5px;color:#5a626e;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .tags{display:flex;gap:6px;margin-top:6px}
+  .tag{font-size:10.5px;background:#f2f4f6;border-radius:5px;padding:2px 6px;color:#9099a6}
+  .msg{display:flex;gap:9px;margin:0 16px 18px;align-items:flex-end}
+  .msg.me{flex-direction:row-reverse}
+  .bub{max-width:74%;padding:10px 13px;border-radius:15px;background:#fff;font-size:15px;line-height:1.5}
+  .msg.me .bub{background:#0c6b63;color:#f4fbf9}
+  .card{background:#fff;border:1px solid #f0e2cc;border-radius:13px;padding:11px 12px;width:250px}
+  .btn{height:34px;border-radius:9px;background:#0c6b63;color:#fff;display:flex;align-items:center;justify-content:center;font-size:13.5px;margin-top:10px}
+  #hud{position:fixed;left:0;right:0;bottom:0;height:40px;background:#1a1d21;color:#0f0;font:12px ui-monospace,monospace;padding:10px;box-sizing:border-box;white-space:pre;overflow:hidden}
+</style>
+</head>
+<body>
+<div id="list"></div>
+<div id="chat" style="display:none"></div>
+<div id="hud">running…</div>
+<script>
+const API = location.origin;
+const hud = document.getElementById('hud');
+const R = { ua: navigator.userAgent, viewport: innerWidth + 'x' + innerHeight, results: {} };
+
+function mark(){ return performance.now(); }
+function round(n){ return Math.round(n * 10) / 10; }
+
+async function fetchJSON(p){ const r = await fetch(API + p); return r.json(); }
+
+function frameStats(durationMs){
+  return new Promise(resolve => {
+    const deltas = [];
+    let last = performance.now();
+    const t0 = last;
+    function tick(now){
+      deltas.push(now - last); last = now;
+      if (now - t0 < durationMs) requestAnimationFrame(tick);
+      else {
+        const sorted = deltas.slice(1).sort((a,b)=>a-b);
+        const pct = q => sorted[Math.min(sorted.length-1, Math.floor(sorted.length*q))] || 0;
+        resolve({
+          frames: sorted.length,
+          p50: round(pct(.5)), p95: round(pct(.95)), p99: round(pct(.99)),
+          dropped: sorted.filter(d => d > 1000/60 * 1.5).length,
+          fps: round(sorted.length / (durationMs/1000))
+        });
+      }
+    }
+    requestAnimationFrame(tick);
+  });
+}
+
+function slowTasks(){
+  const list = [];
+  if (!window.PerformanceObserver) return list;
+  try {
+    new PerformanceObserver(l => l.getEntries().forEach(e => list.push({ d: round(e.duration), name: e.name })))
+      .observe({ entryTypes: ['longtask'] });
+  } catch(e){}
+  return list;
+}
+
+function renderAgents(agents){
+  const list = document.getElementById('list');
+  list.innerHTML = agents.map(a => `
+    <div class="row">
+      <div class="av">${a.name[0]}</div>
+      <div class="mid">
+        <div style="display:flex;font-size:16px;font-weight:600">
+          <span>${a.name}</span>
+          <span style="margin-left:8px;font-size:11px;color:#9099a6;background:#f2f4f6;padding:2px 6px;border-radius:5px">${a.env}</span>
+          <span style="margin-left:auto;font-size:11.5px;color:#b6bdc7">${a.time}</span>
+        </div>
+        <div class="m">${a.last}</div>
+        <div class="tags">${a.tags.map(t => `<span class="tag">${t}</span>`).join('')}</div>
+      </div>
+    </div>`).join('');
+}
+
+function renderChat(msgs){
+  const chat = document.getElementById('chat');
+  chat.innerHTML = msgs.map(m => {
+    if (m.kind === 'approval') return `<div class="msg"><div class="av">C</div>
+      <div class="card"><div style="font-size:12.5px;font-weight:600;color:#8a5f13">需要批准</div>
+      <div style="font:11.5px ui-monospace,monospace;background:#f6f7f9;border-radius:9px;padding:9px;margin-top:9px">${m.text}</div>
+      <div class="btn" id="approve">同意</div></div></div>`;
+    return `<div class="msg ${m.role === 'user' ? 'me' : ''}"><div class="av">C</div>
+      <div class="bub">${m.text}</div></div>`;
+  }).join('');
+}
+
+async function run(){
+  const [agents, msgs] = await Promise.all([fetchJSON('/api/agents'), fetchJSON('/api/messages')]);
+
+  // 1. 首屏列表挂载（200 行，无虚拟化 = 最坏）
+  let t = mark();
+  renderAgents(agents);
+  document.getElementById('list').offsetHeight; // 强制布局
+  R.results.listMount = round(mark() - t);
+
+  // 2. 列表滚动帧率（3s 程序化滚动）
+  const list = document.getElementById('list');
+  R.results.listScroll = await (async () => {
+    let pos = 0, dir = 1;
+    const raf = () => {
+      pos += 14 * dir;
+      if (pos > list.scrollHeight - list.clientHeight) dir = -1;
+      if (pos < 0) { pos = 0; dir = 1; }
+      list.scrollTop = pos;
+      requestAnimationFrame(raf);
+    };
+    const stats = frameStats(3000);
+    requestAnimationFrame(raf);
+    return await stats;
+  })();
+
+  // 3. 会话页挂载（1000 条）
+  document.getElementById('list').style.display = 'none';
+  document.getElementById('chat').style.display = 'block';
+  const lt = slowTasks();
+  t = mark();
+  renderChat(msgs);
+  document.getElementById('chat').offsetHeight;
+  R.results.chatMount = round(mark() - t);
+
+  // 4. SSE 流式追加 300 条 @30/s
+  document.getElementById('chat').innerHTML = '';
+  const chat = document.getElementById('chat');
+  R.results.stream = await new Promise(resolve => {
+    const es = new EventSource(API + '/events?rate=30&total=300');
+    const t0 = mark(); let n = 0, framesSum = 0, lastT = t0;
+    const onTick = () => { const n2 = performance.now(); framesSum = Math.max(framesSum, n2 - lastT); lastT = n2;
+      requestAnimationFrame(onTick); };
+    requestAnimationFrame(onTick);
+    es.onmessage = e => {
+      const d = JSON.parse(e.data);
+      const el = document.createElement('div');
+      el.className = 'msg';
+      el.innerHTML = '<div class="av">C</div><div class="bub">' + d.text + '</div>';
+      chat.appendChild(el);
+      chat.scrollTop = chat.scrollHeight;
+      n++;
+    };
+    es.addEventListener('done', () => {
+      const total = mark() - t0;
+      es.close();
+      resolve({ received: n, totalMs: round(total), worstRafGapMs: round(framesSum),
+                perMsgMs: round(total / Math.max(1,n)) });
+    });
+    setTimeout(() => { es.close(); resolve({ received: n, totalMs: round(mark()-t0), timeout: true }); }, 20000);
+  });
+
+  // 5. 审批点击 → 下一帧可见
+  renderChat([msgs.find(m => m.kind === 'approval'), msgs.find(m => m.kind === 'approval')]);
+  R.results.approval = await new Promise(resolve => {
+    const btn = document.getElementById('approve');
+    if (!btn) return resolve(null);
+    let t0 = 0;
+    btn.addEventListener('click', () => {
+      t0 = mark();
+      btn.textContent = '已同意';
+      btn.style.background = '#17695c';
+      requestAnimationFrame(() => resolve({ clickToPaint: round(performance.now() - t0) }));
+    });
+    btn.click();
+  });
+
+  R.results.longTasks = lt.slice(0, 10);
+  hud.textContent = 'done';
+  await fetch('/results', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(R) });
+}
+run().catch(e => { hud.textContent = 'ERR ' + e; fetch('/results', { method: 'POST', body: JSON.stringify({ error: String(e) }) }); });
+</script>
+</body>
+</html>

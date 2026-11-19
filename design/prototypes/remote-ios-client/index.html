@@ -1,0 +1,900 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Snorkeling Remote — iOS 客户端原型 v0.2</title>
+<style>
+:root{
+  --ground:#F5F6F7; --surface:#FFFFFF;
+  --line:#EAEDF0; --line-strong:#DFE3E7;
+  --ink:#1A1D21; --ink-2:#5A626E; --ink-3:#9099A6; --ink-4:#B6BDC7;
+  --accent:#0C6B63; --accent-press:#0A5A53; --accent-soft:#E7F2F0;
+  --run:#1F9D84; --wait:#C9861C; --alert:#D93F45; --off:#B6BDC7;
+  --claude:#A8532F;   --claude-soft:#F7EAE4;
+  --codex:#17695C;    --codex-soft:#E5F1EE;
+  --pi:#2C5EA8;       --pi-soft:#E8EFF9;
+  --grok:#9A6A16;     --grok-soft:#F7EFE0;
+  --nav-bg:rgba(255,255,255,.88);
+  --radius-row:14px;
+  --ease:cubic-bezier(.32,.72,.33,1);
+}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-font-smoothing:antialiased;}
+body{
+  font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Helvetica Neue",Arial,sans-serif;
+  background:#101316;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  min-height:100vh;padding:32px 12px;color:var(--ink);
+}
+.stage-cap{color:#7C838D;font-size:12px;margin-bottom:20px;letter-spacing:.2px;text-align:center;line-height:1.7}
+.stage-cap b{color:#C7CDD4;font-weight:500}
+.phone{
+  width:392px;height:846px;background:#0B0D10;border-radius:56px;padding:11px;
+  box-shadow:0 38px 90px -20px rgba(0,0,0,.75);position:relative;flex-shrink:0;
+}
+.screen{
+  width:100%;height:100%;background:var(--ground);border-radius:46px;overflow:hidden;
+  position:relative;display:flex;flex-direction:column;
+}
+.statusbar{
+  height:54px;display:flex;align-items:flex-end;justify-content:space-between;
+  padding:0 30px 5px;font-size:14.5px;font-weight:600;letter-spacing:.2px;
+  position:relative;z-index:6;background:var(--ground);
+}
+.statusbar .icons{display:flex;align-items:center;gap:6px;color:var(--ink)}
+.statusbar svg{display:block}
+
+.navbar{
+  height:46px;display:flex;align-items:center;padding:0 14px 0 16px;gap:8px;
+  background:var(--nav-bg);backdrop-filter:blur(20px) saturate(180%);
+  -webkit-backdrop-filter:blur(20px) saturate(180%);
+  border-bottom:1px solid var(--line);position:relative;z-index:5;
+}
+.navleft{flex:1;display:flex;align-items:center;min-width:0;gap:10px}
+.brandmark{
+  width:26px;height:26px;border-radius:8px;background:var(--accent);flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;
+}
+.envswitch{
+  display:flex;align-items:center;gap:6px;font-size:17px;font-weight:600;letter-spacing:-.2px;
+  padding:5px 7px;margin-left:-7px;border-radius:9px;cursor:pointer;user-select:none;min-width:0;
+  transition:background .15s;
+}
+.envswitch:active{background:rgba(0,0,0,.055)}
+.envswitch .en{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:172px}
+.envswitch .caret{color:var(--ink-3);display:flex;margin-left:1px}
+.navbtn{
+  width:34px;height:34px;display:flex;align-items:center;justify-content:center;
+  border-radius:10px;cursor:pointer;user-select:none;color:var(--ink);transition:background .15s;
+}
+.navbtn:active{background:rgba(0,0,0,.06)}
+.navbtn svg{display:block}
+.title{font-size:17px;font-weight:600;letter-spacing:-.2px}
+
+.menu{
+  position:absolute;top:104px;right:14px;width:186px;background:#1F2429;
+  border-radius:12px;z-index:30;box-shadow:0 14px 40px -8px rgba(0,0,0,.45);
+  transform-origin:92% 0;transition:transform .16s var(--ease),opacity .16s var(--ease);
+  overflow:hidden;
+}
+.menu.left{left:14px;right:auto;transform-origin:10% 0}
+.menu.hidden{transform:scale(.94) translateY(-4px);opacity:0;pointer-events:none}
+.menu .item{
+  color:#F2F4F6;font-size:14px;padding:12px 14px;cursor:pointer;
+  display:flex;align-items:center;gap:10px;letter-spacing:-.1px;
+}
+.menu .item+.item{box-shadow:inset 0 1px 0 rgba(255,255,255,.07)}
+.menu .item:active{background:rgba(255,255,255,.08)}
+.menu .item svg{flex-shrink:0;opacity:.72}
+.menu .item .sub{margin-left:auto;font-size:11.5px;color:#98A1AB}
+.menu .item .ck{margin-left:auto;color:#5CC8B7;font-size:13px;opacity:0}
+.menu .item.on .ck{opacity:1}
+
+.searchwrap{padding:10px 16px 8px}
+.search{
+  background:#EDEFF2;border-radius:10px;height:36px;display:flex;align-items:center;justify-content:center;
+  gap:6px;color:var(--ink-3);font-size:13.5px;cursor:text;letter-spacing:.1px;
+}
+
+.list{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch}
+.list::-webkit-scrollbar{display:none}
+.cell{
+  display:flex;gap:12px;align-items:center;position:relative;cursor:pointer;
+  padding:13px 16px;background:var(--surface);transition:background .12s;
+}
+.cell:active{background:#F0F2F4}
+.cell:not(:first-child)::before{
+  content:"";position:absolute;left:74px;right:0;top:0;height:1px;background:var(--line);
+}
+.avatar{
+  width:46px;height:46px;border-radius:var(--radius-row);flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;
+  font-size:17px;font-weight:600;letter-spacing:-.2px;position:relative;
+}
+.avatar .live{
+  position:absolute;right:-2px;bottom:-2px;width:14px;height:14px;border-radius:50%;
+  background:var(--run);border:2.5px solid var(--surface);
+}
+.avatar .live.idle{background:var(--wait)}
+.avatar .live.off{background:var(--off)}
+.cell .mid{flex:1;min-width:0}
+.row1{display:flex;align-items:baseline;gap:7px}
+.row1 .name{font-size:16px;font-weight:600;letter-spacing:-.25px;color:var(--ink)}
+.row1 .envtag{
+  font-size:11px;color:var(--ink-3);background:#F2F4F6;padding:2px 6px;border-radius:5px;
+  letter-spacing:.1px;flex-shrink:0;
+}
+.row1 .time{margin-left:auto;font-size:11.5px;color:var(--ink-4);font-variant-numeric:tabular-nums;flex-shrink:0}
+.row2{display:flex;align-items:center;margin-top:4px;gap:8px}
+.row2 .msg{
+  font-size:13.5px;color:var(--ink-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  flex:1;letter-spacing:-.1px;
+}
+.row2 .msg.wait{color:var(--wait)}
+.badge{
+  min-width:17px;height:17px;border-radius:9px;background:var(--alert);color:#fff;
+  font-size:11px;font-weight:600;display:flex;align-items:center;justify-content:center;
+  padding:0 5px;flex-shrink:0;letter-spacing:0;
+}
+.dot{width:5px;height:5px;border-radius:50%;display:inline-block;flex-shrink:0}
+.dot.run{background:var(--run)}
+.dot.wait{background:var(--wait)}
+.dot.off{background:var(--off)}
+.dot.run.pulse{animation:pulse 2.4s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+
+.envrow{display:flex;align-items:center;gap:12px;padding:14px 16px;background:var(--surface);
+  position:relative;cursor:pointer}
+.envrow+.envrow::before{content:"";position:absolute;left:16px;right:16px;top:0;height:1px;background:var(--line)}
+.envrow .ic{
+  width:40px;height:40px;border-radius:12px;background:#F2F4F6;display:flex;align-items:center;justify-content:center;flex-shrink:0;
+}
+.envrow .nm{font-size:15.5px;font-weight:600;letter-spacing:-.2px}
+.envrow .meta{font-size:12px;color:var(--ink-3);margin-top:3px;display:flex;align-items:center;gap:5px}
+.envrow .right{margin-left:auto;font-size:11.5px;color:var(--ink-4)}
+
+.tabbar{
+  height:82px;display:flex;padding-top:9px;position:relative;z-index:5;
+  background:var(--nav-bg);backdrop-filter:blur(20px) saturate(180%);
+  -webkit-backdrop-filter:blur(20px) saturate(180%);
+  border-top:1px solid var(--line);
+}
+.tab{
+  flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer;
+  color:var(--ink-4);font-size:10.5px;letter-spacing:.1px;transition:color .18s;
+}
+.tab.active{color:var(--accent)}
+.tab svg{display:block}
+.tab .tl{position:relative;display:flex}
+.tab .tl .badge{position:absolute;top:-5px;right:-11px}
+
+.chatpage{
+  position:absolute;top:54px;left:0;right:0;bottom:0;z-index:20;
+  display:flex;flex-direction:column;background:var(--ground);
+  transform:translateX(100%);transition:transform .3s var(--ease);
+}
+.chatpage.show{transform:translateX(0)}
+.chathead{
+  height:52px;display:flex;align-items:center;padding:0 8px 0 6px;gap:4px;
+  background:var(--nav-bg);backdrop-filter:blur(20px) saturate(180%);
+  -webkit-backdrop-filter:blur(20px) saturate(180%);
+  border-bottom:1px solid var(--line);position:relative;z-index:6;
+}
+.chatback{display:flex;align-items:center;gap:4px;cursor:pointer;padding:6px;border-radius:9px;min-width:66px}
+.chatback:active{background:rgba(0,0,0,.05)}
+.chatback .lbl{font-size:12px;color:var(--ink-3);max-width:78px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ctitle{flex:1;text-align:center;line-height:1.2;min-width:0}
+.ctitle .name{font-size:16px;font-weight:600;letter-spacing:-.2px}
+.ctitle .st{display:flex;align-items:center;justify-content:center;gap:5px;font-size:11px;color:var(--ink-3);margin-top:2px}
+
+.msgs{flex:1;overflow-y:auto;padding:14px 16px 6px}
+.msgs::-webkit-scrollbar{display:none}
+.datediv{display:flex;justify-content:center;margin:6px 0 18px}
+.datediv span{font-size:11px;color:var(--ink-3);letter-spacing:.2px}
+.mrow{display:flex;gap:9px;margin-bottom:18px;align-items:flex-end}
+.mrow.me{flex-direction:row-reverse}
+.mavatar{
+  width:30px;height:30px;border-radius:9px;flex-shrink:0;font-size:12px;font-weight:600;
+  display:flex;align-items:center;justify-content:center;margin-bottom:2px;
+}
+.bubblewrap{max-width:74%;display:flex;flex-direction:column;align-items:flex-start;gap:5px}
+.mrow.me .bubblewrap{align-items:flex-end}
+.bubble{
+  padding:10px 13px;border-radius:15px;font-size:15px;line-height:1.5;letter-spacing:-.15px;
+  background:var(--surface);color:var(--ink);word-break:break-word;
+  animation:rise .22s var(--ease);
+}
+.mrow.me .bubble{background:var(--accent);color:#F4FBF9;border-bottom-right-radius:5px}
+.mrow:not(.me) .bubble{border-bottom-left-radius:5px}
+@keyframes rise{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+.card{
+  background:var(--surface);border:1px solid var(--line);border-radius:13px;padding:11px 12px;
+  width:250px;max-width:100%;
+}
+.card .chead{display:flex;align-items:center;gap:7px;font-size:12.5px;font-weight:600;color:var(--ink-2);letter-spacing:-.1px}
+.card .chead .ic{display:flex;color:var(--ink-3)}
+.card .cmd{
+  margin-top:9px;background:#F6F7F9;border-radius:9px;padding:9px 10px;
+  font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px;line-height:1.55;
+  color:var(--ink-2);word-break:break-all;
+}
+.card .cfoot{font-size:11px;color:var(--ink-4);margin-top:9px;letter-spacing:.1px}
+.card.approve{border-color:#F0E2CC}
+.card.approve .chead{color:#8A5F13}
+.card.approve .chead .ic{color:var(--wait)}
+.card.approved{border-color:#D6E9E4}
+.card.approved .chead{color:#12655A}
+.card.denied{border-color:#F2D9DA}
+.card.denied .chead{color:#9B3439}
+.btns{display:flex;gap:8px;margin-top:11px}
+.btn{
+  flex:1;height:34px;border-radius:9px;font-size:13.5px;font-weight:500;letter-spacing:-.1px;
+  display:flex;align-items:center;justify-content:center;cursor:pointer;user-select:none;
+  transition:background .12s,transform .08s;
+}
+.btn:active{transform:scale(.98)}
+.btn.ok{background:var(--accent);color:#fff}
+.btn.ok:active{background:var(--accent-press)}
+.btn.no{background:#F2F4F6;color:var(--ink-2)}
+.btn.no:active{background:#E8EBEF}
+.resultline{font-size:12.5px;font-weight:600;margin-top:10px;display:flex;align-items:center;gap:5px}
+.resultline.ok{color:#12655A}
+.resultline.no{color:#9B3439}
+.typing{display:inline-flex;gap:4px;padding:14px 15px}
+.typing i{width:6px;height:6px;border-radius:50%;background:var(--ink-4);animation:blink 1.3s infinite}
+.typing i:nth-child(2){animation-delay:.18s}
+.typing i:nth-child(3){animation-delay:.36s}
+@keyframes blink{0%,70%,100%{opacity:.22}35%{opacity:1}}
+
+.inputbar{
+  min-height:78px;display:flex;align-items:flex-start;gap:6px;padding:10px 10px 0;
+  background:var(--nav-bg);backdrop-filter:blur(20px) saturate(180%);
+  -webkit-backdrop-filter:blur(20px) saturate(180%);
+  border-top:1px solid var(--line);
+}
+.iconbtn{
+  width:38px;height:38px;display:flex;align-items:center;justify-content:center;
+  cursor:pointer;color:var(--ink-3);border-radius:10px;flex-shrink:0;
+}
+.iconbtn:active{background:rgba(0,0,0,.05)}
+.inputbar input{
+  flex:1;height:38px;background:var(--surface);border:1px solid var(--line);
+  border-radius:11px;outline:none;font-size:15px;padding:0 12px;font-family:inherit;
+  color:var(--ink);letter-spacing:-.15px;
+}
+.inputbar input::placeholder{color:var(--ink-4)}
+.inputbar input:focus{border-color:#CDD3D9}
+.sendbtn{
+  background:var(--accent);color:#fff;border-radius:9px;height:34px;padding:0 15px;
+  font-size:13.5px;font-weight:500;display:flex;align-items:center;justify-content:center;
+  align-self:center;cursor:pointer;user-select:none;letter-spacing:-.1px;
+}
+.sendbtn:active{background:var(--accent-press)}
+
+.toast{
+  position:absolute;left:50%;top:46%;transform:translate(-50%,-50%) scale(.96);
+  background:rgba(24,28,33,.9);color:#F2F4F6;font-size:13px;padding:11px 16px;border-radius:11px;
+  z-index:60;opacity:0;transition:all .2s var(--ease);pointer-events:none;white-space:nowrap;
+  letter-spacing:-.1px;
+}
+.toast.show{opacity:1;transform:translate(-50%,-50%) scale(1)}
+.refreshing{position:absolute;inset:0;background:rgba(245,246,247,.72);z-index:25;display:none;
+  align-items:center;justify-content:center}
+.refreshing.show{display:flex}
+.spinner{width:26px;height:26px;border:2.5px solid rgba(12,107,99,.18);border-top-color:var(--accent);
+  border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.homebar{width:132px;height:5px;background:#0B0D10;border-radius:3px;position:absolute;
+  bottom:8px;left:50%;transform:translateX(-50%);z-index:40;opacity:.9}
+.stage-foot{color:#6E7681;font-size:11.5px;margin-top:20px;text-align:center;line-height:2;max-width:640px}
+.stage-foot b{color:#A9B1BA;font-weight:500}
+/* ---- list meta（tag / note / props） ---- */
+.rowmeta{display:flex;align-items:center;gap:6px;margin-top:7px;overflow:hidden;flex-wrap:nowrap;min-width:0}
+.tag{font-size:10.5px;color:var(--ink-3);background:#F2F4F6;border-radius:5px;padding:2.5px 6px;
+  letter-spacing:.1px;flex:0 1 auto;min-width:0;max-width:104px;overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap}
+.tag.tplus{color:var(--ink-4);background:transparent;padding-left:0;padding-right:0}
+.prop{font-size:10.5px;color:var(--ink-2);display:inline-flex;align-items:baseline;gap:3px;
+  flex:0 1 auto;min-width:0;max-width:150px}
+.prop i{color:var(--ink-4);font-style:normal;flex-shrink:0}
+.prop .v{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.note{display:flex;align-items:center;gap:5px;margin-top:6px;font-size:11.5px;color:var(--ink-3);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;letter-spacing:.1px}
+.note svg{flex-shrink:0;color:var(--ink-4)}
+
+/* ---- bottom sheet ---- */
+.sheetmask{position:absolute;inset:0;background:rgba(16,19,22,.3);z-index:50;display:flex;
+  align-items:flex-end;transition:opacity .2s var(--ease)}
+.sheetmask.hidden{opacity:0;pointer-events:none}
+.sheet{width:100%;background:var(--surface);border-radius:20px 20px 0 0;padding:8px 18px 28px;
+  transform:translateY(0);transition:transform .26s var(--ease)}
+.sheetmask.hidden .sheet{transform:translateY(16px)}
+.shandle{width:36px;height:4px;border-radius:2px;background:#E1E5E9;margin:4px auto 14px}
+.stitle{font-size:17px;font-weight:600;letter-spacing:-.2px}
+.sdesc{font-size:12px;color:var(--ink-3);margin-top:4px}
+.srows{margin-top:12px}
+.srow{display:flex;align-items:center;gap:12px;padding:13px 0}
+.srow+.srow{box-shadow:inset 0 1px 0 var(--line)}
+.srow .sl{font-size:14.5px;font-weight:500;letter-spacing:-.1px}
+.srow .ss{font-size:11.5px;color:var(--ink-3);margin-top:3px;letter-spacing:.1px}
+.switch{margin-left:auto;width:46px;height:28px;border-radius:14px;background:#E4E7EA;position:relative;
+  cursor:pointer;transition:background .18s;flex-shrink:0}
+.switch span{position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:50%;background:#fff;
+  box-shadow:0 1px 3px rgba(0,0,0,.18);transition:transform .18s var(--ease)}
+.switch.on{background:var(--accent)}
+.switch.on span{transform:translateX(18px)}
+.sreset{margin-top:6px;text-align:center;font-size:13.5px;color:var(--ink-3);padding:12px;
+  cursor:pointer;border-radius:10px}
+.sreset:active{background:#F2F4F6}
+
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+
+<div class="stage-cap">Snorkeling Remote · iOS 客户端原型 v0.2 — 交互沿微信，视觉重做：<b>安静边框、一个 accent、身份色淡底</b></div>
+
+<div class="phone">
+  <div class="screen">
+
+    <div class="statusbar">
+      <span>9:41</span>
+      <span class="icons">
+        <svg width="17" height="11" viewBox="0 0 17 11"><g fill="currentColor"><rect x="0" y="7" width="3" height="4" rx="0.6"/><rect x="4.5" y="5" width="3" height="6" rx="0.6"/><rect x="9" y="2.5" width="3" height="8.5" rx="0.6"/><rect x="13.5" y="0" width="3" height="11" rx="0.6"/></g></svg>
+        <svg width="16" height="11" viewBox="0 0 16 11"><path d="M8 9.2a1.4 1.4 0 1 0 0 2.8 1.4 1.4 0 0 0 0-2.8zM8 5.6c-1.7 0-3.3.7-4.5 1.9l1.3 1.3A4.6 4.6 0 0 1 8 7.4c1.2 0 2.4.5 3.2 1.4l1.3-1.3A6.3 6.3 0 0 0 8 5.6zM8 2C5.5 2 3.1 3 1.4 4.7l1.3 1.3A7.5 7.5 0 0 1 8 3.8c2 0 3.9.8 5.3 2.2l1.3-1.3A9.2 9.2 0 0 0 8 2z" fill="currentColor"/></svg>
+        <svg width="25" height="12" viewBox="0 0 25 12"><rect x="0.5" y="0.5" width="20.5" height="11" rx="3.2" fill="none" stroke="currentColor" opacity=".35"/><rect x="2" y="2" width="14.5" height="8" rx="1.8" fill="currentColor"/><path d="M22.8 4.2v3.6a2 2 0 0 0 0-3.6z" fill="currentColor" opacity=".35"/></svg>
+      </span>
+    </div>
+
+    <div class="navbar">
+      <div class="navleft">
+        <div class="brandmark" title="Snorkeling">
+          <svg width="15" height="15" viewBox="0 0 15 15"><path d="M1.6 9.4c1.6-1.1 3.2-1.1 4.8 0s3.2 1.1 4.8 0 2.2-.9 2.2-.9M1.6 6.2c1.6-1.1 3.2-1.1 4.8 0s3.2 1.1 4.8 0 2.2-.9 2.2-.9" fill="none" stroke="#fff" stroke-width="1.5" stroke-linecap="round"/></svg>
+        </div>
+        <div class="envswitch" id="envSwitch" title="切换环境">
+          <span class="en" id="envName">全部环境</span>
+          <span class="caret"><svg width="9" height="6" viewBox="0 0 9 6"><path d="M1 1.4L4.5 4.6 8 1.4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+        </div>
+        <div class="title" id="navtitle" style="display:none">Sessions</div>
+      </div>
+      <div class="navbtn" id="plusBtn" title="更多">
+        <svg width="20" height="20" viewBox="0 0 20 20"><path d="M10 3.2v13.6M3.2 10h13.6" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></svg>
+      </div>
+    </div>
+
+    <div class="menu left hidden" id="envMenu"></div>
+
+    <div class="menu hidden" id="menu">
+      <div class="item" data-act="refresh">
+        <svg width="15" height="15" viewBox="0 0 15 15"><path d="M12.6 7.6a5.1 5.1 0 1 1-1.6-3.6" fill="none" stroke="#F2F4F6" stroke-width="1.5" stroke-linecap="round"/><path d="M12.7 1.6v2.9h-2.9" fill="none" stroke="#F2F4F6" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        刷新
+      </div>
+      <div class="item" data-act="scan">
+        <svg width="15" height="15" viewBox="0 0 15 15"><g fill="none" stroke="#F2F4F6" stroke-width="1.4" stroke-linecap="round"><path d="M1.8 4.6V3a1.2 1.2 0 0 1 1.2-1.2h1.6M13.2 4.6V3a1.2 1.2 0 0 0-1.2-1.2H10.4M1.8 10.4V12a1.2 1.2 0 0 0 1.2 1.2h1.6M13.2 10.4V12a1.2 1.2 0 0 1-1.2 1.2H10.4"/><path d="M1.8 7.5h11.4"/></g></svg>
+        扫一扫配对
+      </div>
+      <div class="item" data-act="addenv">
+        <svg width="15" height="15" viewBox="0 0 15 15"><rect x="1.8" y="2.6" width="11.4" height="7.6" rx="1.4" fill="none" stroke="#F2F4F6" stroke-width="1.4"/><path d="M5.2 13.2h4.6" stroke="#F2F4F6" stroke-width="1.4" stroke-linecap="round"/></svg>
+        添加环境
+      </div>
+      <div class="item" data-act="display">
+        <svg width="15" height="15" viewBox="0 0 15 15"><g stroke="#F2F4F6" stroke-width="1.4" stroke-linecap="round" fill="none"><path d="M2 4.4h11M2 7.5h11M2 10.6h11"/><circle cx="5.4" cy="4.4" r="1.5" fill="#1F2429"/><circle cx="9.8" cy="7.5" r="1.5" fill="#1F2429"/><circle cx="6.6" cy="10.6" r="1.5" fill="#1F2429"/></g></svg>
+        列表显示
+      </div>
+      <div class="item" data-act="settings">
+        <svg width="15" height="15" viewBox="0 0 15 15"><circle cx="7.5" cy="7.5" r="2.1" fill="none" stroke="#F2F4F6" stroke-width="1.4"/><path d="M7.5 1.4v1.8M7.5 11.8v1.8M1.4 7.5h1.8M11.8 7.5h1.8M3.2 3.2l1.3 1.3M10.5 10.5l1.3 1.3M11.8 3.2l-1.3 1.3M4.5 10.5l-1.3 1.3" stroke="#F2F4F6" stroke-width="1.4" stroke-linecap="round"/></svg>
+        通知设置
+      </div>
+    </div>
+
+    <div class="searchwrap" id="searchwrap">
+      <div class="search">
+        <svg width="13" height="13" viewBox="0 0 13 13"><circle cx="5.4" cy="5.4" r="4" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M8.5 8.5l3.2 3.2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+        搜索 agent、会话、命令
+      </div>
+    </div>
+
+    <div class="list" id="mainlist"></div>
+
+    <div class="tabbar" id="tabbar">
+      <div class="tab active" data-tab="agents">
+        <span class="tl">
+          <svg width="24" height="23" viewBox="0 0 24 23"><path d="M3.6 5.4h16.8a2 2 0 0 1 2 2v8.6a2 2 0 0 1-2 2H9.4l-4.4 3.4v-3.4H3.6a2 2 0 0 1-2-2V7.4a2 2 0 0 1 2-2z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
+          <span class="badge" id="tabBadge">1</span>
+        </span>
+        Agents
+      </div>
+      <div class="tab" data-tab="sessions">
+        <span class="tl">
+          <svg width="24" height="23" viewBox="0 0 24 23"><circle cx="11.6" cy="11.4" r="8.2" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M11.6 6.9v4.8l3.1 2.1" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+        </span>
+        Sessions
+      </div>
+      <div class="tab" data-tab="envs">
+        <span class="tl">
+          <svg width="24" height="23" viewBox="0 0 24 23"><rect x="2.2" y="4" width="20" height="13" rx="2.2" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M8.6 20.4h7.4M12.2 17v3.4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+        </span>
+        环境
+      </div>
+      <div class="tab" data-tab="me">
+        <span class="tl">
+          <svg width="24" height="23" viewBox="0 0 24 23"><circle cx="12.2" cy="7.8" r="3.8" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M4.6 19.6c1.4-3.8 4.2-5.7 7.6-5.7s6.2 1.9 7.6 5.7" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+        </span>
+        我
+      </div>
+    </div>
+
+    <div class="chatpage" id="chatpage">
+      <div class="chathead">
+        <div class="chatback" id="backBtn">
+          <svg width="10" height="17" viewBox="0 0 10 17"><path d="M8.5 1.5L1.8 8.5l6.7 7" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span class="lbl" id="backcnt"></span>
+        </div>
+        <div class="ctitle">
+          <div class="name" id="chatName">Claude Code</div>
+          <div class="st" id="chatStatus"><span class="dot run"></span>运行中 · MacBook Pro</div>
+        </div>
+        <div class="navbtn">
+          <svg width="18" height="4" viewBox="0 0 18 4"><g fill="currentColor"><circle cx="2" cy="2" r="1.8"/><circle cx="9" cy="2" r="1.8"/><circle cx="16" cy="2" r="1.8"/></g></svg>
+        </div>
+      </div>
+      <div class="msgs" id="msgs"></div>
+      <div class="inputbar">
+        <div class="iconbtn">
+          <svg width="21" height="21" viewBox="0 0 21 21"><path d="M10.5 2.6a2.6 2.6 0 0 1 2.6 2.6v4.4a2.6 2.6 0 0 1-5.2 0V5.2a2.6 2.6 0 0 1 2.6-2.6zM5.2 9.4a5.3 5.3 0 0 0 4.4 5.2v2.5H7.6a.6.6 0 0 0 0 1.2h5.9a.6.6 0 0 0 0-1.2h-2v-2.5a5.3 5.3 0 0 0 4.4-5.2.6.6 0 0 0-1.2 0 4.1 4.1 0 0 1-8.2 0 .6.6 0 0 0-1.2 0z" fill="currentColor"/></svg>
+        </div>
+        <input id="chatInput" placeholder="发消息" autocomplete="off">
+        <div class="sendbtn" id="sendBtn" style="display:none">发送</div>
+        <div class="iconbtn" id="plusInChat">
+          <svg width="21" height="21" viewBox="0 0 21 21"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><rect x="2.6" y="2.6" width="15.8" height="15.8" rx="4.4"/><path d="M10.5 6.8v7.4M6.8 10.5h7.4"/></g></svg>
+        </div>
+      </div>
+    </div>
+
+    <div class="sheetmask hidden" id="sheetMask">
+      <div class="sheet">
+        <div class="shandle"></div>
+        <div class="stitle">列表显示</div>
+        <div class="sdesc">选择 agent 行里展示哪些信息</div>
+        <div class="srows">
+          <div class="srow">
+            <div><div class="sl">所属环境</div><div class="ss">名称旁的机器标签</div></div>
+            <div class="switch" data-key="env"><span></span></div>
+          </div>
+          <div class="srow">
+            <div><div class="sl">标签</div><div class="ss">agent 的 tags，如 #tabshelf</div></div>
+            <div class="switch" data-key="tags"><span></span></div>
+          </div>
+          <div class="srow">
+            <div><div class="sl">备注</div><div class="ss">你自己写的 note</div></div>
+            <div class="switch" data-key="note"><span></span></div>
+          </div>
+          <div class="srow">
+            <div><div class="sl">属性</div><div class="ss">model、branch 等 props</div></div>
+            <div class="switch" data-key="props"><span></span></div>
+          </div>
+        </div>
+        <div class="sreset" id="resetDisplay">恢复默认</div>
+      </div>
+    </div>
+
+    <div class="refreshing" id="refreshing"><div class="spinner"></div></div>
+    <div class="toast" id="toast"></div>
+    <div class="homebar"></div>
+  </div>
+</div>
+
+<div class="stage-foot">
+  <b>+</b> 刷新 / 配对 ｜ <b>左上角</b> 切换环境 ｜ <b>点列表项</b> 进对话 ｜ <b>审批卡</b> 同意 / 拒绝 ｜ <b>发消息</b> 有模拟回复<br>
+  深链评审：<b>index.html#chat-codex</b> ｜ <b>index.html#menu</b>
+</div>
+
+<script>
+const AGENT_TINT = {
+  claude:{c:'var(--claude)', s:'var(--claude-soft)'},
+  codex:{c:'var(--codex)',  s:'var(--codex-soft)'},
+  pi:{c:'var(--pi)',        s:'var(--pi-soft)'},
+  grok:{c:'var(--grok)',    s:'var(--grok-soft)'},
+};
+
+const AGENTS = [
+  { id:'claude', name:'Claude Code', env:'MacBook Pro', tint:'claude',
+    chip:'run', chipText:'运行中', time:'12:30', badge:0,
+    last:'已完成：主题重构 diff 生成，等你审',
+    tags:['snork-ui','dark-mode'], note:'等你审完 diff 再提交',
+    props:[['model','opus-4.5'],['branch','fix/dark-menu']] },
+  { id:'codex', name:'Codex', env:'MacBook Pro', tint:'codex',
+    chip:'wait', chipText:'待审批', time:'12:28', badge:1,
+    last:'需要批准：rm -rf node_modules && npm install',
+    tags:['deps'], note:'', props:[['model','gpt-5.1-codex'],['cwd','~/projects/snorkeling']] },
+  { id:'pi', name:'Pi Agent', env:'Mac mini', tint:'pi',
+    chip:'run', chipText:'运行中', time:'11:45', badge:0,
+    last:'249 个测试全部通过，已提交 e2d242a',
+    tags:['tabshelf','tests'], note:'全绿，可发版', props:[['model','pi-4']] },
+  { id:'grok', name:'Grok', env:'波哥脚本机', tint:'grok',
+    chip:'', chipText:'', time:'周二', badge:0,
+    last:'空闲 · 上次会话 3 天前', tags:[], note:'', props:[] },
+  { id:'codexvps', name:'Codex', env:'VPS-backup', tint:'codex',
+    chip:'off', chipText:'离线', time:'周一', badge:0,
+    last:'环境离线 · 服务器 10.0.0.4 未连接',
+    tags:['backup'], note:'等环境上线自动补跑', props:[] },
+];
+
+const ENVS = [
+  { id:'all',          name:'全部环境', note:'5 个 agent' },
+  { id:'MacBook Pro',  name:'MacBook Pro', note:'在线 · 3 个在跑' },
+  { id:'Mac mini',     name:'Mac mini',    note:'在线 · 空闲' },
+  { id:'波哥脚本机',    name:'波哥脚本机',  note:'在线' },
+  { id:'VPS-backup',   name:'VPS-backup',  note:'离线 · 2 天前' },
+];
+
+const CHATS = {
+  claude: { name:'Claude Code', env:'MacBook Pro', status:'run', statusText:'运行中 · MacBook Pro', msgs:[
+    {t:'div', text:'今天 12:02'},
+    {t:'me', text:'帮我看下 snork-ui 的暗色模式 bug，菜单文字还是黑的'},
+    {t:'other', text:'收到。我先复现一下，再对比 0.0.71 发布版的代码。'},
+    {t:'tool', title:'运行命令', body:'npm run verify -- --area=theme', foot:'退出码 0 · 38s · 完成于 12:18'},
+    {t:'tool', title:'编辑文件', body:'frontend/app/theme/menu.tsx  +12 −4', foot:'1 个文件已改动 · 等待后续验证'},
+    {t:'other', text:'找到了：0.0.71 里菜单用的是内置 class，重构后换了 token。diff 已生成，等你审完我提交。'},
+  ]},
+  codex: { name:'Codex', env:'MacBook Pro', status:'wait', statusText:'等待审批 · MacBook Pro', msgs:[
+    {t:'div', text:'今天 12:20'},
+    {t:'me', text:'依赖装不上了，修一下，顺便清掉 node_modules 重装'},
+    {t:'other', text:'npm 缓存损坏。需要清空 node_modules 后重装：'},
+    {t:'approve', title:'需要批准', body:'rm -rf node_modules && npm install', foot:'来自 MacBook Pro · 待你批准', pending:true},
+  ]},
+  pi: { name:'Pi Agent', env:'Mac mini', status:'run', statusText:'运行中 · Mac mini', msgs:[
+    {t:'div', text:'今天 11:30'},
+    {t:'me', text:'把 TabShelf 的 AI 打标功能移除，跑全量测试'},
+    {t:'tool', title:'运行测试', body:'npm test · 249 passed', foot:'全绿 · 6m12s · 完成于 11:41'},
+    {t:'other', text:'249 个测试全部通过。改动已提交 e2d242a，默认来源逻辑按你的要求保留。'},
+  ]},
+  grok: { name:'Grok', env:'波哥脚本机', status:'off', statusText:'空闲 · 波哥脚本机', msgs:[
+    {t:'div', text:'11月 16日'},
+    {t:'other', text:'脚本已归档。有新任务随时说。'},
+  ]},
+  codexvps: { name:'Codex', env:'VPS-backup', status:'off', statusText:'环境离线 · 10.0.0.4', msgs:[
+    {t:'div', text:'11月 18日'},
+    {t:'other', text:'备份任务已排程。环境离线后将自动补跑。'},
+  ]},
+};
+
+const $ = id => document.getElementById(id);
+let currentTab = 'agents';
+let currentEnv = 'all';
+
+function updateNav(){
+  const sw = $('envSwitch'), nt = $('navtitle');
+  if(currentTab === 'agents'){
+    sw.style.display = 'flex'; nt.style.display = 'none';
+    const env = ENVS.find(e => e.id === currentEnv);
+    $('envName').textContent = env.name;
+    const unread = AGENTS.reduce((n,a)=>n+(a.badge||0),0);
+    const b = $('tabBadge');
+    b.textContent = unread; b.style.display = unread ? '' : 'none';
+  }else{
+    sw.style.display = 'none'; nt.style.display = 'block';
+    nt.textContent = currentTab === 'sessions' ? 'Sessions' : (currentTab === 'envs' ? '环境' : '我');
+  }
+}
+
+function visibleAgents(){
+  return currentEnv === 'all' ? AGENTS : AGENTS.filter(a => a.env === currentEnv);
+}
+function avatar(a){
+  const t = AGENT_TINT[a.tint] || AGENT_TINT.codex;
+  const live = a.chip === 'run' ? '<span class="live"></span>'
+             : a.chip === 'wait' ? '<span class="live idle"></span>'
+             : a.chip === 'off'  ? '<span class="live off"></span>' : '';
+  return '<div class="avatar" style="background:'+t.s+';color:'+t.c+'">'+a.name[0]+live+'</div>';
+}
+const DISPLAY_DEFAULT = { env:true, tags:true, note:true, props:false };
+let DISPLAY = (function(){
+  try{
+    const v = JSON.parse(localStorage.getItem('snk.listDisplay') || 'null');
+    if(v && typeof v === 'object') return Object.assign({}, DISPLAY_DEFAULT, v);
+  }catch(e){}
+  return Object.assign({}, DISPLAY_DEFAULT);
+})();
+function saveDisplay(){
+  try{ localStorage.setItem('snk.listDisplay', JSON.stringify(DISPLAY)); }catch(e){}
+}
+function metaHTML(a){
+  const out = [];
+  if(DISPLAY.tags && a.tags && a.tags.length){
+    const shown = a.tags.slice(0,3).map(t=>'<span class="tag">'+t+'</span>').join('');
+    const more  = a.tags.length>3 ? '<span class="tag tplus">+'+(a.tags.length-3)+'</span>' : '';
+    out.push(shown+more);
+  }
+  if(DISPLAY.props && a.props && a.props.length){
+    const room = (DISPLAY.tags && a.tags && a.tags.length) ? 1 : 2;
+    out.push(a.props.slice(0,room).map(pr=>
+      '<span class="prop"><i>'+pr[0]+'</i><span class="v">'+pr[1]+'</span></span>').join(''));
+  }
+  const metaLine = out.length ? '<div class="rowmeta">'+out.join('')+'</div>' : '';
+  const noteLine = (DISPLAY.note && a.note)
+    ? '<div class="note"><svg width="11" height="11" viewBox="0 0 11 11"><path d="M2 1.6h7v7.8L6.4 9.4H2z" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/><path d="M3.6 4.1h3.8M3.6 6h3.8" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>'+a.note+'</div>'
+    : '';
+  return metaLine + noteLine;
+}
+function renderAgents(){
+  const el = $('mainlist');
+  const rows = visibleAgents();
+  updateNav();
+  if(!rows.length){
+    el.innerHTML = '<div style="padding:64px 30px;text-align:center;color:var(--ink-3);font-size:13.5px;line-height:2">'
+      + currentEnv + ' 暂无 agent<br><span style="font-size:12px;color:var(--ink-4)">「+ → 刷新」重新拉取</span></div>';
+    return;
+  }
+  el.innerHTML = rows.map(a => ''
+    + '<div class="cell" data-agent="'+a.id+'">'
+    +   avatar(a)
+    +   '<div class="mid">'
+    +     '<div class="row1">'
+    +       '<span class="name">'+a.name+'</span>'
+    +       (DISPLAY.env ? '<span class="envtag">'+a.env+'</span>' : '')
+    +       '<span class="time">'+a.time+'</span>'
+    +     '</div>'
+    +     '<div class="row2">'
+    +       '<span class="msg'+(a.chip==='wait'?' wait':'')+'">'+a.last+'</span>'
+    +       (a.badge?'<span class="badge">'+a.badge+'</span>':'')
+    +     '</div>'
+    +     metaHTML(a)
+    +   '</div>'
+    + '</div>').join('');
+  el.querySelectorAll('.cell').forEach(c=>{
+    c.addEventListener('click',()=>openChat(c.dataset.agent));
+  });
+}
+
+function renderEnvs(){
+  const mon = '<svg width="19" height="19" viewBox="0 0 19 19"><rect x="1.8" y="3" width="15.4" height="10.4" rx="1.8" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M7 16.4h5M9.5 13.4v3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>';
+  const monOff = '<svg width="19" height="19" viewBox="0 0 19 19"><rect x="1.8" y="3" width="15.4" height="10.4" rx="1.8" fill="none" stroke="currentColor" stroke-width="1.4" stroke-dasharray="2.6 2.2"/><path d="M7 16.4h5M9.5 13.4v3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>';
+  const rows = [
+    ['MacBook Pro','run','在线 · 3 个 agent 在跑','刚刚', mon],
+    ['Mac mini','run','在线 · 空闲','2 分钟前', mon],
+    ['VPS-backup','off','离线 · 2 天前','10.0.0.4', monOff],
+  ];
+  $('mainlist').innerHTML = ''
+    + '<div style="padding:16px 16px 6px;font-size:12px;color:var(--ink-3);letter-spacing:.1px">已配对环境</div>'
+    + rows.map(e=>
+      '      <div class="envrow">'
+      + '<div class="ic" style="color:'+(e[1]==='run'?'var(--ink-3)':'var(--ink-4)')+'">'+e[4]+'</div>'
+      + '<div><div class="nm">'+e[0]+'</div>'
+      + '<div class="meta"><span class="dot '+e[1]+'"></span>'+e[2]+'</div></div>'
+      + '<div class="right">'+e[3]+'</div>'
+      + '</div>').join('')
+    + '<div class="envrow">'
+    + '<div class="ic" style="color:var(--accent)"><svg width="19" height="19" viewBox="0 0 19 19"><path d="M9.5 3v13M3 9.5h13" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></div>'
+    + '<div><div class="nm" style="color:var(--accent)">添加环境</div><div class="meta" style="margin-top:2px">扫码，或输入地址 + 配对码</div></div>'
+    + '</div>';
+}
+function renderStub(kind){
+  const icon = kind==='sessions'
+    ? '<svg width="34" height="34" viewBox="0 0 34 34"><circle cx="17" cy="17" r="12.6" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M17 10.4V17l4.6 3.1" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>'
+    : '<svg width="34" height="34" viewBox="0 0 34 34"><circle cx="17" cy="11.4" r="5.6" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M6.6 29c2.2-5.6 6.2-8.4 10.4-8.4S25.2 23.4 27.4 29" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>';
+  $('mainlist').innerHTML = ''
+    + '<div style="padding:76px 34px;text-align:center;color:var(--ink-3);font-size:13.5px;line-height:2">'
+    + '<div style="margin-bottom:14px;display:flex;justify-content:center;color:var(--ink-4)">'+icon+'</div>'
+    + (kind==='sessions' ? 'Sessions 浏览（本机会话历史）<br><span style="font-size:12px;color:var(--ink-4)">v0.2 范围 · 复用桌面端 Sessions 数据</span>'
+                         : '账号 · 通知 · 权限 · 已配对设备<br><span style="font-size:12px;color:var(--ink-4)">v0.3 范围</span>')
+    + '</div>';
+}
+
+document.querySelectorAll('.tab').forEach(t=>{
+  t.addEventListener('click',()=>{
+    document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
+    t.classList.add('active');
+    currentTab = t.dataset.tab;
+    if(currentTab==='agents'){ $('searchwrap').style.display=''; renderAgents(); }
+    if(currentTab==='sessions'){ $('searchwrap').style.display='none'; renderStub('sessions'); updateNav(); }
+    if(currentTab==='envs'){ $('searchwrap').style.display='none'; renderEnvs(); updateNav(); }
+    if(currentTab==='me'){ $('searchwrap').style.display='none'; renderStub('me'); updateNav(); }
+  });
+});
+
+$('plusBtn').addEventListener('click',e=>{
+  e.stopPropagation();
+  $('envMenu').classList.add('hidden');
+  $('menu').classList.toggle('hidden');
+});
+document.addEventListener('click',()=>{ $('menu').classList.add('hidden'); $('envMenu').classList.add('hidden'); });
+$('menu').querySelectorAll('.item').forEach(i=>{
+  i.addEventListener('click',e=>{
+    e.stopPropagation(); $('menu').classList.add('hidden');
+    const act = i.dataset.act;
+    if(act==='refresh') doRefresh();
+    if(act==='scan') toast('扫码配对（对应 snorkeling pair 出 QR）');
+    if(act==='addenv') toast('添加环境：输入地址 + 配对码');
+    if(act==='display') openSheet();
+    if(act==='settings') toast('通知设置（v0.3：APNs / Live Activity）');
+  });
+});
+function doRefresh(){
+  $('refreshing').classList.add('show');
+  setTimeout(()=>{
+    $('refreshing').classList.remove('show');
+    AGENTS.forEach(a=>a.time='刚刚');
+    renderAgents();
+    toast('已刷新 · 5 个 agent');
+  },900);
+}
+
+function renderEnvMenu(){
+  $('envMenu').innerHTML = ENVS.map(e => ''
+    + '<div class="item'+(e.id===currentEnv?' on':'')+'" data-env="'+e.id+'">'
+    +   e.name
+    +   '<span class="sub">'+e.note+'</span>'
+    +   '<span class="ck">✓</span>'
+    + '</div>').join('');
+  $('envMenu').querySelectorAll('.item').forEach(i=>{
+    i.addEventListener('click', ev=>{
+      ev.stopPropagation();
+      currentEnv = i.dataset.env;
+      $('envMenu').classList.add('hidden');
+      if(currentTab !== 'agents'){
+        currentTab = 'agents';
+        document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('active', x.dataset.tab==='agents'));
+        $('searchwrap').style.display = '';
+      }
+      renderAgents();
+      toast(currentEnv==='all' ? '已切换到全部环境' : '已切换到 '+currentEnv);
+    });
+  });
+}
+$('envSwitch').addEventListener('click', e=>{
+  e.stopPropagation();
+  renderEnvMenu();
+  $('menu').classList.add('hidden');
+  $('envMenu').classList.toggle('hidden');
+});
+
+let curChat = null;
+function openChat(id, instant){
+  curChat = id;
+  const c = CHATS[id], a = AGENTS.find(x=>x.id===id);
+  $('chatName').textContent = c.name;
+  $('backcnt').textContent = c.env;
+  $('chatStatus').innerHTML = '<span class="dot '+c.status+(c.status==='run'?' pulse':'')+'"></span>'+c.statusText;
+  renderMsgs(c.msgs);
+  if(a && a.badge){ a.badge = 0; }
+  const cp = $('chatpage');
+  if(instant) cp.style.transition = 'none';
+  cp.classList.add('show');
+}
+$('backBtn').addEventListener('click',()=>{
+  $('chatpage').classList.remove('show');
+  renderAgents();
+});
+function tint(){
+  const a = AGENTS.find(x=>x.id===curChat);
+  return AGENT_TINT[(a&&a.tint)||'codex'];
+}
+function agentInitial(){
+  const a = AGENTS.find(x=>x.id===curChat);
+  return a ? a.name[0] : '?';
+}
+const ICON_CMD = '<svg width="13" height="13" viewBox="0 0 13 13"><path d="M2.4 2.6l3 3.9-3 3.9M7.2 10.4h3.4" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+const ICON_SHIELD = '<svg width="13" height="13" viewBox="0 0 13 13"><path d="M6.5 1.6l4.6 2.2v3.3c0 2.3-1.8 4.1-4.6 4.9-2.8-.8-4.6-2.6-4.6-4.9V3.8l4.6-2.2z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/><path d="M6.5 4.9v2.4M6.5 9.1v.1" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>';
+function renderMsgs(msgs){
+  const el = $('msgs'), t = tint();
+  el.innerHTML = msgs.map(m=>{
+    if(m.t==='div') return '<div class="datediv"><span>'+m.text+'</span></div>';
+    if(m.t==='me'||m.t==='other'){
+      const me = m.t==='me';
+      return '<div class="mrow'+(me?' me':'')+'">'
+        + '<div class="mavatar" style="background:'+(me?'var(--accent-soft)':t.s)+';color:'+(me?'var(--accent)':t.c)+'">'+(me?'我':agentInitial())+'</div>'
+        + '<div class="bubblewrap"><div class="bubble">'+m.text+'</div></div>'
+        + '</div>';
+    }
+    const head = m.t==='approve' ? '需要批准' : m.title;
+    const cls  = m.t==='approve' ? 'card approve' : 'card';
+    const ic   = m.t==='approve' ? ICON_SHIELD : ICON_CMD;
+    const btns = m.t==='approve'
+      ? '<div class="btns"><div class="btn no" data-res="no">拒绝</div><div class="btn ok" data-res="ok">同意</div></div>' : '';
+    return '<div class="mrow">'
+      + '<div class="mavatar" style="background:'+t.s+';color:'+t.c+'">'+agentInitial()+'</div>'
+      + '<div class="bubblewrap"><div class="'+cls+'">'
+      +   '<div class="chead"><span class="ic">'+ic+'</span>'+head+'</div>'
+      +   '<div class="cmd">'+m.body+'</div>'
+      +   '<div class="cfoot">'+m.foot+'</div>'
+      +   btns
+      + '</div></div>'
+      + '</div>';
+  }).join('');
+  el.querySelectorAll('.card.approve .btn').forEach(b=>{
+    b.addEventListener('click',()=>{
+      const card = b.closest('.card'), ok = b.dataset.res==='ok';
+      card.classList.remove('approve');
+      card.classList.add(ok?'approved':'denied');
+      card.querySelector('.chead').lastChild.textContent = ok ? '已批准' : '已拒绝';
+      card.querySelector('.btns').outerHTML = ok
+        ? '<div class="resultline ok"><svg width="12" height="12" viewBox="0 0 12 12"><path d="M1.8 6.4l2.7 2.7 5.7-6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>命令已在 MacBook Pro 执行</div>'
+        : '<div class="resultline no"><svg width="12" height="12" viewBox="0 0 12 12"><path d="M2.4 2.4l7.2 7.2M9.6 2.4l-7.2 7.2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>已拒绝，等你的替代方案</div>';
+      const a = AGENTS.find(x=>x.id===curChat);
+      if(a){
+        if(ok){ a.chip='run'; a.chipText='运行中'; a.last='已批准，正在重装依赖…'; a.time='刚刚'; }
+        else  { a.chip='';    a.chipText='';       a.last='命令被拒绝，等你给替代方案'; a.time='刚刚'; }
+      }
+    });
+  });
+  el.scrollTop = el.scrollHeight;
+}
+
+$('chatInput').addEventListener('input',e=>{
+  $('sendBtn').style.display = e.target.value.trim() ? '' : 'none';
+});
+$('sendBtn').addEventListener('click',sendMsg);
+$('chatInput').addEventListener('keydown',e=>{ if(e.key==='Enter') sendMsg(); });
+function sendMsg(){
+  const inp = $('chatInput'), text = inp.value.trim();
+  if(!text || !curChat) return;
+  const c = CHATS[curChat];
+  c.msgs.push({t:'me',text});
+  renderMsgs(c.msgs);
+  const a = AGENTS.find(x=>x.id===curChat);
+  if(a){ a.last = text; a.time='刚刚'; }
+  inp.value=''; $('sendBtn').style.display='none';
+  const el=$('msgs'), t=tint();
+  el.insertAdjacentHTML('beforeend',''
+    + '<div class="mrow" id="typingrow">'
+    + '<div class="mavatar" style="background:'+t.s+';color:'+t.c+'">'+agentInitial()+'</div>'
+    + '<div class="bubblewrap"><div class="bubble"><span class="typing"><i></i><i></i><i></i></span></div></div>'
+    + '</div>');
+  el.scrollTop = el.scrollHeight;
+  setTimeout(()=>{
+    const tr = $('typingrow'); if(tr) tr.remove();
+    c.msgs.push({t:'other',text:'收到（原型演示回复）。真实实现里这条消息会经 client-runtime 发往 Go appserver 的 wshrpc 通道。'});
+    renderMsgs(c.msgs);
+    const a2 = AGENTS.find(x=>x.id===curChat); if(a2){ a2.last='回复了你 · 运行中'; }
+  },1200);
+}
+
+/* ---- 列表显示 sheet ---- */
+function syncSwitches(){
+  document.querySelectorAll('#sheetMask .switch').forEach(sw=>{
+    sw.classList.toggle('on', !!DISPLAY[sw.dataset.key]);
+  });
+}
+function openSheet(){
+  syncSwitches();
+  $('sheetMask').classList.remove('hidden');
+}
+function closeSheet(){ $('sheetMask').classList.add('hidden'); }
+$('sheetMask').addEventListener('click', e=>{ if(e.target === $('sheetMask')) closeSheet(); });
+document.querySelectorAll('#sheetMask .switch').forEach(sw=>{
+  sw.addEventListener('click', e=>{
+    e.stopPropagation();
+    const k = sw.dataset.key;
+    DISPLAY[k] = !DISPLAY[k];
+    sw.classList.toggle('on', DISPLAY[k]);
+    saveDisplay();
+    if(currentTab === 'agents') renderAgents();
+    toast((DISPLAY[k]?'显示':'隐藏')+'：'+({env:'所属环境',tags:'标签',note:'备注',props:'属性'})[k]);
+  });
+});
+$('resetDisplay').addEventListener('click', e=>{
+  e.stopPropagation();
+  DISPLAY = Object.assign({}, DISPLAY_DEFAULT);
+  saveDisplay(); syncSwitches();
+  if(currentTab === 'agents') renderAgents();
+  toast('已恢复默认显示');
+});
+
+let toastTimer;
+function toast(text){
+  const t=$('toast'); t.textContent=text; t.classList.add('show');
+  clearTimeout(toastTimer); toastTimer=setTimeout(()=>t.classList.remove('show'),1600);
+}
+
+renderAgents();
+
+(function(){
+  const h = location.hash;
+  if(h.indexOf('#chat-')===0){ const id=h.slice(6); if(CHATS[id]) openChat(id, true); }
+  if(h==='#menu'){ $('menu').classList.remove('hidden'); }
+  if(h==='#sheet'){ openSheet(); }
+  if(h==='#props'){ DISPLAY.props = true; if(currentTab==='agents') renderAgents(); }
+})();
+</script>
+</body>
+</html>
