@@ -71,16 +71,22 @@ const reporter = createReporter({
 });
 let instance = null;
 
-/** 弹窗内一次性快照：行序、行高、元信息列高、次数、排序控件状态、高亮行、详情标题。 */
+/** 弹窗内一次性快照：行序、行高、元信息列高、次数、排序控件状态、高亮行、详情标题。
+ * 窗口化后行 DOM 只含可视窗口：全量顺序改从容器 data-commontext-total 读，
+ * 行绝对位次从 data-common-text-index 读，窗口区间从 data-commontext-window 读。 */
 const SNAPSHOT_FN = `(() => {
     const modal = document.querySelector(${JSON.stringify(MODAL)});
     if (modal == null) return null;
-    const rows = [...modal.querySelectorAll("[data-commontext-title]")];
+    const list = modal.querySelector("[data-commontext-total]");
+    const rows = [...modal.querySelectorAll("[data-common-text-index]")];
     const h = (el) => (el == null ? 0 : Math.round(el.getBoundingClientRect().height));
     const text = (el) => (el == null ? "" : (el.textContent || "").trim());
     const sortButtons = [...modal.querySelectorAll("[data-commontext-sort]")];
     return {
+        totalCount: list == null ? rows.length : Number(list.getAttribute("data-commontext-total") ?? rows.length),
+        windowRange: list?.getAttribute("data-commontext-window") ?? null,
         rowCount: rows.length,
+        indices: rows.map((row) => Number(row.getAttribute("data-common-text-index"))),
         titles: rows.map((row) => row.getAttribute("data-commontext-title")),
         rowHeights: rows.map((row) => h(row)),
         metaHeights: rows.map((row) => h(row.querySelector("[data-commontext-meta]"))),
@@ -97,7 +103,7 @@ const SNAPSHOT_FN = `(() => {
             modal.querySelector('[data-commontext-sort][aria-pressed="true"]')?.getAttribute("data-commontext-sort") ?? null,
         relevanceShown: modal.querySelector("[data-commontext-sort-relevance]") != null,
         highlightedIndex: rows.findIndex((row) => row.classList.contains("bg-actionsoft")),
-        detailTitle: modal.querySelector('input[placeholder^="Title (optional"]')?.value ?? null,
+        detailTitle: modal.querySelector("[data-commontext-detail-title]")?.value ?? null,
         detailMetaCount: modal.querySelectorAll("[data-commontext-detail-meta] > span").length,
         composerText: document.querySelector(${JSON.stringify(COMPOSER)})?.value ?? null,
         storedSort: (() => {
@@ -127,6 +133,35 @@ async function clickSelector(client, selector) {
   if (rect == null || rect.w === 0 || rect.h === 0) return false;
   await client.click(rect.x, rect.y);
   return true;
+}
+
+/** 窗口化后目标行可能不在 DOM 里：按行号换算滚动列表，直到标题行渲染进窗口（最多 60 拍）。
+ * 滚动量按 data-commontext-window 的可见高度推进，滚完派发 scroll 事件让 React 窗口重算。 */
+async function ensureListRowRendered(client, title) {
+  for (let step = 0; step < 60; step++) {
+    const state = await client.evaluate(`(() => {
+        const row = document.querySelector(${JSON.stringify(rowSelector(title))});
+        if (row != null) return { rendered: true };
+        const list = document.querySelector("[data-commontext-total]");
+        if (list == null) return { rendered: false, done: true };
+        const stepPx = Math.max(ROW_HEIGHT, Math.floor((list.clientHeight || 600) / ROW_HEIGHT) * ROW_HEIGHT);
+        list.scrollTop += stepPx;
+        list.dispatchEvent(new Event("scroll", { bubbles: true }));
+        return { rendered: false, done: false };
+    })()`);
+    if (state.rendered) return true;
+    if (state.done) return false;
+    await sleep(60);
+  }
+  return false;
+}
+
+/** 点击列表行或行内子元素：目标行不在可视窗口时先滚动渲染再点（窗口化的真实指针路径）。 */
+async function clickListRow(client, title, subSelector = "") {
+  const full = `${rowSelector(title)}${subSelector}`;
+  if (await clickSelector(client, full)) return true;
+  await ensureListRowRendered(client, title);
+  return clickSelector(client, full);
 }
 
 /** 用原生 value setter + input 事件写入 React 受控输入（比 Input.insertText 更确定）。 */
@@ -232,7 +267,7 @@ try {
   // （无终端时 insertOrCopyCommonText 会退化成复制；当前可编辑元素存在时走插入，
   //   不依赖剪贴板权限，无头环境更稳。）
   await clickSelector(client, COMPOSER);
-  const insertClicked = await clickSelector(client, `${rowSelector(ITEMS[0].title)} .item-insert-btn`);
+  const insertClicked = await clickListRow(client, ITEMS[0].title, ".item-insert-btn");
   const afterInsert = await waitForProbe(client, probeSnapshot(), (s) => usageOf(s, ITEMS[0].title) === "1", {
     timeoutMs: 20000,
   });
@@ -254,6 +289,14 @@ try {
   // ── 3. 列表元信息面 ─────────────────────────────────────────────────────
   const base = await waitForProbe(client, probeSnapshot(), (s) => (s?.rowCount ?? 0) === 3, { timeoutMs: 15000 });
   reporter.check("rows-rendered", base?.rowCount === 3, base?.titles);
+  // 窗口化锚点（改造后）：容器暴露全量总数与窗口区间，行带绝对索引。三条全在可视区，
+  // 窗口应完整覆盖 0-3；总数与 DOM 行数一致说明小数据集下窗口即全量。
+  reporter.check("windowing-total-anchor", (base?.totalCount ?? 0) === 3 && base?.totalCount === base?.rowCount, {
+    total: base?.totalCount,
+    rowCount: base?.rowCount,
+  });
+  reporter.check("windowing-window-covers-all", base?.windowRange === "0-3", base?.windowRange);
+  reporter.check("windowing-row-indices", sameOrder(base?.indices, [0, 1, 2]), base?.indices);
   reporter.check(
     "sort-buttons-five",
     sameOrder(base?.sortKeys, ["lastused-desc", "updated-desc", "created-desc", "usage-desc", "title-asc"]),
@@ -329,7 +372,7 @@ try {
   // 前置条件（不做就假绿，实测过两次）：详情必须先落在「搜索后仍留在结果里、且不在第 0 行」的
   // 条目上。若 detailId 被搜索过滤掉，旧的对齐 bug 会因 findIndex=-1 直接跳过，高亮天然停在 0 —
   // 那样这条断言对 bug 零分辨力。
-  await clickSelector(client, rowSelector("Standup summary"));
+  await clickListRow(client, "Standup summary");
   const preDetail = await waitForProbe(client, probeSnapshot(), (s) => s?.detailTitle === "Standup summary", {
     timeoutMs: 15000,
   });
@@ -381,7 +424,7 @@ try {
   reporter.check("sort-preference-survives-search", restored?.activeSort === "title-asc", restored?.activeSort);
 
   // ── 6. 详情页脚元信息 + 详情 Copy 计数（本轮第二个新增写入点） ────────────────
-  await clickSelector(client, rowSelector("Zulu deploy notes"));
+  await clickListRow(client, "Zulu deploy notes");
   const detail = await waitForProbe(client, probeSnapshot(), (s) => (s?.detailMetaCount ?? 0) >= 4, {
     timeoutMs: 15000,
   });

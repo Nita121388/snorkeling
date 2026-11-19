@@ -276,6 +276,56 @@ function readPersistedDraft(): { text: string; caret: number } | null {
     return raw == null ? null : JSON.parse(raw);
 }
 
+describe("CommonTextComposeModal — Enter flush (R2)", () => {
+    function detailTitleInput(): HTMLInputElement | null {
+        return document.querySelector("[data-commontext-detail-title]") as HTMLInputElement | null;
+    }
+
+    function listBox(): HTMLElement {
+        const el = document.querySelector("[data-commontext-total]") as HTMLElement | null;
+        expect(el).not.toBeNull();
+        return el!;
+    }
+
+    it("opens the fresh top match when Enter is pressed right after typing (no debounce wait)", async () => {
+        await openModal();
+        // 输入 "Alpha" 只排了 80ms 防抖提交，此时仍未 commit；立即 Enter 必须走 flushSearch
+        // 同步消费新文本——禁止 Enter 读到防抖窗口内的旧列表（否则会打开全量列表首位）。
+        await typeIntoComposer("Alpha");
+        const list = listBox();
+        expect(list.getAttribute("data-commontext-total")).toBe("2");
+        await act(async () => {
+            list.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+        });
+        expect(detailTitleInput()?.value).toBe("Alpha standup");
+        // 容器数据锚点：flush 后列表窗口重建，总数 = 命中数，窗口覆盖 [0-1)。
+        expect(listBox().getAttribute("data-commontext-total")).toBe("1");
+        expect(listBox().getAttribute("data-commontext-window")).toBe("0-1");
+        // 行带绝对索引：第 0 行是相关度第一名。
+        const rows = [...listBox().querySelectorAll("[data-common-text-index]")];
+        expect(rows.length).toBe(1);
+        expect(rows[0].getAttribute("data-common-text-index")).toBe("0");
+        expect(rows[0].getAttribute("data-commontext-title")).toBe("Alpha standup");
+    });
+
+    it("keeps the ordering stable when the caret moves inside the same word before Enter", async () => {
+        await openModal();
+        // 同词内移动光标：caretContextSignature 不变 → 不重新提交搜索，Enter 仍打开当前词首位。
+        await typeIntoComposer("Bravo");
+        const el = composer();
+        await act(async () => {
+            el.setSelectionRange(1, 1);
+            el.dispatchEvent(new Event("select", { bubbles: true }));
+        });
+        const list = listBox();
+        await act(async () => {
+            list.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+        });
+        expect(detailTitleInput()?.value).toBe("Bravo refund");
+        expect(listBox().getAttribute("data-commontext-total")).toBe("1");
+    });
+});
+
 describe("CommonTextComposeModal — editor draft autosave", () => {
     beforeEach(() => {
         // 只假 setTimeout/clearTimeout：草稿防抖是这条通道；rAF 等保留真实现（focus/合成路径靠它）。

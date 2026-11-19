@@ -217,4 +217,66 @@ describe("CommonTextComposeModal hook order", () => {
         // 正文自动保存不再从正文抽 tags（tags 是结构化权威）
         expect(source).not.toContain("tags: extractSessionTagsFromNote(text).tags");
     });
+
+    it("flushes pending search synchronously on every confirm action (Enter / row insert)", () => {
+        // R2 Enter flush：任何消费 filteredItems 的确认动作先同步提交 pending 搜索快照，
+        // 并使用提交后的结果——禁止 Enter 选中 80ms 防抖窗口内的旧列表。
+        // 输入快照与正文分离：filteredItems 只依赖 searchText/searchCaret，不直接依赖
+        // state.editorCaret（光标裸移动不再重算全表）。
+        const fmStart = source.indexOf("const filteredItems = useMemo(");
+        const fmEnd = source.indexOf("const baseItemsRef = useRef(baseItems)");
+        expect(fmStart).toBeGreaterThan(-1);
+        expect(fmEnd).toBeGreaterThan(fmStart);
+        const filteredMemo = source.slice(fmStart, fmEnd);
+        expect(filteredMemo).toContain("computeFilteredItems(state, baseItems, state.searchText, state.searchCaret)");
+        expect(filteredMemo).not.toContain("state.editorCaret");
+        expect(source).toContain("pendingSearchRef.current = { text, caret, revision: caretContextSignature(text, caret) };");
+        expect(source).toContain("searchCommitTimerRef.current = window.setTimeout(() => {");
+        expect(source).toContain("const SEARCH_COMMIT_DEBOUNCE_MS = 80;");
+        // flushSearch：清 timer → commit pending → 用 pending 快照同步算出新列表并返回，
+        // 是 Enter / 行内插入的唯一消费列表来源。
+        expect(source).toContain("const flushSearch = useCallback(() => {");
+        expect(source).toContain("return computeFilteredItems(stateRef.current, baseItemsRef.current, pending.text, pending.caret);");
+        expect(source).toContain("const flushSearchRef = useRef(flushSearch);");
+        // 三处确认动作一致走 flush：列表 Enter / 搜索框 Enter / 行选与行内插入。
+        expect(source.match(/flushSearchRef\.current\(\)/g)?.length ?? 0).toBeGreaterThanOrEqual(4);
+        expect(source).toContain("const items = COMMONTEXT_PERF_INPUT_ENABLED ? flushSearchRef.current() : filteredItems;");
+        // IME：composition 期间不 commit，合成结束后按当前文本提交一次。
+        expect(source).toContain("const handleCompositionStart = () => {");
+        expect(source).toContain("isComposingRef.current = true;");
+        expect(source).toContain("if (COMMONTEXT_PERF_INPUT_ENABLED) {")
+    });
+
+    it("keeps the rollback baseline when any of the three perf switches is off", () => {
+        // R7 回滚：三个开关集中在文件顶部、默认 true；关闭任一分支仍保留改造前行为。
+        expect(source).toContain("const COMMONTEXT_PERF_INPUT_ENABLED = true;");
+        expect(source).toContain("const COMMONTEXT_PERF_CACHE_ENABLED = true;");
+        expect(source).toContain("const COMMONTEXT_PERF_WINDOWING_ENABLED = true;");
+        expect(source).toContain("const ROW_HEIGHT = 44;");
+        expect(source).toContain("const OVERSCAN = 8;");
+        // 输入链路关闭：onChange/onSelect 直接同步写 searchText（旧行为）。
+        expect(source).toContain("if (!COMMONTEXT_PERF_INPUT_ENABLED) {")
+        expect(source).toContain("patch.searchText = editor;")
+        expect(source).toContain("patch.searchCaret = caret;")
+        // 窗口化关闭：回到全量 map，旧行 DOM 保留为逐字节回滚基线。
+        expect(source).toContain("if (!COMMONTEXT_PERF_WINDOWING_ENABLED) {")
+        expect(source).toContain("return { start: 0, end: filteredItems.length };");
+        expect(source).toContain("// 窗口化关闭时保留旧行 DOM，作为逐字节回滚基线。");
+        // 关闭态 guard：open=false 时 allItems 返回 EMPTY_ITEMS，不构建列表派生数据。
+        expect(source).toContain("const EMPTY_ITEMS: CommonTextItem[] = [];");
+        expect(source).toContain("state.open ? getLiveCommonTextItems(getCommonTextItemsFromSettings(settings)) : EMPTY_ITEMS");
+    });
+
+    it("persists resize size after a 150ms silent commit instead of per-frame setState", () => {
+        // R5 resize 减负：拖拽回调只写 inline（视觉即时跟随），state/localStorage 走
+        // 150ms 静默提交，值相同跳过 setState 防观察循环。
+        const start = source.indexOf("const RESIZE_COMMIT_MS = 150;");
+        expect(start).toBeGreaterThan(-1);
+        const resizeSegment = source.slice(start, start + 1600);
+        expect(resizeSegment).toContain("const RESIZE_COMMIT_MS = 150;");
+        expect(resizeSegment).toContain("applyInline(w, h);");
+        expect(resizeSegment).toContain("commitTimer = window.setTimeout(commit, RESIZE_COMMIT_MS);");
+        expect(resizeSegment).toContain("cur.w === next.w && cur.h === next.h ? cur : next");
+        expect(resizeSegment).not.toContain("requestAnimationFrame");
+    });
 });

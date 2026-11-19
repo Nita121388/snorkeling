@@ -119,3 +119,22 @@ node scripts/check-tsc-baseline.mjs
   5. `scripts/verify/commontext-meta-sort/verify.mjs` 滚动点击未适配。
   6. `node scripts/check-tsc-baseline.mjs` 未跑。
 - 下次开工：先补 DOM/source 断言与 perf 探针，再跑 `npx vitest run frontend/app/commontext/commontext-model.test.ts frontend/app/commontext/commontext-compose-modal.test.ts frontend/app/commontext/commontext-compose-modal.dom.test.tsx frontend/app/commontext/commontext-compose-perf.test.tsx` 和 tsc baseline。
+
+## Progress Snapshot (2026-11-19 18:35) — worker agent 收尾完成
+
+按上一快照的 6 条未完成项逐条收尾，全部完成：
+
+1. **ResizeObserver 改 150ms 静默提交**（`commontext-compose-modal.tsx`）：拖拽回调只写 `modalRef` 内联宽高（视觉即时跟随），state/localStorage 走 `RESIZE_COMMIT_MS = 150` 静默提交；提交前比较新旧值（相同跳过 setState，防观察循环）；cleanup 交还 inline 控制权并在静默窗口内兜底落盘最后一次尺寸。删掉了每帧 rAF setState。
+2. **`commontext-compose-modal.test.ts` 补 +3 例**：Enter flush 契约（filteredItems memo 不依赖 `state.editorCaret`、`flushSearchRef` 在 4 处确认动作消费、80ms 防抖、IME 不 commit）；三开关关闭态回滚基线源码断言；resize 150ms 静默提交源码断言。20 例全绿。
+3. **`commontext-compose-modal.dom.test.tsx` 补 +2 例（Enter flush R2）**：输入后不等防抖立即 Enter → 打开的是当前文本相关度第一名（防抖窗口内新文本被 flush 消费，且窗口重建为 `0-1`、行绝对索引=0）；同词内移动光标不改变行序。注：详情标题 input 锚点是 `data-commontext-detail-title`（placeholder 是 i18n "Untitled"，不是旧 "Title (optional"）。10 例全绿。
+4. **新建 `commontext-compose-perf.test.tsx`（120 条种子，3 例）**：窗口化探针（DOM 行数 ≤ 40 且 < 120、绝对索引连续、`data-commontext-total=120`、窗口区间、ArrowDown×20 后窗口滑到覆盖选中行且 scrollTop 按行号换算推进）；计算次数探针（spy `searchCommonTextComposeItemsFromBase`：打字零重算，80ms 防抖到点恰好重算 1 次）；关闭态刷新（关闭后推配置 → 重开可见新条目 121 且排首位）。3 例全绿，已 prettier clean。
+5. **`scripts/verify/commontext-meta-sort/verify.mjs` 适配窗口化**：快照改读 `data-commontext-total`（全量总数）/ `data-commontext-window` / 行 `data-common-text-index`；新增 `ensureListRowRendered`（按窗口高度分步滚动 + 派发 scroll 事件）+ `clickListRow`（目标行不在窗口时先滚后点，支持行内子选择器）；新增 3 条窗口化锚点断言；详情标题改读 `data-commontext-detail-title`。`node --check` 通过。
+6. **验证跑批**：
+   - `npx vitest run frontend/app/commontext/commontext-model.test.ts frontend/app/commontext/commontext-compose-modal.test.ts frontend/app/commontext/commontext-compose-modal.dom.test.tsx frontend/app/commontext/commontext-compose-perf.test.tsx` → **4 文件 94 例全绿**。
+   - `node scripts/check-tsc-baseline.mjs` → 当前 55 条 > 基线 47（+8），**全部新增错误集中在白名单外**（emain / agent-status / aipanel / element / onboarding / session-overview / preview / workspace 等，为工作中并存 agent 的半成品）；`frontend/app/commontext/**` 与 `scripts/verify/commontext-meta-sort/**` 0 error。按任务定义（只关注白名单文件是否新增 error）判定通过。
+
+收尾说明：
+- 改动仅限白名单 5 个文件：`commontext-compose-modal.tsx`（resize 150ms）、`commontext-compose-modal.test.ts`、`commontext-compose-modal.dom.test.tsx`、`commontext-compose-perf.test.tsx`（新增）、`scripts/verify/commontext-meta-sort/verify.mjs`。未提交（遵守红线）。
+- 未跑真机验证（任务要求本机暂缓）；verify 台仅做语法校验。
+- 未跑全量 vitest（本机性能差），只跑目标 4 文件。
+- 剩余待办（他包/后续）：tsc +8 不在本包白名单、无法在本包清；真机台待环境 OK 后跑。

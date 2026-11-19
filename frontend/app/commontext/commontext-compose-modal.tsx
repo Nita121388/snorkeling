@@ -828,28 +828,54 @@ const CommonTextComposeModal = memo(() => {
     }, [state.open]);
 
     // 用户拖动 resize 手柄（右下角）改变弹窗尺寸 → ResizeObserver 写入 localStorage 无感持久化。
-    // 节流靠 rAF：连拖过程中每帧最多落一次 storage，避免高频写入；double-debounce 已无必要。
+    // 拖拽期间回调只写 modalRef 的内联宽高（视觉即时跟随），state 与 localStorage 走
+    // 150ms 静默提交：连拖不再每帧 setState → 不再每帧重渲染整个弹窗；提交前比较新旧值，
+    // 值相同则跳过 setState，避免 inline 写回触发观察循环。
     // 注意：尺寸最小值由 CSS min-w/min-h 限定（与 ComposeModalMinW/MinH 对应），此处不再 clamp。
     useEffect(() => {
         if (!state.open) return;
         const node = modalRef.current;
         if (node == null) return;
-        let raf: number | null = null;
+        const RESIZE_COMMIT_MS = 150;
+        let pending: { w: number; h: number } | null = null;
+        let commitTimer: number | null = null;
+        const applyInline = (w: number, h: number) => {
+            node.style.width = `${w}px`;
+            node.style.height = `${h}px`;
+        };
+        const commit = () => {
+            commitTimer = null;
+            if (pending == null) return;
+            const next = { w: `${pending.w}px`, h: `${pending.h}px` };
+            pending = null;
+            setModalSize((cur) => (cur.w === next.w && cur.h === next.h ? cur : next));
+            saveComposeModalSize(next);
+        };
         const ro = new ResizeObserver(() => {
-            if (raf != null) return;
-            raf = window.requestAnimationFrame(() => {
-                raf = null;
-                const w = node.offsetWidth;
-                const h = node.offsetHeight;
-                if (w < ComposeModalMinW || h < ComposeModalMinH) return;
-                setModalSize({ w: `${w}px`, h: `${h}px` });
-                saveComposeModalSize({ w: `${w}px`, h: `${h}px` });
-            });
+            const w = node.offsetWidth;
+            const h = node.offsetHeight;
+            if (w < ComposeModalMinW || h < ComposeModalMinH) return;
+            pending = { w, h };
+            // 拖拽中先写 inline：视觉即时跟随，不依赖 setState→render 的往返。
+            applyInline(w, h);
+            if (commitTimer != null) window.clearTimeout(commitTimer);
+            commitTimer = window.setTimeout(commit, RESIZE_COMMIT_MS);
         });
         ro.observe(node);
         return () => {
             ro.disconnect();
-            if (raf != null) window.cancelAnimationFrame(raf);
+            if (commitTimer != null) {
+                window.clearTimeout(commitTimer);
+                commitTimer = null;
+                // 关闭/卸载落在静默窗口内：最后一次尺寸不丢（只落盘，不 setState）。
+                if (pending != null) {
+                    saveComposeModalSize({ w: `${pending.w}px`, h: `${pending.h}px` });
+                    pending = null;
+                }
+            }
+            // 交还 inline 控制权给 React style prop，避免残留写死的 px。
+            node.style.width = "";
+            node.style.height = "";
         };
     }, [state.open]);
 
