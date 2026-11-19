@@ -142,6 +142,28 @@ dispose(): void { /* 退订 + flush 最后一次变化 */ }
 - `xxx-store.ts` — 有状态适配层：jotai atom、配置持久化、节流。参考 `path-usage-store.ts`。
 - 组件只负责渲染 store 暴露的数据与调用 store 的动作。
 
+### 派生决策也需要新鲜数据时：拆成两个纯函数
+
+单个「纯规划函数」无法同时满足两件事：
+(a) 在 RPC 之前决定发哪些请求；(b) 依据 RPC 返回的新数据决定后续动作。
+把 (b) 塞进 (a) 会逼你传假入参（如把尚未 reload 的 `ws.tabids` 当 deps），纯函数不再纯粹。
+
+正确做法：拆两个纯函数，各有清晰输入时点。参考 `frontend/app/wave/reinit-wave-plan.ts`（task 11-19-reinitwave-relief）：
+
+```ts
+// RPC 前：只依赖已知 deps，输出执行计划
+function planReinitWave(deps, enabled): { batches, sideEffects };
+// RPC 后：拿到新鲜数据，单独决策
+function planWorkspaceTabReload(prevTabIds, freshTabIds, enabled): string[] | null;
+```
+
+`wave.ts` 的执行器按 `batches` 跑 `Promise.all`，把结果按 kind 存进 map 供后续批次取依赖，
+reload 完成后再调第二个纯函数。两个函数的 `enabled` 默认参数都读模块级开关，
+执行器不传 `enabled` —— 回滚只改开关一处。
+
+**Why**: 让每个纯函数的输入都是「调用时已存在」的数据，单测不需要伪造中间态；
+同时把回滚开关收敛到一个常量，两条路径（on/off）共用同一份副作用清单，避免切换时漏副作用。
+
 ---
 
 ## localStorage 外部 store 范式（2026-11-03, task 11-02-emoji-alias-picker-search）

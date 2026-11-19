@@ -43,6 +43,12 @@ import {
 } from "@/store/global";
 import { activeTabIdAtom } from "@/store/tab-model";
 import * as WOS from "@/store/wos";
+import {
+    forEachTabToReload,
+    planReinitWave,
+    planWorkspaceTabReload,
+    type ReloadKind,
+} from "@/app/wave/reinit-wave-plan";
 import { loadFonts } from "@/util/fontutil";
 import { setKeyUtilPlatform } from "@/util/keyutil";
 import { isMacOS, setMacOSVersion } from "@/util/platformutil";
@@ -172,6 +178,55 @@ async function initWaveWrap(initOpts: WaveInitOpts) {
     }
 }
 
+// 上次 reinit 见到的 workspace tabids（浅拷贝），用于判断是否需要重刷所有 tab。
+// 首帧为 undefined → planWorkspaceTabReload 返回当前 tabids（保持现状语义）。
+let lastWsTabIds: readonly string[] | undefined;
+
+/**
+ * reload 执行器：按 plan 的批次逐批 Promise.all，结果按 kind 存入 map 供后续批次取依赖。
+ * 不在纯函数里执行 RPC —— 这里才碰 WOS。
+ */
+async function executeReinitReloads(
+    batches: ReloadKind[][],
+    deps: { clientId: string; windowId: string; tabId: string }
+): Promise<Map<ReloadKind, any>> {
+    const results = new Map<ReloadKind, any>();
+    for (const batch of batches) {
+        await Promise.all(
+            batch.map(async (kind) => {
+                let oref: string;
+                switch (kind) {
+                    case "client":
+                        oref = WOS.makeORef("client", deps.clientId);
+                        break;
+                    case "window":
+                        oref = WOS.makeORef("window", deps.windowId);
+                        break;
+                    case "workspace": {
+                        const waveWindow = results.get("window") as WaveWindow;
+                        oref = WOS.makeORef("workspace", waveWindow?.workspaceid);
+                        break;
+                    }
+                    case "tab":
+                        oref = WOS.makeORef("tab", deps.tabId);
+                        break;
+                    case "layout": {
+                        const initialTab = results.get("tab") as Tab;
+                        oref = WOS.makeORef("layout", initialTab?.layoutstate);
+                        break;
+                    }
+                }
+                if (oref == null) {
+                    return;
+                }
+                const val = await WOS.reloadWaveObject(oref);
+                results.set(kind, val);
+            })
+        );
+    }
+    return results;
+}
+
 async function reinitWave() {
     console.log("Reinit Wave");
     getApi().sendLog("Reinit Wave");
@@ -184,13 +239,18 @@ async function reinitWave() {
         }, 100)
     );
 
-    await WOS.reloadWaveObject<Client>(WOS.makeORef("client", savedInitOpts.clientId));
-    const waveWindow = await WOS.reloadWaveObject<WaveWindow>(WOS.makeORef("window", savedInitOpts.windowId));
-    const ws = await WOS.reloadWaveObject<Workspace>(WOS.makeORef("workspace", waveWindow.workspaceid));
-    const initialTab = await WOS.reloadWaveObject<Tab>(WOS.makeORef("tab", savedInitOpts.tabId));
-    await WOS.reloadWaveObject<LayoutState>(WOS.makeORef("layout", initialTab.layoutstate));
-    reloadAllWorkspaceTabs(ws);
-    document.title = `Wave Terminal - ${initialTab.name}`; // TODO update with tab name change
+    const deps = { clientId: savedInitOpts.clientId, windowId: savedInitOpts.windowId, tabId: savedInitOpts.tabId };
+    const plan = planReinitWave(deps);
+    const results = await executeReinitReloads(plan.batches, deps);
+
+    const ws = results.get("workspace") as Workspace;
+    const initialTab = results.get("tab") as Tab;
+
+    const tabIdsToReload = planWorkspaceTabReload(lastWsTabIds, ws?.tabids);
+    lastWsTabIds = ws?.tabids ? [...ws.tabids] : undefined;
+    reloadAllWorkspaceTabs(tabIdsToReload);
+
+    document.title = `Wave Terminal - ${initialTab?.name}`; // TODO update with tab name change
     getApi().setWindowInitStatus("wave-ready");
     globalStore.set(atoms.reinitVersion, globalStore.get(atoms.reinitVersion) + 1);
     scheduleUpdaterStatusSync();
@@ -199,11 +259,8 @@ async function reinitWave() {
     }, 50);
 }
 
-function reloadAllWorkspaceTabs(ws: Workspace) {
-    if (ws == null || !ws.tabids?.length) {
-        return;
-    }
-    ws.tabids?.forEach((tabid) => {
+function reloadAllWorkspaceTabs(tabIds: readonly string[] | null) {
+    forEachTabToReload(tabIds, (tabid) => {
         WOS.reloadWaveObject<Tab>(WOS.makeORef("tab", tabid));
     });
 }
