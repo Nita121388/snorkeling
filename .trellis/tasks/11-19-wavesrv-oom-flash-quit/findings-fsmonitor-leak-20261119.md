@@ -91,3 +91,30 @@ git fsmonitor--daemon status
 
 受控实验（已做过，结论）：`tmp` 新仓 `git init+add+commit` 后 `git fsmonitor--daemon status` → watching；
 再 `git status --porcelain` daemon 总数不变（复用）；`git rev-parse --show-toplevel` 不拉起。
+
+## 修复方案 A（产品侧 `-c core.fsmonitor=false`）的缺点分析（2026-11-19 晚，待拍板）
+
+> nita 指示「先记录下来，明天继续分析」。以下为已确认的缺点与正确做法，尚未拍板、未动工。
+
+### A 的四个缺点
+
+1. **大仓 status 变慢（主要代价）**：fsmonitor 让同一仓的后续 status 复用事件日志；关掉后每次全量扫工作区。
+   小/中型仓无感；超大仓（几十万文件）单次可能亚秒→1-3s；`detectRepoRoots` 上限 64 仓，多超大仓同扫时总耗时增加。
+   注意：daemon 拉起时的第一次 status 本来就是全量扫，变慢的只是"后续"；我们的扫描对每仓跑的次数不多，实际损失通常小。
+2. **治不了存量、管不住别人**：已跑的 67 个不会自己退（仍需 C 清理）；其它工具（VS Code git 集成、用户终端里的 git）照样拉新 daemon。
+3. **覆盖面不止一处**：内部构造 git 命令至少两处——`pkg/wshrpc/wshremote/vcs.go:154`（已有 `-c core.quotePath=false`）
+   与 `pkg/sync/transport_git.go:92`（同步传输，同样能在仓里跑 git 拉起 daemon）。
+   必须收口到统一命令构造器（一处加、处处生效），漏一处就有漏网。
+4. **静默覆盖用户选择**：用户特意开 fsmonitor（超大仓求快）会被 app 内部静默关掉。
+   影响范围小：只影响 Snorkeling 内部 VCS 面板/同步的命令；用户终端块里自己敲的 git 走 shell，完全不受影响。在意的话做成设置项（默认关）。
+
+### 隐藏优点
+
+部分 git 版本 fsmonitor 有事件丢失→状态过期的已知 bug；关掉后 VCS 面板状态反而更可靠。
+
+### 明天的分析清单（nita 继续）
+
+- [ ] 实测一次无 daemon 下大仓 status 的耗时基线（Windows 机，找一个最大的仓）
+- [ ] 审计内部 git 调用点全集（除 vcs.go / transport_git.go 外还有没有第三处）
+- [ ] 决定：A 是否做成设置项（默认关）还是硬编码；是否同时做 B（系统级 unset）与 C（清存量 67 个，命令已记录在上文）
+- [ ] 拍板后开包：统一命令构造器收口 + 单测（断言所有内部 git 调用带 `-c core.fsmonitor=false`）+ Windows 真机验证 daemon 数不涨

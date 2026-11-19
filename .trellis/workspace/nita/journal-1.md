@@ -334,3 +334,13 @@ merge 后 go build ./... 通过、四包测试全绿、`task generate` 无 diff�
   nita 决定先归档。风险兜底：装 0.0.132 后若下拉异常，按 AppSelect 单测 + 新增真机台复查。
 - 范围说明：本次只迁移 2 处；仓库仍有 8 个文件十余处原生 `<select>`（commontext 弹窗、定时任务、waveconfig、
   aiaudit、vcscommits 等），属后续「统一所有下拉」的独立工作。
+
+## 2026-11-19 深夜收尾：fsmonitor 泄漏分析暂停点（明天继续）
+
+- 责任链已定（三层）：Git for Windows 系统级默认 core.fsmonitor=true（开关）/ git daemon 无空闲超时（不退）/
+  Snorkeling detectRepoRoots 逐仓 git status（数量放大 67≈64 上限）；辅凶 dgdb 临时仓。Mac 本机 0 daemon（Windows 专属）。
+- 方案 A（产品侧 -c core.fsmonitor=false）缺点四条已记录（大仓变慢 / 治不了存量 / 覆盖面需收口两处构造器 /
+  静默覆盖用户选择），nita 决定明天继续分析，未拍板未动工。全文见
+  .trellis/tasks/11-19-wavesrv-oom-flash-quit/findings-fsmonitor-leak-20261119.md 末节「修复方案 A 的缺点分析」。
+- 今晚暂停时的状态：A/D 两个 agent 仍在跑；B/C/E/F/G 已提交（d8e2d38ee 等）；活跃任务 87；
+  待办：A/D 收口 → 0.0.132 发版（agent 全收工后）→ 真机验 E 截断修复 + 两个新下拉 + prop-add-option 六条。
