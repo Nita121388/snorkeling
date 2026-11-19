@@ -328,7 +328,7 @@ function TargetChip(props: {
             type="button"
             data-commontext-send-mode={props.mode}
             className={clsx(
-                "relative inline-flex items-center gap-1.5 h-[26px] px-2 rounded-md text-xs transition-colors cursor-pointer border-0",
+                "relative inline-flex items-center gap-2 h-[28px] px-2.5 rounded-md text-xs transition-colors cursor-pointer border-0",
                 props.selected
                     ? "bg-accent/12 text-foreground"
                     : "bg-transparent text-muted hover:bg-surface-soft hover:text-secondary"
@@ -346,7 +346,7 @@ function TargetChip(props: {
 }
 
 const menuItemClass =
-    "split-menu-item flex items-center gap-2 w-full px-2 py-1.5 rounded-md text-left text-[12px] cursor-pointer bg-transparent border-0 text-[color:var(--main-text-color)] hover:bg-hoverbg";
+    "split-menu-item flex items-center gap-2 w-full px-2.5 py-2 rounded-md text-left text-[12px] cursor-pointer bg-transparent border-0 text-[color:var(--main-text-color)] hover:bg-hoverbg";
 
 // ─── 面板内下拉（Type / Folder 二级菜单） ───
 // 面板本体（SplitButton 弹层）带 max-height + overflow:auto，绝对定位子元素会被裁剪，
@@ -381,8 +381,8 @@ function AnchoredMenu(props: {
                 role="menu"
                 aria-label={props.label}
                 data-commontext-send-picker=""
-                className="rounded-lg border border-border/70 bg-modalbg/95 backdrop-blur-2xl shadow-2xl p-1 flex flex-col gap-0.5 max-h-[280px] overflow-y-auto overflow-x-hidden"
-                style={{ ...floatingStyles, zIndex: 1001, width: "min(360px, 92vw)" }}
+                className="rounded-lg border border-border/70 bg-modalbg/95 backdrop-blur-2xl shadow-2xl p-1.5 flex flex-col gap-1 max-h-[280px] overflow-y-auto overflow-x-hidden"
+                style={{ ...floatingStyles, zIndex: 1001, width: "min(440px, 94vw)" }}
                 onKeyDown={(e) => {
                     if (e.key === "Escape") {
                         e.preventDefault();
@@ -465,16 +465,22 @@ function SendTargetPanel(props: { text: string; onSent: () => void; onStatus: Se
     const cardSub = `${selectedTabName} · ${preview.folder !== "" ? preview.folder : t("commontext:send.inheritWorkspace")}`;
 
     const pickerClass =
-        "flex min-w-0 flex-1 items-center gap-2 rounded-md border border-border/60 bg-surface-soft px-2 py-1.5 text-[12px] cursor-pointer hover:border-border";
-    const rowLabelClass = "w-8 shrink-0 text-[10px] text-muted";
+        "flex min-w-0 flex-1 items-center gap-2 rounded-md border border-border/60 bg-surface-soft px-2.5 py-2 text-[12px] cursor-pointer hover:border-border";
+    const rowLabelClass = "w-9 shrink-0 text-[10px] text-muted";
     const squareButtonClass =
-        "h-[30px] w-[32px] shrink-0 rounded-md border border-dashed border-border grid place-items-center text-[12px] text-secondary hover:text-accent hover:border-[color-mix(in_srgb,var(--accent-color)_45%,transparent)] hover:bg-actionsoft cursor-pointer";
+        "h-[34px] w-[36px] shrink-0 rounded-md border border-dashed border-border grid place-items-center text-[12px] text-secondary hover:text-accent hover:border-[color-mix(in_srgb,var(--accent-color)_45%,transparent)] hover:bg-actionsoft cursor-pointer";
 
     return (
-        <div className="flex flex-col" data-commontext-send-popover>
+        <div
+            className="flex flex-col"
+            data-commontext-send-popover
+            /* 2026-11-19 追加：弹层太挤。宽度收口到这里（唯一权威）：宽视口 440px ≥ 420，
+               窄视口（≤420px）回落 94vw 不溢出；menu 用 w-fit! 贴合本宽度。 */
+            style={{ width: "min(440px, 94vw)" }}
+        >
             {/* 1. 目标：chip（聚焦块 / 新建）+ 一张目标卡。落点信息只在这里出现一次。 */}
-            <div className="px-2.5 pt-2 pb-2">
-                <div className="mb-2 flex items-center gap-1">
+            <div className="px-3 pt-2.5 pb-2.5">
+                <div className="mb-2.5 flex items-center gap-1.5">
                     <span className="inline-flex items-center gap-1.5 text-xxs text-muted">
                         <i className="fa-solid fa-crosshairs text-[9px]" />
                         {t("commontext:send.chooseTarget")}
@@ -509,10 +515,10 @@ function SendTargetPanel(props: { text: string; onSent: () => void; onStatus: Se
                     </span>
                 </div>
                 <div
-                    className="flex items-center gap-2.5 rounded-lg border border-border/60 bg-surface-soft px-2.5 py-2"
+                    className="flex items-center gap-3 rounded-lg border border-border/60 bg-surface-soft px-3 py-2.5"
                     data-commontext-send-target-card
                 >
-                    <span className="grid h-[30px] w-[30px] shrink-0 place-items-center rounded-lg bg-accent/12 text-accent">
+                    <span className="grid h-[34px] w-[34px] shrink-0 place-items-center rounded-lg bg-accent/12 text-accent">
                         {profileIcon == null ? (
                             <i className="fa-solid fa-robot text-[13px]" />
                         ) : profileIcon.kind === "emoji" ? (
@@ -547,8 +553,13 @@ function SendTargetPanel(props: { text: string; onSent: () => void; onStatus: Se
             </div>
 
             {/* 2. 三个选择器常显：Agent / Tab / 目录 */}
-            <div className="flex flex-col gap-1.5 border-t border-border/60 px-2.5 py-2">
-                <div className="flex items-center gap-2" data-commontext-agent-row>
+            <div
+                className="flex flex-col border-t border-border/60 px-3 py-2.5"
+                data-commontext-send-rows
+                /* 行间距 inline 表达（≥8px）：jsdom 可读 computed rowGap 做数字断言，真实 app 同样生效 */
+                style={{ rowGap: "10px" }}
+            >
+                <div className="flex items-center gap-2.5" data-commontext-agent-row>
                     <span className={rowLabelClass}>{t("commontext:send.rowAgent")}</span>
                     <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto overflow-y-hidden pb-0.5">
                         {profiles.map((profile) => {
@@ -560,7 +571,7 @@ function SendTargetPanel(props: { text: string; onSent: () => void; onStatus: Se
                                     type="button"
                                     data-commontext-agent-chip={profile.name}
                                     className={clsx(
-                                        "relative h-[30px] w-[30px] shrink-0 grid place-items-center rounded-md border-0 cursor-pointer transition-colors",
+                                        "relative h-[32px] w-[32px] shrink-0 grid place-items-center rounded-md border-0 cursor-pointer transition-colors",
                                         isSelected
                                             ? "bg-accent/12 text-foreground"
                                             : "bg-transparent text-muted hover:bg-surface-soft hover:text-secondary"
@@ -597,7 +608,7 @@ function SendTargetPanel(props: { text: string; onSent: () => void; onStatus: Se
                     </div>
                 </div>
 
-                <div className="flex items-center gap-2" data-commontext-tab-row>
+                <div className="flex items-center gap-2.5" data-commontext-tab-row>
                     <span className={rowLabelClass}>{t("commontext:send.rowTab")}</span>
                     <button
                         type="button"
@@ -630,7 +641,7 @@ function SendTargetPanel(props: { text: string; onSent: () => void; onStatus: Se
                     </button>
                 </div>
 
-                <div className="flex items-center gap-2" data-commontext-dir-row>
+                <div className="flex items-center gap-2.5" data-commontext-dir-row>
                     <span className={rowLabelClass}>{t("commontext:send.rowFolder")}</span>
                     <button
                         type="button"
@@ -673,7 +684,7 @@ function SendTargetPanel(props: { text: string; onSent: () => void; onStatus: Se
             </div>
 
             {/* 3. footer：后台执行 + 取消 / 主按钮（按钮文案即落点） */}
-            <div className="flex items-center gap-2 border-t border-border/60 px-2.5 py-2" data-commontext-send-footer>
+            <div className="flex items-center gap-2.5 border-t border-border/60 px-3 py-2.5" data-commontext-send-footer>
                 <button
                     type="button"
                     role="switch"
@@ -894,9 +905,10 @@ export const CommontextSendButton = ({
                 caretAriaLabel={t("commontext:send.caretAria")}
                 open={popoverOpen}
                 onOpenChange={setPopoverOpen}
-                menuLabel={t("commontext:send.menuLabel")}
-                menuWidth={380}
-                menuClassName="commontext-send-target-panel"
+                /* 宽度以 [data-commontext-send-popover] 的 inline min(440px,94vw) 为唯一权威；
+                   menu 必须贴合内容（w-fit! 压过 inline menuWidth），否则 440px 面板被 380px menu 裁掉。 */
+                menuWidth={460}
+                menuClassName="commontext-send-target-panel w-fit!"
                 render={({ close }) => (
                     <SendTargetPanel text={text} onSent={onSent} onStatus={onStatus} close={close} />
                 )}

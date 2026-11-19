@@ -69,3 +69,20 @@ CommonText 弹窗里的「发送」目标选择弹层（`SendTargetPanel`）当�
 - 折叠档位（B 档）与折叠状态持久化。
 - 发送时机（立即/定时）与定时任务。
 - SplitButton 弹层外壳与 z-index 层叠规则。
+
+## 2026-11-19 追加需求（nita 实测）：弹层太小、内部拥挤
+
+> 原话：「这个任务可以继续再优化一下，我觉得弹窗有点小了，显得内部有点太拥挤了。」
+
+- **现象**：上一轮紧凑化把弹层宽度定成 `min(360px, 92vw)`（`commontext-send-button.tsx:385`），
+  三个选择器 + 目标卡 + 模式开关挤在 360px 里，行内 padding/gap 也偏小，读起来憋。
+- **方向（不是回到三段大卡）**：保留现有信息架构与「目标卡 + 三个选择器常显」，只**放宽空间**：
+  - 宽度：`min(360px, 92vw)` → ≥ `min(440px, 94vw)`
+  - 内边距/间距：容器 padding、区段间距、行高与图标按钮尺寸适度加大（不再压到 1.5/2px 级）
+  - 保持：单列、无横向滚动、窄视口（≤420px）下自动回落且不溢出
+- **验收（机器可判）**：
+  - DOM 测试新增几何断言：弹层根节点（`[data-commontext-send-popover]`）宽度 ≥ 420px（宽视口夹具）、
+    窄视口夹具下 ≤ 视口宽且无横向溢出（`scrollWidth <= clientWidth`）
+  - 三个选择器行两两之间的垂直间距 ≥ 8px（读 computed gap/margin，写进断言）
+  - `npx vitest run frontend/app/commontext/` 全绿（既有 send-target 测试不回归）
+  - 真机：nita 打开发送弹层肉眼确认不拥挤
