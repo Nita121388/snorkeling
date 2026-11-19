@@ -686,9 +686,11 @@ function SendTargetPanel(props: { text: string; onSent: () => void; onStatus: Se
                     )}
                     onClick={() => setConfig({ ...config, background: config.background === false })}
                 >
+                    {/* 滑块必须是真白：tailwindsetup.css 把 --color-white 重定义成了主文本色，
+                        浅色主题下 bg-white 会变成深棕，滑块在 accent 轨道上糊成一团。 */}
                     <span
                         className={clsx(
-                            "absolute top-[2px] h-[12px] w-[12px] rounded-full bg-white transition-all",
+                            "absolute top-[2px] h-[12px] w-[12px] rounded-full bg-[#fff] transition-all",
                             config.background !== false ? "left-[14px]" : "left-[2px]"
                         )}
                     />

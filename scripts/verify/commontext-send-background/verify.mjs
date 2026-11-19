@@ -234,12 +234,23 @@ const BACKGROUND_SWITCH = `(() => {
     const row = document.querySelector("[data-commontext-send-background]");
     if (!row) return null;
     const sw = row.querySelector('[role="switch"]');
+    const knob = sw?.querySelector("span");
     return {
         exists: sw != null,
         checked: sw?.getAttribute("aria-checked") ?? null,
+        knobBg: knob ? getComputedStyle(knob).backgroundColor : null,
         text: (row.textContent || "").replace(/\s+/g, " ").trim(),
     };
 })()`;
+
+// 滑块必须是真白：tailwindsetup.css 把 --color-white 重定义成主文本色，
+// 浅色主题下 bg-white 会变成深棕（滑块糊在 accent 轨道上）。这里锁住计算后的颜色。
+function isNearWhite(cssColor) {
+    const m = /rgba?\((\d+),\s*(\d+),\s*(\d+)/.exec(String(cssColor || ""));
+    if (!m) return false;
+    const [r, g, b] = m.slice(1).map(Number);
+    return r >= 235 && g >= 235 && b >= 235;
+}
 
 // 隐藏挂载计数（pending 队列的可观测面）
 const HIDDEN_TABS = `[...document.querySelectorAll('[data-tab-id][data-tab-active="false"]')].map((el) => el.getAttribute("data-tab-id"))`;
@@ -416,6 +427,7 @@ if (dry) {
         await openSendPopover(client);
         const sw1 = await client.evaluate(BACKGROUND_SWITCH);
         reporter.check("background-switch-present", sw1?.exists === true && sw1?.checked === "true", JSON.stringify(sw1));
+        reporter.check("background-switch-knob-white", isNearWhite(sw1?.knobBg), `knobBg=${sw1?.knobBg}`);
         const swPt = await client.evaluate(POINT_OF("[data-commontext-send-background] [role=switch]"));
         if (swPt != null) await realClick(client, swPt);
         const sw2 = await client.evaluate(BACKGROUND_SWITCH);
