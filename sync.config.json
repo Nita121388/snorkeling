@@ -1,0 +1,12 @@
+{
+  "mode": "hub",
+  "device": "win-main",
+  "intervalSeconds": 30,
+  "hub": {
+    "url": "https://loop.break.ccwu.cc",
+    "tokenEnv": "LB_SYNC_TOKEN"
+  },
+  "repos": [
+    { "root": "E:/code/snorkeling", "role": "writer", "name": "snorkeling" }
+  ]
+}

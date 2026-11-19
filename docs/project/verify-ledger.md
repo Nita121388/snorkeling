@@ -257,3 +257,6 @@
 | 2026-11-18 11:59 | commontext-send-agent-block | ✅ 30/30 | launch+reset | `20261118T11582-commontext-send-agent-block` | cf81646be |
 | 2026-11-18 21:30 | F-1109/F-1118 agent launch+send（曾 skipped：cmd/wsh 被并行会话半成品阻塞，21:20 后该文件闭合，`go build ./...` exit 0 恢复） | ✅ go test 全绿 + `go build ./...` 0 | go test | — | working-tree |
 | 2026-11-18 22:55 | F-1109/F-1118 agent launch+send 真机（dev 实例 verify-agent-launch，跑完已关） | ✅ 7/7 | dev-isolated + wsh 直连（JWT 自 db_mainserver 私钥铸造，走真实 wsh CLI） | `dev5` profile=verify-agent-launch | working-tree |
+| 2026-11-19 01:44 | tab-collapse-cross-renderer | ✅ 1/1 | launch+reset | `20261119T01443-tab-collapse-cross-renderer` | 489b5c7da |
+| 2026-11-19 01:50 | tab-collapse-cross-renderer | ❌ fatal（未跑） | launch+reset | `20261119T01444-tab-collapse-cross-renderer` | 489b5c7da |
+| 2026-11-19 03:12 | commontext-send-background | ❌ fatal（未跑） | launch+reset | `20261119T03073-commontext-send-background` | 314ef270c |
