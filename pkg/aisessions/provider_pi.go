@@ -15,6 +15,15 @@ import (
 
 const SourcePi = "pi"
 
+// maxTitleLineBytes skips the JSON decode for single lines larger than this
+// in scanTitle. Real titles and first-user-message snippets live in lines far
+// below this; larger lines are base64 image / tool-result payloads that pi
+// inlines into transcripts. Decoding them costs a string→[]byte copy at
+// line-size, multiplying peak allocations ~3× and is the known trigger for
+// `fatal error: out of memory` on commit-starved Windows hosts (see
+// waveapp.6*.log OOM stacks: runtime.stringtoslicebyte at the Unmarshal).
+const maxTitleLineBytes int64 = 4 << 20 // 4 MiB
+
 type PiProvider struct {
 	sessionsDir string
 }
@@ -224,6 +233,17 @@ func (p *PiProvider) scanTitle(path string) (string, string) {
 			continue
 		}
 		readBytes += int64(len(line)) + 1
+		// Oversized single lines are base64 image / tool-result payloads (pi
+		// inlines them), never title material. Skipping the JSON decode avoids
+		// the string→[]byte copy that multiplies peak allocations by ~3x per
+		// line; on a commit-starved machine that copy is what turns into
+		// `fatal error: out of memory` (observed in waveapp.64.log OOM stack:
+		// runtime.stringtoslicebyte at provider_pi.go:228). readBytes still
+		// accumulates, so the titleScanMaxBytes() short-circuit below fires
+		// right after and stops the scan.
+		if int64(len(line)) > maxTitleLineBytes {
+			continue
+		}
 		var value map[string]any
 		if err := json.Unmarshal([]byte(line), &value); err != nil {
 			continue

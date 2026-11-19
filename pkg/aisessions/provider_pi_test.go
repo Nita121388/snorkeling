@@ -656,3 +656,63 @@ func TestPiModelChangeFallback(t *testing.T) {
 		t.Fatalf("expected model_change fallback deepseek-v4.1-flash, got %q", messages[1].Model)
 	}
 }
+
+// --- scanTitle oversized-line guard (11-19-wavesrv-oom-flash-quit) ---
+// OOM 现场（waveapp.64.log:95058）：pi 会话里内嵌 base64 图片的行可达数 MB，
+// scanTitle 对每行做 []byte(line) 强制复制，在 commit 耗尽的机器上 1.8MB 的
+// 分配就足以触发 `fatal error: out of memory`。超长行必须跳过 JSON 解析。
+
+func writePiSessionWithOversizedLine(t *testing.T, dir string, oversizedLine string) string {
+	t.Helper()
+	content := `{"type":"session","version":3,"id":"pi-big-1","timestamp":1700000000,"cwd":"/home/user/project"}` + "\n" +
+		oversizedLine + "\n" +
+		`{"type":"message","id":"msg-1","parentId":"","role":"user","content":"first real question"}` + "\n"
+	return writePiJSONL(t, dir, content)
+}
+
+func TestPiProviderScanTitleSkipsOversizedLine(t *testing.T) {
+	dir := t.TempDir()
+	// 5MB "base64" payload line (bigger than maxTitleLineBytes = 4MiB).
+	bigPayload := strings.Repeat("A", 5<<20)
+	path := writePiSessionWithOversizedLine(t, dir, `{"type":"message","id":"big-1","parentId":"","role":"assistant","content":[{"type":"image","data":"`+bigPayload+`"}]}`)
+	start := time.Now()
+	title, titleSource := NewPiProvider(dir).scanTitle(path)
+	elapsed := time.Since(start)
+	if elapsed > time.Second {
+		t.Fatalf("scanTitle took %v (> 1s) on oversized line; expected fast skip", elapsed)
+	}
+	// The oversized line is skipped; the normal user message still supplies the title.
+	if title != "first real question" || titleSource != "first_user_message" {
+		t.Fatalf("expected title from normal user message, got (%q, %q)", title, titleSource)
+	}
+}
+
+func TestPiProviderScanTitleOversizedUserMessageFallsBack(t *testing.T) {
+	dir := t.TempDir()
+	// A >4MiB user message line: skipped, so no first_user_message title.
+	// File has ONLY the header + the oversized line (no normal messages).
+	oversizedUser := `{"type":"message","id":"u-big","parentId":"","role":"user","content":"` + strings.Repeat("x", 5<<20) + `"}`
+	content := `{"type":"session","version":3,"id":"pi-big-2","timestamp":1700000000,"cwd":"/home/user/project"}` + "\n" +
+		oversizedUser + "\n"
+	path := writePiJSONL(t, dir, content)
+	title, titleSource := NewPiProvider(dir).scanTitle(path)
+	if title != "" || titleSource != "" {
+		t.Fatalf("expected empty title fallback for oversized user message, got (%q, %q)", title, titleSource)
+	}
+}
+
+func TestPiProviderScanTitleStillParsesLargeButUnderLimit(t *testing.T) {
+	dir := t.TempDir()
+	// Just under the 4MiB limit: must still parse and yield the title.
+	under := strings.Repeat("y", (4<<20)-1024)
+	userMsg := `{"type":"message","id":"u-ok","parentId":"","role":"user","content":"real title ` + under + `"}`
+	path := writePiSessionWithOversizedLine(t, dir, userMsg)
+	title, titleSource := NewPiProvider(dir).scanTitle(path)
+	if title == "" || titleSource != "first_user_message" {
+		t.Fatalf("expected under-limit line to parse, got (%q, %q)", title, titleSource)
+	}
+	// Title content is normalized/truncated; just make sure it's derived from the line.
+	if len(title) == 0 {
+		t.Fatalf("expected non-empty normalized title")
+	}
+}
