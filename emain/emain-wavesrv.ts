@@ -70,6 +70,15 @@ export function runWaveSrv(handleWSEvent: (evtMsg: WSEventType) => void): Promis
     envCopy[WaveAuthKeyEnv] = AuthKey;
     envCopy[WaveDataHomeVarName] = getWaveDataDir();
     envCopy[WaveConfigHomeVarName] = getWaveConfigDir();
+    // D-B (wavesrv OOM 修复): GOMEMLIMIT 让 Go GC 提前激进回收，避免 wavesrv 在
+    // 系统 commit 内存紧张时把自身 heap 扩张到 GB 级（真机 OOM 闪退根因之一：
+    // wavesrv 申请 8KB~1.8MB 失败 → fatal error: out of memory → 本进程曾直接
+    // quit）。默认 1GiB（常态 WS 仅 ~123MB 的 8 倍余量，日常 GC 无感知）；
+    // WAVE_SRV_MEM_LIMIT_MB 可覆盖（单位 MB）。
+    const memLimitMB = parseInt(process.env["WAVE_SRV_MEM_LIMIT_MB"] ?? "", 10);
+    const limitBytes = (Number.isFinite(memLimitMB) && memLimitMB > 0 ? memLimitMB : 1024) * 1024 * 1024;
+    envCopy["GOMEMLIMIT"] = String(limitBytes);
+    console.log("wavesrv GOMEMLIMIT:", limitBytes);
     const waveSrvCmd = getWaveSrvPath();
     console.log("trying to run local server", waveSrvCmd);
     const proc = child_process.spawn(getWaveSrvPath(), {
