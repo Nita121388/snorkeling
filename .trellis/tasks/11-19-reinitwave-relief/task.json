@@ -21,6 +21,6 @@
   "children": [],
   "parent": "11-19-tab-switch-perf",
   "relatedFiles": [],
-  "notes": "",
+  "notes": "2026-11-19 收尾：补执行器级机器证据。新增 reinit-wave-executor.ts（可注入 makeORef/reloadWaveObject 的最小可测化重构，wave.ts 纯搬移）+ reinit-wave-executor.test.ts；frontend/app/wave/ 22 例全绿（13 计划层 + 9 执行器层）。字面数字：on+tabids 未变 reloadWaveObject=5、workspace tab reload=0；off 回归锁=5 且逐项串行、tabids 未变也全量重刷；batch0 三个 reload 在任何 resolve 前全部发出。tsc baseline exit 0、eslint 0 error。证据明细写入 implement.md「机器证据」节。",
   "meta": {}
 }

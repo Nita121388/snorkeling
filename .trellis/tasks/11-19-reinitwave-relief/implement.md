@@ -52,3 +52,50 @@
 - 不跑真机 / CDP / 验证台（用户豁免）。
 - 不碰 `emain/`、后端、`wos.ts`、UI 样式。
 - 不 start 子任务 2（队列解耦）。
+
+## 机器证据（执行器级，2026-11-19 收尾补）
+
+上一版只证明了「纯函数计划输出」，journal 记录缺「执行器真的少发 RPC」的证据。本节补齐。
+
+### 最小可测化重构（行为不变）
+
+- 新增 `frontend/app/wave/reinit-wave-executor.ts`：把原内联在 `wave.ts` 的执行器抽成可注入
+  `ReloadExecutor { makeORef, reloadWaveObject }` 的纯执行器。
+  - `executeReinitReloads(batches, deps, exec)`：逻辑逐行照搬原实现（批间串行 / 批内 `Promise.all` /
+    workspace 取 `window.workspaceid` / layout 取 `tab.layoutstate` / oref 为 null 时跳过）。
+  - `executeWorkspaceTabReloads(tabIds, exec)`：取代内联 `reloadAllWorkspaceTabs`，同样 fire-and-forget。
+- `frontend/wave.ts` 只做调用：`executeReinitReloads(plan.batches, deps, WOS)`、
+  `executeWorkspaceTabReloads(tabIdsToReload, WOS)`；删除两个内联函数，`git diff` 为纯搬移。
+- 新增 `frontend/app/wave/reinit-wave-executor.test.ts`：9 例执行器级测试（mock 计数），
+  与既有 13 例计划层测试合计 22 例。
+
+### 关键数字（mock `reloadWaveObject` 的调用次数 / 顺序，均为字面断言）
+
+| 场景 | reloadWaveObject 次数 | workspace tab reload 追加次数 | 序列 |
+|---|---|---|---|
+| on + tabids 未变 | **5** | **0** | client→window→tab ‖ workspace→layout |
+| on + tabids 变化 | 5 | **3**（tab:t1,t2,t3） | 同上 + 逐个新 id |
+| on + 首帧 prev=undefined | 5 | 3（现状语义） | 同上 |
+| off（回归锁） | **5** | tabids 未变也 **3** | client→window→workspace→tab→layout，逐项串行 |
+| off + tabids 变化 | 5 | 3 | 同上 |
+
+- **并行证据（deferred mock）**：batch0 的 3 个 reload 在任何一个 resolve 前就全部发出
+  （`started = [client:c1, window:w1, tab:t1]`、`pending.length === 3`）；batch0 全部完成后才发 batch1 的
+  两个（`workspace:ws1, layout:ls1`）。off 路径同一时刻只有 1 个在飞（逐项串行）。
+- **依赖正确性**：workspace 的 oref 来自 reload 出的 `window.workspaceid`（`workspace:ws1`），
+  layout 来自 `tab.layoutstate`（`layout:ls1`）；依赖字段缺失时跳过该次 reload（3 次而非 5 次）。
+- **A3 执行器级判据**：`planWorkspaceTabReload(prev=同值, current)` → `null` →
+  `executeWorkspaceTabReloads(null)` 追加 **0** 次 RPC（总次数仍为 5）。
+
+### 命令与结果
+
+| 命令 | 结果 |
+|---|---|
+| `npx vitest run frontend/app/wave/` | `Test Files 2 passed`、**`Tests 22 passed`**（13 计划层 + 9 执行器层） |
+| `node scripts/check-tsc-baseline.mjs` | exit 0；grep `wave.ts` / `reinit-wave` 无错误条目（未新增类型债） |
+| `npx eslint frontend/wave.ts frontend/app/wave/` | 0 error（仅 `wave.ts:62` 既有 prefer-const warning，非本包引入） |
+
+### 仍不覆盖（诚实声明）
+
+- 真机计时/帧率：本机豁免（PRD Out of Scope），以上只证明 RPC 次数与并发批次的字面下降。
+- `reinitWave` 的 7 项副作用仍是同一份 `SIDE_EFFECT_ORDER` 清单，本包未改动其执行代码路径。
