@@ -23,6 +23,8 @@ import {
     formatValue,
     humanizeKey,
     isEmptyValue,
+    normalizePropertyType,
+    schemaVisibleTo,
     type PropertyDef,
     type PropertyEntry,
     type PropertySource,
@@ -34,6 +36,11 @@ import {
     toPropertyDefs,
     typeLabel,
 } from "./property-model";
+import {
+    appendOptionToSchemaDefs,
+    setPropertySchema,
+    type PropertySchemaDef,
+} from "./property-schema";
 
 const CardPropertyLimit = 5;
 /** detail（弹窗 / 详情卡）的主区行数上限。比悬浮卡大，但不再是无限铺 schema 空属性。 */
@@ -86,8 +93,9 @@ export type PropertyListProps = {
     onEditNote?: () => void;
     /** 内置 note 行弹窗编辑按钮（打开放大 Note 弹窗，类似 aisessions 列表）。 */
     onOpenNoteDialog?: () => void;
-    /** 值变更（内置与自定义都走这里，由上层决定写哪个 RPC）。 */
-    onChange?: (key: string, value: PropertyValue, def: PropertyDef) => void;
+    /** 值变更（内置与自定义都走这里，由上层决定写哪个 RPC）。返回 Promise 时（可观察写入成功）
+     *  组件会在写成功后再追加模板候选；返回 void 的调用方按成功处理。 */
+    onChange?: (key: string, value: PropertyValue, def: PropertyDef) => void | Promise<unknown>;
     /** 新建自定义属性（detail / agent 布局 + canEdit 时展示入口）。范围三选一见 PropertyAddScope。 */
     onAddProperty?: (key: string, type: PropertyType, scope: PropertyAddScope) => void;
     /** 删除自定义属性（仅 non-builtin）。 */
@@ -625,6 +633,40 @@ export function PropertyList({
 }: PropertyListProps) {
     const { t } = useTranslation("aisessions");
     const isAgent = layout === "agent";
+
+    // ── 模板候选追加（R1/R2：UI 提交新值后自动进候选） ──
+    // 追加基于 schema prop（父组件的 usePropertySchema 新鲜值，settings 变化即重渲染），
+    // 而不是闭包里的过期快照。连续快速提交两个新值时（settings 回写尚未到达）第二次合并
+    // 必须基于第一次的产物，否则会覆盖第一次的追加 —— 用「hook 权威值 + 本地补丁」的
+    // ref 实现：每次 render 同步 prop，提交间的空档由 ref 里的上次写入结果补上。
+    const appendSchemaRef = React.useRef<PropertySchemaDef[]>(schema ?? []);
+    appendSchemaRef.current = schema ?? [];
+
+    const maybeAppendOptions = React.useCallback(
+        async (def: PropertyDef, items: string[]) => {
+            const source = summary?.source ?? "";
+            const values = (items ?? []).map((v) => String(v)).filter((v) => v.trim() !== "");
+            if (values.length === 0 || appendSchemaRef.current.length === 0) return;
+            // 只有下拉型（select / status 归一为 select / multi_select）有「候选」概念；
+            // person / relation 不是选项表，不追加。
+            const type = normalizePropertyType(def.type);
+            if (type !== "select" && type !== "multi_select") return;
+            try {
+                // 可见性过滤：只对当前会话看得见的模板定义追加，避免污染其它 agent 的范围定义。
+                const visible = appendSchemaRef.current.filter((d) => schemaVisibleTo(d, source));
+                const { next, changed } = appendOptionToSchemaDefs(visible, def.key, values);
+                if (!changed) return;
+                // 写前先推进本地视图（见 appendSchemaRef 注释），保证连续追加不互相覆盖。
+                appendSchemaRef.current = next;
+                await setPropertySchema(next);
+            } catch (err) {
+                // 模板写失败绝不回滚 / 阻断已成功的值写入（R4）：值才是本操作的主目标。
+                console.warn("[property] append option to schema failed:", err);
+            }
+        },
+        [summary?.source]
+    );
+
     const entries = React.useMemo(() => {
         const all = toPropertyDefs(summary, schema);
         if (!isAgent) {
@@ -736,7 +778,20 @@ export function PropertyList({
      */
     const commitDropdown = (entry: PropertyEntry, items: string[]) => {
         const multiple = MultiValueTypes.has(entry.def.type);
-        onChange?.(entry.def.key, multiple ? items : (items[0] ?? null), entry.def);
+        const next = multiple ? items : (items[0] ?? null);
+        const writeResult = onChange?.(entry.def.key, next, entry.def);
+        // 值提交成功后再追加模板候选（决策 #1/#3）：本操作的主目标是写值，追加是附带。
+        // onChange 返回 Promise（可观察写入成功）时等 settle 成功再追加；
+        // 返回 void 的既有调用方（写入在父组件内异步进行、无从观察结果）按成功处理 ——
+        // 哪怕此时值写入其实失败了，多一个候选也是无害且自愈的（值下次可再选）。
+        if (writeResult != null && typeof (writeResult as Promise<unknown>)?.then === "function") {
+            (writeResult as Promise<unknown>).then(
+                () => void maybeAppendOptions(entry.def, items),
+                () => undefined
+            );
+        } else {
+            void maybeAppendOptions(entry.def, items);
+        }
     };
 
     const customKeys = entries.filter((e) => !e.def.builtin).map((e) => e.def.key);
