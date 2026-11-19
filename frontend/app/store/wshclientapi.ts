@@ -1128,6 +1128,48 @@ export class RpcApiType {
         return client.wshRpcCall("sessionannotate", data, opts);
     }
 
+    // command "sessionemojiget" [call]
+    SessionEmojiGetCommand(client: WshClient, data: SessionEmojiGetRequest, opts?: RpcOpts): Promise<SessionEmojiGetResult> {
+        if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "sessionemojiget", data, opts);
+        return client.wshRpcCall("sessionemojiget", data, opts);
+    }
+
+    // command "sessionemojiinject" [call]
+    SessionEmojiInjectCommand(client: WshClient, data: SessionEmojiInjectRequest, opts?: RpcOpts): Promise<SessionEmojiInjectResult> {
+        if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "sessionemojiinject", data, opts);
+        return client.wshRpcCall("sessionemojiinject", data, opts);
+    }
+
+    // command "sessionemojimigrate" [call]
+    SessionEmojiMigrateCommand(client: WshClient, data: SessionEmojiMigrateRequest, opts?: RpcOpts): Promise<SessionEmojiMigrateResult> {
+        if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "sessionemojimigrate", data, opts);
+        return client.wshRpcCall("sessionemojimigrate", data, opts);
+    }
+
+    // command "sessionemojiprefs" [call]
+    SessionEmojiPrefsCommand(client: WshClient, data: SessionEmojiPrefsRequest, opts?: RpcOpts): Promise<SessionEmojiPrefsResult> {
+        if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "sessionemojiprefs", data, opts);
+        return client.wshRpcCall("sessionemojiprefs", data, opts);
+    }
+
+    // command "sessionemojirecommendations" [call]
+    SessionEmojiRecommendationsCommand(client: WshClient, data: SessionEmojiRecommendationsRequest, opts?: RpcOpts): Promise<SessionEmojiRecommendationsResult> {
+        if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "sessionemojirecommendations", data, opts);
+        return client.wshRpcCall("sessionemojirecommendations", data, opts);
+    }
+
+    // command "sessionemojirecordpick" [call]
+    SessionEmojiRecordPickCommand(client: WshClient, data: SessionEmojiRecordPickRequest, opts?: RpcOpts): Promise<SessionEmojiRecordPickResult> {
+        if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "sessionemojirecordpick", data, opts);
+        return client.wshRpcCall("sessionemojirecordpick", data, opts);
+    }
+
+    // command "sessionemojiset" [call]
+    SessionEmojiSetCommand(client: WshClient, data: SessionEmojiSetRequest, opts?: RpcOpts): Promise<SessionEmojiSetResult> {
+        if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "sessionemojiset", data, opts);
+        return client.wshRpcCall("sessionemojiset", data, opts);
+    }
+
     // command "sessionget" [call]
     SessionGetCommand(client: WshClient, data: SessionGetRequest, opts?: RpcOpts): Promise<SessionLiveRecord> {
         if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "sessionget", data, opts);

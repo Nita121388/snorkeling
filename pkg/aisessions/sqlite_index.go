@@ -251,6 +251,29 @@ func (idx *SQLiteIndex) init(ctx context.Context) error {
 		`CREATE INDEX IF NOT EXISTS idx_ai_session_meta_key ON ai_session_meta(session_key, marked, updated_at)`,
 		`CREATE INDEX IF NOT EXISTS idx_ann_session ON ai_session_annotations(session_key, seq)`,
 		`CREATE INDEX IF NOT EXISTS idx_ann_anchor ON ai_session_annotations(session_key, anchor_key, id)`,
+		// Emoji preference counters (emoji-preference track, P0). dim is
+		// 'project' | 'persona' | 'global'; dim_key is the normalized project
+		// path, the hero id (or "provider:<name>"), or ''. CREATE TABLE IF NOT
+		// EXISTS keeps older databases migrating in place; nothing reads or
+		// writes these tables until the P2/P3 wiring lands.
+		`CREATE TABLE IF NOT EXISTS ai_emoji_prefs (
+			dim        TEXT NOT NULL,
+			dim_key    TEXT NOT NULL,
+			emoji      TEXT NOT NULL,
+			count      INTEGER NOT NULL DEFAULT 1,
+			updated_at INTEGER NOT NULL,
+			PRIMARY KEY (dim, dim_key, emoji)
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_emoji_prefs_dim ON ai_emoji_prefs(dim, dim_key, count DESC)`,
+		// Externally injected emoji recommendations (2026-11-19 拍板: 内部不做
+		// 推荐，所有推荐来源都是外部 agent)。每会话一行，外部注入时整体
+		// 覆盖；Picker 只在有值且未过期时显示推荐区（design.md §8.2）。
+		`CREATE TABLE IF NOT EXISTS ai_emoji_recommendations (
+			session_key  TEXT PRIMARY KEY,
+			payload_json TEXT NOT NULL,
+			injected_by  TEXT NOT NULL DEFAULT '',
+			injected_at  INTEGER NOT NULL
+		)`,
 	}
 	for _, stmt := range stmts {
 		if _, err := idx.db.ExecContext(ctx, stmt); err != nil {
@@ -858,6 +881,11 @@ type batchMetaMaps struct {
 	titleSource        map[string]string
 	aiTitleAttemptedAt map[string]int64
 	tags               map[string][]string
+	// emojiProps holds the backend emoji property (prop_key='emoji') for the
+	// emoji-preference track: the list path must surface it so the frontend can
+	// resolve L2 session emojis from the backend props (design.md §3.3). One
+	// targeted IN query instead of full PropsForSession per key.
+	emojiProps map[string]PropertyCell
 }
 
 // batchMetaForKeys loads metadata for many session keys with 2 queries instead of
@@ -871,6 +899,7 @@ func (idx *SQLiteIndex) batchMetaForKeys(ctx context.Context, keys []string) (ba
 		titleSource:        make(map[string]string, len(keys)),
 		aiTitleAttemptedAt: make(map[string]int64, len(keys)),
 		tags:               make(map[string][]string, len(keys)),
+		emojiProps:         make(map[string]PropertyCell, len(keys)),
 	}
 	if len(keys) == 0 {
 		return result, nil
@@ -914,6 +943,42 @@ func (idx *SQLiteIndex) batchMetaForKeys(ctx context.Context, keys []string) (ba
 	for _, row := range tagRows {
 		result.tags[row.Key] = append(result.tags[row.Key], row.Tag)
 	}
+	// Backend emoji props (emoji-preference track): only prop_key='emoji', one
+	// targeted IN query, walking the existing idx_ai_session_props_session index.
+	emojiRows := []struct {
+		Key       string `db:"session_key"`
+		ValueJSON string `db:"value_json"`
+		PropType  string `db:"prop_type"`
+		Source    string `db:"source"`
+		UpdatedAt int64  `db:"updated_at"`
+		PropName  string `db:"prop_name"`
+		PropOrder int    `db:"prop_order"`
+	}{}
+	query, args, err = sqlx.In(`SELECT session_key, value_json, prop_type, source, updated_at, prop_name, prop_order FROM ai_session_props WHERE prop_key = 'emoji' AND session_key IN (?)`, keys)
+	if err != nil {
+		return result, err
+	}
+	query = idx.db.Rebind(query)
+	if err := idx.db.SelectContext(ctx, &emojiRows, query, args...); err != nil {
+		return result, err
+	}
+	for _, row := range emojiRows {
+		if row.ValueJSON == "" || row.ValueJSON == "null" {
+			continue
+		}
+		var value any
+		if err := json.Unmarshal([]byte(row.ValueJSON), &value); err != nil {
+			return result, fmt.Errorf("decode emoji prop for %q: %w", row.Key, err)
+		}
+		result.emojiProps[row.Key] = PropertyCell{
+			Value:     value,
+			Type:      row.PropType,
+			Source:    row.Source,
+			UpdatedAt: row.UpdatedAt,
+			Name:      row.PropName,
+			Order:     row.PropOrder,
+		}
+	}
 	return result, nil
 }
 
@@ -922,6 +987,17 @@ func (idx *SQLiteIndex) batchMetaForKeys(ctx context.Context, keys []string) (ba
 func (idx *SQLiteIndex) applyBatchMeta(summary *SessionSummary, meta batchMetaMaps) {
 	if summary == nil || strings.TrimSpace(summary.Key) == "" {
 		return
+	}
+	// Backend emoji props apply regardless of the meta row (mirrors ApplyMeta:
+	// props are an independent additive layer). A string value is required —
+	// anything else is skipped so a corrupt row cannot poison the emoji chain.
+	if cell, ok := meta.emojiProps[summary.Key]; ok {
+		if _, isString := cell.Value.(string); isString {
+			if summary.Props == nil {
+				summary.Props = make(map[string]PropertyCell, 1)
+			}
+			summary.Props["emoji"] = cell
+		}
 	}
 	if !meta.loaded[summary.Key] {
 		// No meta row: clear defaults (mirrors ApplyMeta with ErrNoRows).

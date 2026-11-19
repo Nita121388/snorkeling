@@ -2881,17 +2881,17 @@ declare global {
         "waveai:maxoutputtokens"?: number;
     };
 
-    // hero.Origin
-    type Origin = {
-        deviceId?: string;
-        deviceName?: string;
-        platform?: string;
-    };
-
     // syncproto.Origin
     type Origin = {
         deviceid?: string;
         devicename?: string;
+        platform?: string;
+    };
+
+    // hero.Origin
+    type Origin = {
+        deviceId?: string;
+        deviceName?: string;
         platform?: string;
     };
 
@@ -3363,6 +3363,140 @@ declare global {
         cursor?: SessionMessageCursor;
         hasMore?: boolean;
         nextMessageOffset?: number;
+    };
+
+    // wshrpc.SessionEmojiGetRequest
+    type SessionEmojiGetRequest = {
+        identifier: string;
+        blockid?: string;
+    };
+
+    // wshrpc.SessionEmojiGetResult
+    type SessionEmojiGetResult = {
+        sessionKey: string;
+        id: string;
+        emoji: string;
+        source: string;
+        updatedAt: number;
+    };
+
+    // wshrpc.SessionEmojiInjectRequest
+    type SessionEmojiInjectRequest = {
+        identifier: string;
+        blockid?: string;
+        injectedBy?: string;
+        candidates: SessionEmojiRecommendation[];
+        ttlSeconds?: number;
+    };
+
+    // wshrpc.SessionEmojiInjectResult
+    type SessionEmojiInjectResult = {
+        sessionKey: string;
+        candidates: number;
+    };
+
+    // wshrpc.SessionEmojiMigrateRequest
+    type SessionEmojiMigrateRequest = {
+        entries: SessionEmojiMigrationEntry[];
+    };
+
+    // wshrpc.SessionEmojiMigrateResult
+    type SessionEmojiMigrateResult = {
+        migrated?: SessionEmojiMigrationResult[];
+        skipped?: SessionEmojiMigrationSkip[];
+    };
+
+    // wshrpc.SessionEmojiMigrationEntry
+    type SessionEmojiMigrationEntry = {
+        identifier: string;
+        emoji: string;
+    };
+
+    // wshrpc.SessionEmojiMigrationResult
+    type SessionEmojiMigrationResult = {
+        identifier: string;
+        sessionKey: string;
+        emoji: string;
+    };
+
+    // wshrpc.SessionEmojiMigrationSkip
+    type SessionEmojiMigrationSkip = {
+        identifier: string;
+        reason: string;
+    };
+
+    // wshrpc.SessionEmojiPrefsRequest
+    type SessionEmojiPrefsRequest = {
+        identifier: string;
+        blockid?: string;
+    };
+
+    // wshrpc.SessionEmojiPrefsResult
+    type SessionEmojiPrefsResult = {
+        sessionKey: string;
+        project?: {[key: string]: number};
+        persona?: {[key: string]: number};
+        global?: {[key: string]: number};
+        prefVersion: number;
+    };
+
+    // wshrpc.SessionEmojiRecommendation
+    type SessionEmojiRecommendation = {
+        emoji: string;
+        reason?: string;
+    };
+
+    // wshrpc.SessionEmojiRecommendationsRequest
+    type SessionEmojiRecommendationsRequest = {
+        identifier: string;
+        blockid?: string;
+    };
+
+    // wshrpc.SessionEmojiRecommendationsResult
+    type SessionEmojiRecommendationsResult = {
+        sessionKey: string;
+        found: boolean;
+        injectedBy?: string;
+        injectedAt?: number;
+        expiresAt?: number;
+        candidates?: SessionEmojiRecommendation[];
+    };
+
+    // wshrpc.SessionEmojiRecordPickRequest
+    type SessionEmojiRecordPickRequest = {
+        identifier: string;
+        blockid?: string;
+        emoji: string;
+    };
+
+    // wshrpc.SessionEmojiRecordPickResult
+    type SessionEmojiRecordPickResult = {
+        sessionKey: string;
+        id: string;
+        emoji: string;
+        cleared: boolean;
+    };
+
+    // wshrpc.SessionEmojiSetRequest
+    type SessionEmojiSetRequest = {
+        identifier: string;
+        blockid?: string;
+        emoji: string;
+        ifabsent?: boolean;
+        force?: boolean;
+        expectedhash?: string;
+        expectedupdatedat?: number;
+        dryrun?: boolean;
+        yes?: boolean;
+    };
+
+    // wshrpc.SessionEmojiSetResult
+    type SessionEmojiSetResult = {
+        dryRun: boolean;
+        changed: boolean;
+        target?: string;
+        skipped?: string[];
+        messages?: string[];
     };
 
     // wshrpc.SessionGetRequest

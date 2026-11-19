@@ -16,6 +16,11 @@ const (
 	CodeNoRoute     = "E_NO_ROUTE"
 	CodeTimeout     = "E_TIMEOUT"
 	CodeInternal    = "E_INTERNAL"
+	// Session-emoji specific codes (design.md §3.4).
+	CodeInvalidEmoji   = "E_INVALID_EMOJI"
+	CodeConflictUser   = "E_CONFLICT_SOURCE_USER"
+	CodeConflictExists = "E_CONFLICT_EXISTS"
+	CodeInvalidDim     = "E_INVALID_DIM"
 )
 
 // Error is a typed, agent-readable error. The CLI renders Code/Message/Hint as

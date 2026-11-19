@@ -62,6 +62,11 @@ type PatchOperation struct {
 type PropPatch struct {
 	Type  string `json:"type"`
 	Value any    `json:"value"`
+	// IfAbsent makes the write a no-op when the target slot already holds any
+	// value (any source): the slot is skipped with "exists (--if-absent)". This
+	// is the emoji-preference track's idempotence contract — an agent never
+	// overwrites through if-absent; only force does (design.md §3.1).
+	IfAbsent bool `json:"ifabsent,omitempty"`
 	// Name optionally renames the user-visible label.
 	Name string `json:"name,omitempty"`
 	// Scope controls where the property *definition* becomes visible:
@@ -326,6 +331,9 @@ func ApplyPatch(ctx context.Context, patch Patch, opts ApplyOptions) (Report, er
 	if !opts.DryRun && !opts.Yes {
 		return report, fmt.Errorf("apply requires explicit confirmation")
 	}
+	if err := normalizeSessionEmojiPatchOperations(patch.Operations); err != nil {
+		return report, err
+	}
 	if err := validatePatch(patch, opts); err != nil {
 		return report, err
 	}
@@ -402,6 +410,33 @@ func validatePatch(patch Patch, opts ApplyOptions) error {
 	return nil
 }
 
+// normalizeSessionEmojiPatchOperations downgrades the PRD's session_emoji.update
+// op into the existing session_prop.update pipeline (with the emoji validated
+// and if-absent forced), so no second apply/preview branch is needed.
+func normalizeSessionEmojiPatchOperations(operations []PatchOperation) error {
+	for idx := range operations {
+		op := &operations[idx]
+		if op.Type != "session_emoji.update" {
+			continue
+		}
+		prop, ok := op.Props["emoji"]
+		if !ok || prop.Value == nil {
+			return fmt.Errorf("operation %d session_emoji.update requires an emoji value", idx)
+		}
+		raw, ok := prop.Value.(string)
+		if !ok {
+			return fmt.Errorf("operation %d session_emoji.update requires a string emoji value", idx)
+		}
+		if _, err := aisessions.NormalizeEmoji(raw); err != nil {
+			// CLI layer surfaces this as E_INVALID_EMOJI (design.md §3.4).
+			return fmt.Errorf("operation %d %w", idx, err)
+		}
+		op.Props["emoji"] = PropPatch{Type: "text", Value: raw, IfAbsent: true}
+		op.Type = "session_prop.update"
+	}
+	return nil
+}
+
 func validateOperation(idx int, op PatchOperation, opts ApplyOptions) error {
 	if len(op.raw) > 0 {
 		allowed := allowedFieldsForOperation(op.Type)
@@ -472,7 +507,17 @@ func validateOperation(idx int, op PatchOperation, opts ApplyOptions) error {
 }
 
 func operationHasPrecondition(op PatchOperation) bool {
-	return strings.TrimSpace(op.ExpectedHash) != "" || op.ExpectedUpdatedAt != 0
+	if strings.TrimSpace(op.ExpectedHash) != "" || op.ExpectedUpdatedAt != 0 {
+		return true
+	}
+	// 拍板 #2 (design.md §8.1): --if-absent is itself the "never overwrite"
+	// precondition, so a real write may skip expected-hash when set.
+	for _, prop := range op.Props {
+		if prop.IfAbsent {
+			return true
+		}
+	}
+	return false
 }
 
 func allowedFieldsForOperation(opType string) map[string]bool {
@@ -881,6 +926,13 @@ func sessionPropSuggestions(existing map[string]aisessions.PropertyCell, op Patc
 			skipped = append(skipped, key+": built-in property")
 			continue
 		}
+		if prop.IfAbsent {
+			if _, exists := existing[key]; exists {
+				// The slot already holds a value (any source): idempotent no-op.
+				skipped = append(skipped, key+": exists (--if-absent)")
+				continue
+			}
+		}
 		suggestions = append(suggestions, aisessions.PropertySuggestion{
 			Key:   key,
 			Name:  prop.Name,
@@ -888,7 +940,6 @@ func sessionPropSuggestions(existing map[string]aisessions.PropertyCell, op Patc
 			Value: prop.Value,
 		})
 	}
-	_ = existing
 	return suggestions, skipped
 }
 

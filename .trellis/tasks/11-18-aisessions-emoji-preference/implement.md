@@ -19,16 +19,20 @@
 
 ## 1. P0 后端地基（不改任何现有行为）
 
-- [ ] Go 版 `NormalizeEmoji`（`pkg/aisessions/` 新文件，uniseg）：单 grapheme / ZWJ 复合合法 / pictographic 判定
-- [ ] 两表建表 + 老库幂等迁移：`ai_emoji_prefs`、`ai_emoji_recommend_cache`（`sqlite_index.go` 建表串 + `ensure*` 兼容）
-- [ ] 偏好 UPSERT / 负信号 API（`BumpEmojiPref(dim, dimKey, emoji, delta)`）
-- [ ] 推荐器纯函数包：五信号打分 + 规则表（tag/title 双语常量）+ top5 + `autosetEligible`
-- [ ] Go/TS 共享 grapheme 测试向量 JSON（`fixtures/emoji-grapheme-cases.json`）
+> ⚠️ 2026-11-19 第二轮拍板（design.md §8.2）：内部不做推荐，推荐全部来自外部 agent 注入。原「推荐器纯函数包（五信号）」条目作废，替换为「注入存储 API」。已全部落地 ✅。
 
-**验收（命令 → 期望）**
-- `go test ./pkg/aisessions/... -run Emoji` 全绿
-- 老库启动后 `sqlite3 <index.db> ".tables"` 含 `ai_emoji_prefs`、`ai_emoji_recommend_cache`
-- 打分表单测：单命中 / 多信号加总 / 同分裁决 / 空库兜底 / `autosetEligible` 仅 1 号信号
+- [x] Go 版 `NormalizeEmoji`（`pkg/aisessions/` 新文件，uniseg）：单 grapheme / ZWJ 复合合法 / pictographic 判定（`normalize_emoji.go` + 生成的 `emoji_presentation_ranges.go`，Unicode 15.0 Emoji_Presentation 表）
+- [x] 两表建表 + 老库幂等迁移：`ai_emoji_prefs`、`ai_emoji_recommendations`（原 `ai_emoji_recommend_cache`，改名；`sqlite_index.go` 建表串，IF NOT EXISTS，老库启动不报错）
+- [x] 偏好 UPSERT / 负信号 API：`BumpEmojiPref(dim, dimKey, emoji, delta)`（count 地板 0；dim 取值域固定 project|persona|global；dim_key 规范化；每次变更事务内递增全局版本号 `ai_schema_meta.emoji_pref_version`）+ `EmojiPrefsForDim` / `EmojiPrefVersion` 读
+- [x] 注入存储 API：`SetEmojiRecommendations(sessionKey, injectedBy, candidates, ttl)`（逐条 NormalizeEmoji、去重、上限 8、整体覆盖、空列表=清除）+ `EmojiRecommendationsFor(sessionKey)`（缺失/过期/空 → `found=false`）
+- [x] Go/TS 共享 grapheme 测试向量 JSON（`fixtures/emoji-grapheme-cases.json`）
+
+**验收（已跑，全绿）**
+- `go test ./pkg/aisessions/... -run Emoji -v` 全绿 → `EMOJI_GO_OK`
+- `go build ./...` 通过
+- 老库启动后 `.tables` 含 `ai_emoji_prefs`、`ai_emoji_recommendations`（`TestSQLiteIndexEmojiTablesCreatedIdempotently` + sqlite3 CLI 演示）；重复启动不报错
+- 注入 API 单测：整体覆盖 / 去重 / 上限 / 一条非法拒整批 / TTL 过期=不可见 / 空注入=清除
+- 偏好单测：+1 UPSERT / 负信号地板 0 / dim 校验 / dim_key 规范化（Windows 大小写、`\`→`/`、尾部斜杠）/ 版本号单调
 
 **回滚点 1**：纯新增文件 + 建表，无调用方 → revert 即无痕。
 
@@ -141,3 +145,40 @@ P0 ──> P1 ──> P2 ──> P3 ──> P4 ──> P5
 ```
 
 每批次独立可 ship、独立可回滚；P1 完成后即使 P2/P3 停摆，功能与今天等价（后端只是一层镜像）。
+
+---
+
+## 9. 落地进度（2026-11-20，worker 连续推进）
+
+> 范围按 design.md §8.2 新架构（内部零推荐、推荐全部来自外部注入、内部只展示）。
+
+### P0 ✅ 后端地基
+normalize_emoji.go / emoji_presentation_ranges.go（Unicode 15.0 生成表）/ emoji_prefs.go（BumpEmojiPref + 版本号 + dim 规范化）/ emoji_recommendations.go（注入存储 API）/ fixtures 共享向量 / sqlite_index.go 双表幂等建表。
+
+### P1 ✅ 读路径
+- `batchMetaForKeys` 批量挂 `props["emoji"]`（`emojiProps` 成员 + applyBatchMeta 早退前应用）；ApplyMeta 单会话路径原生支持
+- `session-persona-store.ts`：快照 = 后端 props ∪ localStorage，后端优先；`setBackendSessionEmojis` / `mergeBackendSessionEmojis` / `applyBackendSessionSummaries`（导出签名不变）
+- aisessions.tsx List 成功处调用 `applyBackendSessionSummaries`
+
+### P2 ✅ 写路径 + 外部注入通道（CLI / MCP / patch）
+- `PropPatch.IfAbsent`（agentdata）+ `operationHasPrecondition` 认 if-absent（拍板 #2：--if-absent 免 --expected-hash）
+- `session_emoji.update` op：内部降级 `session_prop.update{emoji, ifAbsent}`（normalizeSessionEmojiPatchOperations）
+- WshServerInterface + types：`sessionemojiget / sessionemojiset / sessionemojinject / sessionemojirecommendations / sessionemojiprefs`（wshclient + wshclientapi.ts 生成器自动补齐）
+- agentcontrol/emoji.go：5 个核心函数（set 复用 agentdata 全链：audit/backup/dry-run/hash；注入逐条 NormalizeEmoji、上限 8、空=清除、TTL）
+- MCP 5 工具（snorkeling_session_emoji_get/set/inject/recommendations/prefs）+ 错误码 E_INVALID_EMOJI / E_CONFLICT_SOURCE_USER / E_CONFLICT_EXISTS / E_INVALID_DIM
+- CLI `wsh session emoji get/set/inject/recommendations/prefs`（--json 错误结构化输出）
+
+### P3 ✅ Picker 展示区 + 手选沉淀
+- `SessionEmojiRecordPickCommand`（UI 通道）：单事务写 props(source=user) + 三偏好计数 +1/-1 + 版本号；清空 = 负信号（读出被清除 emoji）；MCP 工具 + CLI 由 RpcApi/生成器补齐
+- `agent-emoji-picker.tsx`：推荐区（session scope，异步拉取，**有就显示、没有整块隐藏**，recents 式样 + reason tooltip，点选 = 手选 RecordEmojiPick）；手选路径接 RecordEmojiPick（失败静默）
+- `property-model.ts` 隐藏 `emoji` 行；`propertygenerate.go` 两处跳过 `emoji` key（`EmojiPropKey` 常量共享）
+- 推荐区 DOM 契约锁：agent-emoji-recommend-row.dom.test.tsx（渲染/隐藏/scope/点击/失败静默）
+
+### P4 ✅ 存量迁移
+- `SessionEmojiMigrateCommand`：逐条 resolve → 空槽才写（if-absent）→ RecordEmojiPick（记偏好）；未知 id / 无效 emoji / 已设槽 → skipped；幂等（重复跑不重复计数）
+- 前端 `migrateLegacySessionEmojis()`（store，RPC 成功含 skipped 即删 localStorage key；失败保留重试）；app.tsx 首渲染 fire-and-forget
+- store 迁移单测（成功删 key / 失败保留 / 空 no-op）
+
+### P5 ⏳ 待做（需要真机）
+- `node scripts/verify/index.mjs` 视觉回归 area 未跑（需要 Electron 窗口）→ 完成后按规矩写一行 verify-ledger
+- hero 仓 playbook §六命令核对（命令形态已按 --source 默认 ai 设计，无需手敲 --source）

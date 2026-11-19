@@ -3,6 +3,7 @@
 
 import { agentPersonaAtom } from "@/app/agent-persona/use-agent-personas";
 import { sessionEmojiAtom } from "@/app/agent-persona/use-session-personas";
+import { applyBackendSessionSummaries } from "@/app/agent-persona/session-persona-store";
 import { restoreMinimizedBlockToLayout } from "@/app/block/block-minimize";
 import type { BlockNodeModel } from "@/app/block/blocktypes";
 import type { RefreshStatus } from "@/app/element/refresh-status-icon";
@@ -580,6 +581,7 @@ export class AiSessionsViewModel implements ViewModel {
                 return;
             }
             const sessions = response?.sessions ?? [];
+            applyBackendSessionSummaries(sessions);
             globalStore.set(this.attachTruncatedAtom, response?.attachTruncated ?? false);
             globalStore.set(this.projectPathsAtom, response?.projectPaths ?? []);
             globalStore.set(this.heroRosterAtom, {

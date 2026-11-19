@@ -90,6 +90,30 @@ func (f *fakeBackend) SessionAnnotate(ctx context.Context, req wshrpc.SessionAnn
 	return &wshrpc.SessionAnnotateResult{DryRun: !req.Yes, Written: req.Yes}, nil
 }
 
+func (f *fakeBackend) SessionEmojiGet(ctx context.Context, req wshrpc.SessionEmojiGetRequest) (*wshrpc.SessionEmojiGetResult, error) {
+	return &wshrpc.SessionEmojiGetResult{SessionKey: "fake-key"}, nil
+}
+
+func (f *fakeBackend) SessionEmojiSet(ctx context.Context, req wshrpc.SessionEmojiSetRequest) (*wshrpc.SessionEmojiSetResult, error) {
+	return &wshrpc.SessionEmojiSetResult{DryRun: !req.Yes}, nil
+}
+
+func (f *fakeBackend) SessionEmojiInject(ctx context.Context, req wshrpc.SessionEmojiInjectRequest) (*wshrpc.SessionEmojiInjectResult, error) {
+	return &wshrpc.SessionEmojiInjectResult{SessionKey: "fake-key", Candidates: len(req.Candidates)}, nil
+}
+
+func (f *fakeBackend) SessionEmojiRecommendations(ctx context.Context, req wshrpc.SessionEmojiRecommendationsRequest) (*wshrpc.SessionEmojiRecommendationsResult, error) {
+	return &wshrpc.SessionEmojiRecommendationsResult{SessionKey: "fake-key"}, nil
+}
+
+func (f *fakeBackend) SessionEmojiPrefs(ctx context.Context, req wshrpc.SessionEmojiPrefsRequest) (*wshrpc.SessionEmojiPrefsResult, error) {
+	return &wshrpc.SessionEmojiPrefsResult{SessionKey: "fake-key"}, nil
+}
+
+func (f *fakeBackend) RecordEmojiPick(ctx context.Context, req wshrpc.SessionEmojiRecordPickRequest) (*wshrpc.SessionEmojiRecordPickResult, error) {
+	return &wshrpc.SessionEmojiRecordPickResult{SessionKey: "fake-key", Emoji: req.Emoji}, nil
+}
+
 func (f *fakeBackend) AgentLaunch(ctx context.Context, req wshrpc.AgentLaunchRequest) (*wshrpc.AgentLaunchResult, error) {
 	f.launchCalls++
 	f.lastLaunchReq = req
@@ -155,8 +179,8 @@ func TestToolsListShapeAndScopes(t *testing.T) {
 	s, _ := newServer(nil)
 	res := resultMap(t, mustHandle(t, s, `{"jsonrpc":"2.0","id":2,"method":"tools/list"}`))
 	tools, _ := res["tools"].([]any)
-	if len(tools) != 19 {
-		t.Fatalf("expected 19 tools, got %d", len(tools))
+	if len(tools) != 25 {
+		t.Fatalf("expected 24 tools, got %d", len(tools))
 	}
 	seen := map[string]bool{}
 	for _, raw := range tools {

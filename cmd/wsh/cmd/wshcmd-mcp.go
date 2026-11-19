@@ -127,6 +127,34 @@ func (b rpcBackend) SessionAnnotate(ctx context.Context, req wshrpc.SessionAnnot
 	return wshclient.SessionAnnotateCommand(RpcClient, req, b.opts())
 }
 
+func (b rpcBackend) SessionEmojiGet(ctx context.Context, req wshrpc.SessionEmojiGetRequest) (*wshrpc.SessionEmojiGetResult, error) {
+	return wshclient.SessionEmojiGetCommand(RpcClient, req, b.opts())
+}
+
+func (b rpcBackend) SessionEmojiSet(ctx context.Context, req wshrpc.SessionEmojiSetRequest) (*wshrpc.SessionEmojiSetResult, error) {
+	return wshclient.SessionEmojiSetCommand(RpcClient, req, b.opts())
+}
+
+func (b rpcBackend) SessionEmojiInject(ctx context.Context, req wshrpc.SessionEmojiInjectRequest) (*wshrpc.SessionEmojiInjectResult, error) {
+	return wshclient.SessionEmojiInjectCommand(RpcClient, req, b.opts())
+}
+
+func (b rpcBackend) SessionEmojiRecommendations(ctx context.Context, req wshrpc.SessionEmojiRecommendationsRequest) (*wshrpc.SessionEmojiRecommendationsResult, error) {
+	return wshclient.SessionEmojiRecommendationsCommand(RpcClient, req, b.opts())
+}
+
+func (b rpcBackend) SessionEmojiPrefs(ctx context.Context, req wshrpc.SessionEmojiPrefsRequest) (*wshrpc.SessionEmojiPrefsResult, error) {
+	return wshclient.SessionEmojiPrefsCommand(RpcClient, req, b.opts())
+}
+
+func (b rpcBackend) RecordEmojiPick(ctx context.Context, req wshrpc.SessionEmojiRecordPickRequest) (*wshrpc.SessionEmojiRecordPickResult, error) {
+	return wshclient.SessionEmojiRecordPickCommand(RpcClient, req, b.opts())
+}
+
+func (b rpcBackend) SessionEmojiMigrate(ctx context.Context, req wshrpc.SessionEmojiMigrateRequest) (*wshrpc.SessionEmojiMigrateResult, error) {
+	return wshclient.SessionEmojiMigrateCommand(RpcClient, req, b.opts())
+}
+
 func (b rpcBackend) AgentLaunch(ctx context.Context, req wshrpc.AgentLaunchRequest) (*wshrpc.AgentLaunchResult, error) {
 	return wshclient.AgentLaunchCommand(RpcClient, req, b.opts())
 }

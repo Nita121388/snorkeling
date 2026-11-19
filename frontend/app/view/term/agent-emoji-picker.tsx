@@ -103,6 +103,9 @@ export function AgentEmojiPicker({
     const [emojiOnly, setEmojiOnlyState] = React.useState(() =>
         sessionKey !== "" ? getTabDisplayMode(sessionKey) === "emoji-only" : false
     );
+    // Externally injected recommendations (design §8.2: 内部只展示，有就显示)
+    // — one async fetch while the picker is open; null hides the section.
+    const [recommendations, setRecommendations] = React.useState<SessionEmojiRecommendation[] | null>(null);
     // The radio must reflect the scope that will actually be written. When the
     // session id is unknown the request collapses onto the per-block scope (the
     // radiobutton label says "仅此标签页") instead of silently writing provider-wide.
@@ -140,6 +143,16 @@ export function AgentEmojiPicker({
             const target = resolveAgentEmojiWriteTarget(effectiveScope, sessionKey, provider, blockKey);
             if (target.kind === "session") {
                 setSessionEmoji(target.sessionId, emoji);
+                // Record the pick on the backend (source=user prop + preference
+                // counters, one transaction). Best-effort: a failure must never
+                // block the picker (design.md §5.5; the localStorage value still
+                // works while the backend is unreachable).
+                void RpcApi.SessionEmojiRecordPickCommand(TabRpcClient, {
+                    identifier: target.sessionId,
+                    emoji: emoji ?? "",
+                }).catch(() => {
+                    /* silent: local write already applied */
+                });
             } else if (target.kind === "block") {
                 // Per-block persona: block meta only, so a single tab click can never
                 // reach the provider-wide store shared by every session.
@@ -186,10 +199,47 @@ export function AgentEmojiPicker({
         setEmojiOnlyState(getTabDisplayMode(sessionKey) === "emoji-only");
     }, [sessionKey]);
 
+    React.useEffect(() => {
+        if (sessionKey === "") {
+            setRecommendations(null);
+            return;
+        }
+        let cancelled = false;
+        RpcApi.SessionEmojiRecommendationsCommand(TabRpcClient, { identifier: sessionKey })
+            .then((res) => {
+                if (!cancelled) {
+                    setRecommendations(res?.found && res.candidates?.length > 0 ? res.candidates : null);
+                }
+            })
+            .catch(() => {
+                if (!cancelled) {
+                    setRecommendations(null);
+                }
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, [sessionKey]);
+
     const providerLabel =
         provider === "" || provider === "agent" ? t("term:agentEmoji.thisAgent") : formatAgentProvider(provider);
     const footer = (
         <div className="agent-emoji-picker-footer">
+            {effectiveScope === "session" && sessionKey !== "" && recommendations != null && recommendations.length > 0 ? (
+                <div className="agent-emoji-recommend-row" role="group" aria-label="推荐">
+                    {recommendations.map((rec) => (
+                        <button
+                            key={rec.emoji}
+                            type="button"
+                            className="markdown-emoji-picker-cell agent-emoji-recommend-cell"
+                            title={rec.reason || rec.emoji}
+                            onClick={() => applyEmoji(rec.emoji)}
+                        >
+                            {rec.emoji}
+                        </button>
+                    ))}
+                </div>
+            ) : null}
             <div className="agent-emoji-scope" role="radiogroup" aria-label={t("term:agentEmoji.scopeGroupLabel")}>
                 {sessionKey !== "" ? (
                     <ScopeOption

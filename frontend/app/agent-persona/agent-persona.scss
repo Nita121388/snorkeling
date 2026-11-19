@@ -174,3 +174,32 @@
 .agent-card-logo--clickable:hover {
     opacity: 0.75;
 }
+
+// Externally injected recommendation row (design §8.2: 有就显示，没有就不显示).
+// Layout mirrors the emoji recents row (small grid cells with hover tooltip via
+// the native title attribute).
+.agent-emoji-recommend-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px;
+    padding: 4px 2px 2px;
+    border-top: 1px solid var(--toolbar-border-color, rgba(128, 128, 128, 0.25));
+}
+
+.agent-emoji-recommend-cell {
+    width: 28px;
+    height: 28px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    line-height: 1;
+    border-radius: 4px;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+
+    &:hover {
+        background: var(--accent-color, #58c4ff) 1a;
+    }
+}

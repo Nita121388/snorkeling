@@ -99,6 +99,8 @@ CREATE INDEX IF NOT EXISTS idx_emoji_prefs_dim ON ai_emoji_prefs(dim, dim_key, c
 
 ### 2.3 推荐缓存（新）
 
+> ⚠️ 2026-11-19 第二轮拍板后本节被 §8.2 取代：推荐全部来自外部 agent 注入，表改名 `ai_emoji_recommendations`（无 pref_version，无 7 天 TTL 语义，TTL 在 payload 内）。
+
 ```sql
 CREATE TABLE IF NOT EXISTS ai_emoji_recommend_cache (
     session_key  TEXT PRIMARY KEY,
@@ -179,6 +181,8 @@ wsh session emoji recommend <sessionKey|sessionId|this> [--json] [--refresh]
 ---
 
 ## 4. 推荐算法
+
+> ⚠️ 2026-11-19 第二轮拍板后本章整体作废（见 §8.2）：内部不实现任何推荐算法；五信号打分 / top5 / autosetEligible / 规则表全部取消，推荐候选全部由外部 agent 注入。本章保留仅为历史记录。
 
 ### 4.1 五信号取数（纯查表，不调 LLM，毫秒级）
 
@@ -270,3 +274,30 @@ recommend top1.autosetEligible == true
 2. **`--if-absent` 免 `--expected-hash`** 是否接受？（建议：接受；否则 hero 命令要先 `card get` 取 hash）
 3. **emoji prop 在属性卡片可见性**：隐藏（建议）还是只读展示。
 4. **偏好是否加 `provider` 第四维**（建议不加，保持 §5.3 三维）。
+
+### 8.1 拍板结果（2026-11-19，nita）
+
+原话：「按照你推荐的来，你下一步打算先做什么？」→ 四项建议全部采纳，作为开工依据。
+
+| # | 结论 | 落地影响 |
+|---|---|---|
+| 1 | persona 维度键**退化**：有 `props.hero` 用 hero id，无则记 `provider:<name>`，前缀区分 | P0 偏好键构造 + R4 信号 5 的维度解析 |
+| 2 | **接受** `--if-absent` 免 `--expected-hash` | P2 `session emoji set` CLI / MCP / patch 校验 |
+| 3 | emoji prop 在属性卡片**隐藏** | P3 `property-model.ts` 过滤 + `propertygenerate` 跳过 |
+| 4 | **不加** provider 第四维，保持项目 / persona / 全局三维 | P0 建表 `dim` 取值域固定为三值 |
+
+> 批次范围：今晚只放 **P0 后端地基**（纯新增文件 + 建表，不改任何现有行为，revert 即无痕）。
+> P1–P5 会碰 `agent-persona-store.ts` 等热区，等 P0 落库后单独排期。
+
+### 8.2 拍板（第二轮，2026-11-19，nita）：内部不做推荐，推荐全部来自外部注入
+
+原话（语音识别纠正后）：「我们内部可以不实现推荐。所有的推荐来源都来自于外部……留一个接口让外部的 agent 能够去推荐。我们内部只是提供这么一个区域，能够显示（如果有的话显示），如果没有的话就不显示。」
+
+| # | 结论 | 落地影响 |
+|---|---|---|
+| 1 | **内部零推荐逻辑** | §4 五信号打分 / top5 / autosetEligible / 规则表整体取消（`emoji_recommend.go` 不落库，P0 已改为注入存储 API）。**保留** 🛡️→安全等 tag/title 规则思路，但那是外部 agent 的事，不在本仓。 |
+| 2 | **外部注入接口** | P0：`ai_emoji_recommend_cache` 改名 **`ai_emoji_recommendations`**（`session_key` PK / `payload_json` / `injected_by` / `injected_at`），每次注入整体覆盖（last-writer-wins），payload 内带 `expiresAt`（TTL，0 = 不过期）。存取 API：`SetEmojiRecommendations(sessionKey, injectedBy, candidates, ttl)` + `EmojiRecommendationsFor(sessionKey)`（缺失/过期/空 → `found=false`，Picker 整块隐藏）。候选上限 8，逐条过 `NormalizeEmoji`（一条非法拒整批），去重。空候选列表 = 清除通道（删行）。外部 Agent 通道在 P2（CLI/MCP 写入口 + 推事件）。 |
+| 3 | **Picker 只做展示区** | P3：推荐区样式对齐「最近使用」行；有注入（且未过期）就显示 + hover 理由 tooltip，没有就整块不显示；无异步计算、无内部兜底候选。 |
+| 4 | **偏好表保留，作为外部可查询数据面** | `ai_emoji_prefs` + `BumpEmojiPref` 不动：不产生推荐，但记录「用户在本项目/该 persona/全局选过什么」，P2 暴露查询，供外部 agent 参考决策。写入闸门不变（`source=user` 永不覆盖，R10）。 |
+
+P0 范围变为：`NormalizeEmoji` + fixtures / 两表建表幂等（`ai_emoji_prefs` + `ai_emoji_recommendations`）/ `BumpEmojiPref`（含负信号地板 0、dim 取值域三值、dim_key 规范化）/ 注入存储 API。纯新增，无调用方，revert 即无痕。

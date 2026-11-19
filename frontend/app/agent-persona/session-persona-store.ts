@@ -69,9 +69,94 @@ export function normalizeSessionEmojiKey(sessionId: unknown): string {
 }
 
 // Stable snapshot identity between writes (useSyncExternalStore requirement).
-let snapshot: SessionEmojiMap = readSessionEmojiMap();
+// The reader-visible snapshot merges two layers: backend emoji props (from
+// aisessions summaries' props.emoji, pushed by setBackendSessionEmojis) win over
+// localStorage leftovers; P1 of the emoji-preference track makes the backend the
+// source of truth while local values keep working as the fallback.
+let localEmojis: SessionEmojiMap = readSessionEmojiMap();
+let backendEmojis: SessionEmojiMap = {};
+let snapshot: SessionEmojiMap = { ...localEmojis };
 const listeners = new Set<() => void>();
 let storageListenerAttached = false;
+
+function mergeEmojiMaps(): SessionEmojiMap {
+    return { ...localEmojis, ...backendEmojis };
+}
+
+function isSameEmojiMap(a: SessionEmojiMap, b: SessionEmojiMap): boolean {
+    const aKeys = Object.keys(a);
+    if (aKeys.length !== Object.keys(b).length) {
+        return false;
+    }
+    for (const key of aKeys) {
+        if (a[key] !== b[key]) {
+            return false;
+        }
+    }
+    return true;
+}
+
+function sanitizeEmojiMap(input: SessionEmojiMap): SessionEmojiMap {
+    const result: SessionEmojiMap = {};
+    if (input == null || typeof input !== "object") {
+        return result;
+    }
+    for (const [key, value] of Object.entries(input)) {
+        if (typeof key === "string" && key.trim() !== "" && typeof value === "string" && value.trim() !== "") {
+            result[key] = value;
+        }
+    }
+    return result;
+}
+
+/**
+ * Push backend emoji props (session id → emoji, from ai_session_props
+ * prop_key='emoji') into the store. Backend values take precedence over
+ * localStorage in the merged snapshot. Passing a map without a session keeps
+ * that session on its local value; an empty map clears the backend layer.
+ */
+export function setBackendSessionEmojis(map: SessionEmojiMap): void {
+    const next = sanitizeEmojiMap(map);
+    if (isSameEmojiMap(backendEmojis, next)) {
+        return; // stable snapshot identity: no change, no emit
+    }
+    backendEmojis = next;
+    snapshot = mergeEmojiMaps();
+    emit();
+}
+
+/**
+ * Merge a partial backend emoji map into the current one without dropping
+ * entries for sessions outside the incoming set (e.g. the current list page).
+ * Per-session summaries and list responses both feed this.
+ */
+export function mergeBackendSessionEmojis(map: SessionEmojiMap): void {
+    const incoming = sanitizeEmojiMap(map);
+    if (Object.keys(incoming).length === 0) {
+        return;
+    }
+    setBackendSessionEmojis({ ...backendEmojis, ...incoming });
+}
+
+/**
+ * Convenience: derive a partial backend emoji map from aisessions summaries
+ * (props.emoji string cell values, keyed by session id) and merge it in.
+ */
+export function applyBackendSessionSummaries(
+    summaries: Array<{ id?: string; props?: { emoji?: { value?: unknown } } }>
+): void {
+    const map: SessionEmojiMap = {};
+    for (const session of summaries) {
+        if (session == null || typeof session.id !== "string" || session.id.trim() === "") {
+            continue;
+        }
+        const value = session.props?.emoji?.value;
+        if (typeof value === "string" && value.trim() !== "") {
+            map[session.id] = value;
+        }
+    }
+    mergeBackendSessionEmojis(map);
+}
 
 export function getSessionEmojiSnapshot(): SessionEmojiMap {
     return snapshot;
@@ -98,7 +183,8 @@ function ensureStorageListener(): void {
         if (event.storageArea != null && event.storageArea !== window.localStorage) {
             return;
         }
-        snapshot = readSessionEmojiMap();
+        localEmojis = readSessionEmojiMap();
+        snapshot = mergeEmojiMaps();
         emit();
     });
 }
@@ -124,7 +210,8 @@ function persist(next: SessionEmojiMap): void {
             /* storage full / private mode — keep in-memory snapshot usable */
         }
     }
-    snapshot = next;
+    localEmojis = next;
+    snapshot = mergeEmojiMaps();
     emit();
 }
 
@@ -133,7 +220,7 @@ export function setSessionEmoji(sessionId: unknown, emoji: string | null): void 
     if (key === "") {
         return;
     }
-    const next: SessionEmojiMap = { ...snapshot };
+    const next: SessionEmojiMap = { ...localEmojis };
     if (emoji == null || emoji === "") {
         delete next[key];
     } else {
@@ -146,10 +233,47 @@ export function clearSessionEmoji(sessionId: unknown): void {
     setSessionEmoji(sessionId, null);
 }
 
+/**
+ * One-off legacy migration (design.md §2.4, prd.md R1): replays every
+ * localStorage session emoji into the backend (source=user) through the
+ * SessionEmojiMigrate RPC and deletes the localStorage key on success
+ * (skipped entries count as success — if-absent makes repeats no-ops). On an
+ * RPC failure the key stays for the next launch. Idempotent across windows:
+ * once the key is gone, later windows see nothing to migrate.
+ * @returns true when the key was (or already is) cleared
+ */
+export async function migrateLegacySessionEmojis(): Promise<boolean> {
+    const local = readSessionEmojiMap();
+    const ids = Object.keys(local);
+    if (ids.length === 0) {
+        return true;
+    }
+    const entries = ids.map((id) => ({ identifier: id, emoji: local[id] }));
+    const { RpcApi } = await import("@/app/store/wshclientapi");
+    const { TabRpcClient } = await import("@/app/store/wshrpcutil");
+    const result = await RpcApi.SessionEmojiMigrateCommand(TabRpcClient, { entries });
+    if (result == null) {
+        return false;
+    }
+    // The backend applied (or validly skipped) every entry; drop the legacy key.
+    const store = safeStorage();
+    try {
+        store?.removeItem(SessionEmojiStorageKey);
+    } catch {
+        /* ignore */
+    }
+    localEmojis = {};
+    snapshot = mergeEmojiMaps();
+    emit();
+    return true;
+}
+
 // Test-only reset.
 export function __resetSessionEmojisForTests(): void {
     listeners.clear();
     storageListenerAttached = false;
+    localEmojis = {};
+    backendEmojis = {};
     snapshot = {};
     const store = safeStorage();
     try {

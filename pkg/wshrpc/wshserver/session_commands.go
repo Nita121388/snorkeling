@@ -64,3 +64,45 @@ func (ws *WshServer) AgentCardSetCommand(ctx context.Context, data wshrpc.AgentC
 func (ws *WshServer) SessionAnnotateCommand(ctx context.Context, data wshrpc.SessionAnnotateRequest) (*wshrpc.SessionAnnotateResult, error) {
 	return agentcontrol.SessionAnnotate(ctx, data)
 }
+
+// SessionEmojiGetCommand reads one session's backend emoji prop (read-only).
+func (ws *WshServer) SessionEmojiGetCommand(ctx context.Context, data wshrpc.SessionEmojiGetRequest) (*wshrpc.SessionEmojiGetResult, error) {
+	return agentcontrol.SessionEmojiGet(ctx, data)
+}
+
+// SessionEmojiSetCommand writes one session's emoji with agent-channel
+// semantics (source=ai, user slots skipped, --if-absent idempotent). Not
+// read-only: dry-run unless Yes is set.
+func (ws *WshServer) SessionEmojiSetCommand(ctx context.Context, data wshrpc.SessionEmojiSetRequest) (*wshrpc.SessionEmojiSetResult, error) {
+	return agentcontrol.SessionEmojiSet(ctx, data)
+}
+
+// SessionEmojiInjectCommand stores an external agent's live recommendation
+// payload for one session (replaces wholesale; empty candidates clears).
+func (ws *WshServer) SessionEmojiInjectCommand(ctx context.Context, data wshrpc.SessionEmojiInjectRequest) (*wshrpc.SessionEmojiInjectResult, error) {
+	return agentcontrol.SessionEmojiInject(ctx, data)
+}
+
+// SessionEmojiRecommendationsCommand reads the current injected payload
+// (found=false when absent or expired — the picker hides the section).
+func (ws *WshServer) SessionEmojiRecommendationsCommand(ctx context.Context, data wshrpc.SessionEmojiRecommendationsRequest) (*wshrpc.SessionEmojiRecommendationsResult, error) {
+	return agentcontrol.SessionEmojiRecommendations(ctx, data)
+}
+
+// SessionEmojiPrefsCommand reads the preference buckets for the external
+// recommender to consult before injecting (read-only).
+func (ws *WshServer) SessionEmojiPrefsCommand(ctx context.Context, data wshrpc.SessionEmojiPrefsRequest) (*wshrpc.SessionEmojiPrefsResult, error) {
+	return agentcontrol.SessionEmojiPrefs(ctx, data)
+}
+
+// SessionEmojiRecordPickCommand records one UI hand-pick (source=user) plus the
+// preference counters in a single transaction. UI channel only.
+func (ws *WshServer) SessionEmojiRecordPickCommand(ctx context.Context, data wshrpc.SessionEmojiRecordPickRequest) (*wshrpc.SessionEmojiRecordPickResult, error) {
+	return agentcontrol.RecordEmojiPick(ctx, data)
+}
+
+// SessionEmojiMigrateCommand migrates one batch of legacy localStorage emoji
+// values into the backend (source=user, if-absent, idempotent).
+func (ws *WshServer) SessionEmojiMigrateCommand(ctx context.Context, data wshrpc.SessionEmojiMigrateRequest) (*wshrpc.SessionEmojiMigrateResult, error) {
+	return agentcontrol.MigrateSessionEmojis(ctx, data)
+}

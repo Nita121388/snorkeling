@@ -1125,6 +1125,48 @@ func SessionAnnotateCommand(w *wshutil.WshRpc, data wshrpc.SessionAnnotateReques
 	return resp, err
 }
 
+// command "sessionemojiget", wshserver.SessionEmojiGetCommand
+func SessionEmojiGetCommand(w *wshutil.WshRpc, data wshrpc.SessionEmojiGetRequest, opts *wshrpc.RpcOpts) (*wshrpc.SessionEmojiGetResult, error) {
+	resp, err := sendRpcRequestCallHelper[*wshrpc.SessionEmojiGetResult](w, "sessionemojiget", data, opts)
+	return resp, err
+}
+
+// command "sessionemojiinject", wshserver.SessionEmojiInjectCommand
+func SessionEmojiInjectCommand(w *wshutil.WshRpc, data wshrpc.SessionEmojiInjectRequest, opts *wshrpc.RpcOpts) (*wshrpc.SessionEmojiInjectResult, error) {
+	resp, err := sendRpcRequestCallHelper[*wshrpc.SessionEmojiInjectResult](w, "sessionemojiinject", data, opts)
+	return resp, err
+}
+
+// command "sessionemojimigrate", wshserver.SessionEmojiMigrateCommand
+func SessionEmojiMigrateCommand(w *wshutil.WshRpc, data wshrpc.SessionEmojiMigrateRequest, opts *wshrpc.RpcOpts) (*wshrpc.SessionEmojiMigrateResult, error) {
+	resp, err := sendRpcRequestCallHelper[*wshrpc.SessionEmojiMigrateResult](w, "sessionemojimigrate", data, opts)
+	return resp, err
+}
+
+// command "sessionemojiprefs", wshserver.SessionEmojiPrefsCommand
+func SessionEmojiPrefsCommand(w *wshutil.WshRpc, data wshrpc.SessionEmojiPrefsRequest, opts *wshrpc.RpcOpts) (*wshrpc.SessionEmojiPrefsResult, error) {
+	resp, err := sendRpcRequestCallHelper[*wshrpc.SessionEmojiPrefsResult](w, "sessionemojiprefs", data, opts)
+	return resp, err
+}
+
+// command "sessionemojirecommendations", wshserver.SessionEmojiRecommendationsCommand
+func SessionEmojiRecommendationsCommand(w *wshutil.WshRpc, data wshrpc.SessionEmojiRecommendationsRequest, opts *wshrpc.RpcOpts) (*wshrpc.SessionEmojiRecommendationsResult, error) {
+	resp, err := sendRpcRequestCallHelper[*wshrpc.SessionEmojiRecommendationsResult](w, "sessionemojirecommendations", data, opts)
+	return resp, err
+}
+
+// command "sessionemojirecordpick", wshserver.SessionEmojiRecordPickCommand
+func SessionEmojiRecordPickCommand(w *wshutil.WshRpc, data wshrpc.SessionEmojiRecordPickRequest, opts *wshrpc.RpcOpts) (*wshrpc.SessionEmojiRecordPickResult, error) {
+	resp, err := sendRpcRequestCallHelper[*wshrpc.SessionEmojiRecordPickResult](w, "sessionemojirecordpick", data, opts)
+	return resp, err
+}
+
+// command "sessionemojiset", wshserver.SessionEmojiSetCommand
+func SessionEmojiSetCommand(w *wshutil.WshRpc, data wshrpc.SessionEmojiSetRequest, opts *wshrpc.RpcOpts) (*wshrpc.SessionEmojiSetResult, error) {
+	resp, err := sendRpcRequestCallHelper[*wshrpc.SessionEmojiSetResult](w, "sessionemojiset", data, opts)
+	return resp, err
+}
+
 // command "sessionget", wshserver.SessionGetCommand
 func SessionGetCommand(w *wshutil.WshRpc, data wshrpc.SessionGetRequest, opts *wshrpc.RpcOpts) (*wshrpc.SessionLiveRecord, error) {
 	resp, err := sendRpcRequestCallHelper[*wshrpc.SessionLiveRecord](w, "sessionget", data, opts)

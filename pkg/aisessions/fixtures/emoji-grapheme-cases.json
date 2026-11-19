@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "description": "Shared emoji grapheme validation vectors. Go consumer: pkg/aisessions/normalize_emoji_test.go (NormalizeEmoji). TS consumer: frontend/app/view/term/agent-logo.tsx normalizeAgentEmoji (adopted in P1). Both runtimes must agree on every case; add new cases only if both sides pass.",
+  "cases": [
+    { "input": "🦊", "valid": true },
+    { "input": "  🐙  ", "valid": true },
+    { "input": "🦄", "valid": true },
+    { "input": "9\uFE0F\u20E3", "valid": true },
+    { "input": "1\uFE0F\u20E3", "valid": true },
+    { "input": "#\uFE0F\u20E3", "valid": true },
+    { "input": "🇺🇸", "valid": true },
+    { "input": "🇨🇳", "valid": true },
+    { "input": "👨\u200d👩\u200d👧", "valid": true },
+    { "input": "🏳️\u200d🌈", "valid": true },
+    { "input": "\u00A9\uFE0F", "valid": true },
+    { "input": "🦊🦊", "valid": false },
+    { "input": "🦊 🦊", "valid": false },
+    { "input": "ab", "valid": false },
+    { "input": "42", "valid": false },
+    { "input": "", "valid": false },
+    { "input": "   ", "valid": false },
+    { "input": "🦊\u200d", "valid": false },
+    { "input": "\u200d", "valid": false },
+    { "input": "\u200d🦊", "valid": false },
+    { "input": "\u200d\u200d", "valid": false },
+    { "input": "9", "valid": false },
+    { "input": "a", "valid": false },
+    { "input": "#", "valid": false },
+    { "input": "*", "valid": false },
+    { "input": "\u00A9", "valid": false },
+    { "input": "🏳", "valid": false }
+  ]
+}

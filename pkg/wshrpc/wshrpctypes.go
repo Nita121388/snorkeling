@@ -107,6 +107,16 @@ type WshRpcInterface interface {
 	AgentCardSetCommand(ctx context.Context, data AgentCardSetRequest) (*AgentCardSetResult, error)
 	// agent control surface (session timeline annotation write, used by wsh session annotate)
 	SessionAnnotateCommand(ctx context.Context, data SessionAnnotateRequest) (*SessionAnnotateResult, error)
+	// agent control surface (session emoji read/write + recommendation injection)
+	SessionEmojiGetCommand(ctx context.Context, data SessionEmojiGetRequest) (*SessionEmojiGetResult, error)
+	// agent control surface (UI hand-pick record: props source=user + preference counters)
+	SessionEmojiRecordPickCommand(ctx context.Context, data SessionEmojiRecordPickRequest) (*SessionEmojiRecordPickResult, error)
+	// agent control surface (one-off localStorage migration: source=user, if-absent, idempotent)
+	SessionEmojiMigrateCommand(ctx context.Context, data SessionEmojiMigrateRequest) (*SessionEmojiMigrateResult, error)
+	SessionEmojiSetCommand(ctx context.Context, data SessionEmojiSetRequest) (*SessionEmojiSetResult, error)
+	SessionEmojiInjectCommand(ctx context.Context, data SessionEmojiInjectRequest) (*SessionEmojiInjectResult, error)
+	SessionEmojiRecommendationsCommand(ctx context.Context, data SessionEmojiRecommendationsRequest) (*SessionEmojiRecommendationsResult, error)
+	SessionEmojiPrefsCommand(ctx context.Context, data SessionEmojiPrefsRequest) (*SessionEmojiPrefsResult, error)
 	// agent control surface (UI observe + navigate, used by wsh ui/block/tab *)
 	UIActiveCommand(ctx context.Context, data UIActiveRequest) (*UIActiveSnapshot, error)
 	UIStateCommand(ctx context.Context, data UIStateRequest) (*UIStateSnapshot, error)
@@ -1002,6 +1012,157 @@ type SessionAnnotateResult struct {
 	Created bool                   `json:"created"`
 	Row     SessionAnnotateRow     `json:"row"`
 	Preview SessionAnnotatePreview `json:"preview"`
+}
+
+// ---- Agent Control Surface: session emoji DTOs ----
+
+// SessionEmojiMigrationEntry is one legacy localStorage value to migrate
+// (design.md §2.4): written as source=user, only when the slot is empty, with
+// the three preference counters recorded on first success (idempotent by
+// construction — a repeat run sees the slot occupied and skips).
+type SessionEmojiMigrationEntry struct {
+	Identifier string `json:"identifier"`
+	Emoji      string `json:"emoji"`
+}
+
+type SessionEmojiMigrateRequest struct {
+	Entries []SessionEmojiMigrationEntry `json:"entries"`
+}
+
+type SessionEmojiMigrationResult struct {
+	Identifier string `json:"identifier"`
+	SessionKey string `json:"sessionKey"`
+	Emoji      string `json:"emoji"`
+}
+
+type SessionEmojiMigrationSkip struct {
+	Identifier string `json:"identifier"`
+	Reason     string `json:"reason"`
+}
+
+type SessionEmojiMigrateResult struct {
+	Migrated []SessionEmojiMigrationResult `json:"migrated,omitempty"`
+	Skipped  []SessionEmojiMigrationSkip   `json:"skipped,omitempty"`
+}
+
+// SessionEmojiGetRequest reads the backend emoji prop (ai_session_props
+// prop_key='emoji') of one session.
+type SessionEmojiGetRequest struct {
+	Identifier string `json:"identifier"`
+	BlockId    string `json:"blockid,omitempty"`
+}
+
+// SessionEmojiGetResult is the current emoji value (empty = never set) plus its
+// source (user | ai) and last-write time.
+type SessionEmojiGetResult struct {
+	SessionKey string `json:"sessionKey"`
+	ID         string `json:"id"`
+	Emoji      string `json:"emoji"`
+	Source     string `json:"source"`
+	UpdatedAt  int64  `json:"updatedAt"`
+}
+
+// SessionEmojiRecordPickRequest records one UI hand-pick (source=user): the
+// emoji prop plus the three preference counters, in one transaction. An empty
+// Emoji is the "clear" action (prop deleted, counters decremented with floor 0).
+// This is the UI channel; agent writes must use sessionemojiset instead.
+type SessionEmojiRecordPickRequest struct {
+	Identifier string `json:"identifier"`
+	BlockId    string `json:"blockid,omitempty"`
+	// Emoji is the picked single emoji grapheme; empty string = clear.
+	Emoji string `json:"emoji"`
+}
+
+type SessionEmojiRecordPickResult struct {
+	SessionKey string `json:"sessionKey"`
+	ID         string `json:"id"`
+	Emoji      string `json:"emoji"`
+	Cleared    bool   `json:"cleared"`
+}
+
+// SessionEmojiSetRequest writes the emoji with agent-channel semantics: the
+// stored source is always "ai", a user-authored value is skipped (force
+// overrides), and ifAbsent makes an existing slot an idempotent no-op. A real
+// write requires --yes plus a concurrency precondition (expected-hash or
+// expected-updated-at); ifAbsent alone is the idempotence guard, not a
+// precondition substitute (拍板 #2: --if-absent 免 --expected-hash).
+type SessionEmojiSetRequest struct {
+	Identifier        string `json:"identifier"`
+	BlockId           string `json:"blockid,omitempty"`
+	Emoji             string `json:"emoji"`
+	IfAbsent          bool   `json:"ifabsent,omitempty"`
+	Force             bool   `json:"force,omitempty"`
+	ExpectedHash      string `json:"expectedhash,omitempty"`
+	ExpectedUpdatedAt int64  `json:"expectedupdatedat,omitempty"`
+	DryRun            bool   `json:"dryrun,omitempty"`
+	Yes               bool   `json:"yes,omitempty"`
+}
+
+// SessionEmojiSetResult mirrors the agentdata report shape: Changed reports
+// whether the value moved, Skipped carries the per-slot skip reasons (e.g.
+// "emoji: exists (--if-absent)", "emoji: user-authored value").
+type SessionEmojiSetResult struct {
+	DryRun   bool     `json:"dryRun"`
+	Changed  bool     `json:"changed"`
+	Target   string   `json:"target,omitempty"`
+	Skipped  []string `json:"skipped,omitempty"`
+	Messages []string `json:"messages,omitempty"`
+}
+
+// SessionEmojiRecommendation is one externally injected candidate (design.md
+// §8.2: 所有推荐来源都是外部 agent，内部只展示).
+type SessionEmojiRecommendation struct {
+	Emoji  string `json:"emoji"`
+	Reason string `json:"reason,omitempty"`
+}
+
+// SessionEmojiInjectRequest writes an external agent's live recommendations
+// for one session, replacing any previous injection wholesale.
+type SessionEmojiInjectRequest struct {
+	Identifier string                       `json:"identifier"`
+	BlockId    string                       `json:"blockid,omitempty"`
+	InjectedBy string                       `json:"injectedBy,omitempty"`
+	Candidates []SessionEmojiRecommendation `json:"candidates"`
+	// TTLSeconds expires the injection; <= 0 keeps it until replaced or cleared
+	// (an empty candidates list clears it immediately).
+	TTLSeconds int64 `json:"ttlSeconds,omitempty"`
+}
+
+type SessionEmojiInjectResult struct {
+	SessionKey string `json:"sessionKey"`
+	Candidates int    `json:"candidates"`
+}
+
+// SessionEmojiRecommendationsRequest reads the current injected recommendation
+// payload: Found=false when absent or expired, and the picker then hides the
+// recommendation section entirely (有就显示，没有就不显示).
+type SessionEmojiRecommendationsRequest struct {
+	Identifier string `json:"identifier"`
+	BlockId    string `json:"blockid,omitempty"`
+}
+
+type SessionEmojiRecommendationsResult struct {
+	SessionKey string                       `json:"sessionKey"`
+	Found      bool                         `json:"found"`
+	InjectedBy string                       `json:"injectedBy,omitempty"`
+	InjectedAt int64                        `json:"injectedAt,omitempty"`
+	ExpiresAt  int64                        `json:"expiresAt,omitempty"`
+	Candidates []SessionEmojiRecommendation `json:"candidates,omitempty"`
+}
+
+// SessionEmojiPrefsRequest reads the preference counters an external recommender
+// can consult (project / persona / global dims) before injecting.
+type SessionEmojiPrefsRequest struct {
+	Identifier string `json:"identifier"`
+	BlockId    string `json:"blockid,omitempty"`
+}
+
+type SessionEmojiPrefsResult struct {
+	SessionKey  string         `json:"sessionKey"`
+	Project     map[string]int `json:"project,omitempty"`
+	Persona     map[string]int `json:"persona,omitempty"`
+	Global      map[string]int `json:"global,omitempty"`
+	PrefVersion int64          `json:"prefVersion"`
 }
 
 // ---- Agent Control Surface: UI observe + navigate DTOs ----

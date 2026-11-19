@@ -228,6 +228,11 @@ func buildPropertyUserPrompt(req PropertyGenerateRequest) string {
 			if _, reserved := reservedPropertyKeys[key]; reserved {
 				continue
 			}
+			if key == EmojiPropKey {
+				// The emoji prop is virtual-mapped by the UI (menu palette),
+				// not a custom property: AI generation must not touch it.
+				continue
+			}
 			if !first {
 				b.WriteString(", ")
 			}
@@ -287,6 +292,11 @@ func parsePropertySuggestions(text string, existing map[string]PropertyCell, max
 			continue
 		}
 		if _, reserved := reservedPropertyKeys[key]; reserved {
+			continue
+		}
+		if key == EmojiPropKey {
+			// Virtual-mapped by the UI (menu palette), not a custom property:
+			// AI generation must never propose it.
 			continue
 		}
 		if _, dup := seen[key]; dup {

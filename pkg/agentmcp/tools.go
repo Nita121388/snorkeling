@@ -46,6 +46,12 @@ type Backend interface {
 	AgentSend(ctx context.Context, req wshrpc.AgentSendRequest) (*wshrpc.AgentSendResult, error)
 	AgentCardSet(ctx context.Context, req wshrpc.AgentCardSetRequest) (*wshrpc.AgentCardSetResult, error)
 	SessionAnnotate(ctx context.Context, req wshrpc.SessionAnnotateRequest) (*wshrpc.SessionAnnotateResult, error)
+	SessionEmojiGet(ctx context.Context, req wshrpc.SessionEmojiGetRequest) (*wshrpc.SessionEmojiGetResult, error)
+	SessionEmojiSet(ctx context.Context, req wshrpc.SessionEmojiSetRequest) (*wshrpc.SessionEmojiSetResult, error)
+	SessionEmojiInject(ctx context.Context, req wshrpc.SessionEmojiInjectRequest) (*wshrpc.SessionEmojiInjectResult, error)
+	SessionEmojiRecommendations(ctx context.Context, req wshrpc.SessionEmojiRecommendationsRequest) (*wshrpc.SessionEmojiRecommendationsResult, error)
+	SessionEmojiPrefs(ctx context.Context, req wshrpc.SessionEmojiPrefsRequest) (*wshrpc.SessionEmojiPrefsResult, error)
+	RecordEmojiPick(ctx context.Context, req wshrpc.SessionEmojiRecordPickRequest) (*wshrpc.SessionEmojiRecordPickResult, error)
 }
 
 // toolSpec binds one MCP tool to one Backend call.
@@ -436,6 +442,129 @@ func toolSpecs() []toolSpec {
 				})
 			},
 		},
+
+		{
+			Name:        "snorkeling_session_emoji_get",
+			Description: "Read one session's backend emoji (ai_session_props prop_key='emoji') plus its source (user|ai) and updatedAt. Empty emoji means the slot was never set.",
+			Scope:       ScopeObserve,
+			Annotations: &Annotations{Title: "Sessions: emoji get"},
+			Schema: obj(map[string]any{
+				"identifier": str("session key / session id / 'this'"),
+			}, "identifier"),
+			Invoke: func(ctx context.Context, be Backend, args json.RawMessage) (any, error) {
+				raw, err := decode[sessionEmojiGetArgs](args)
+				if err != nil {
+					return nil, err
+				}
+				return be.SessionEmojiGet(ctx, wshrpc.SessionEmojiGetRequest{Identifier: raw.Identifier})
+			},
+		},
+		{
+			Name:        "snorkeling_session_emoji_set",
+			Description: "Write one session's emoji through the agent channel (source=ai always). A user-authored value is skipped unless force. if_absent makes an existing slot an idempotent no-op and doubles as the write precondition (no expectedhash needed with it); without if_absent a real write requires expectedhash. Dry-run unless confirm.",
+			Scope:       ScopeData,
+			Annotations: &Annotations{Title: "Sessions: emoji set", DestructiveHint: true},
+			Schema: obj(map[string]any{
+				"identifier":   str("session key / session id / 'this'"),
+				"emoji":        str("the single emoji grapheme to write"),
+				"if_absent":    boolean("skip when the slot already holds a value; doubles as the precondition for confirm"),
+				"force":        boolean("overwrite even a user-authored emoji (humans only)"),
+				"expectedhash": str("card hash from snorkeling_session_emoji_get / session_get (required for confirm without if_absent)"),
+				"confirm":      boolean("confirm the write (default false = dry-run)"),
+				"dryrun":       boolean("force a preview, even with confirm"),
+			}, "identifier", "emoji"),
+			Invoke: func(ctx context.Context, be Backend, args json.RawMessage) (any, error) {
+				raw, err := decode[sessionEmojiSetArgs](args)
+				if err != nil {
+					return nil, err
+				}
+				return be.SessionEmojiSet(ctx, wshrpc.SessionEmojiSetRequest{
+					Identifier:   raw.Identifier,
+					Emoji:        raw.Emoji,
+					IfAbsent:     raw.IfAbsent,
+					Force:        raw.Force,
+					ExpectedHash: raw.ExpectedHash,
+					DryRun:       raw.DryRun,
+					Yes:          raw.Confirm,
+				})
+			},
+		},
+		{
+			Name:        "snorkeling_session_emoji_inject",
+			Description: "Push live emoji recommendations for one session from the calling agent, replacing any previous injection wholesale (design: all recommendation sources are external; Snorkeling only displays). Each candidate is validated (one invalid rejects the whole injection; capped at 8). Empty candidates clears the recommendation section. ttl_seconds expires the payload (0 = no expiry).",
+			Scope:       ScopeData,
+			Annotations: &Annotations{Title: "Sessions: emoji inject (external recommendations)", DestructiveHint: true},
+			Schema: obj(map[string]any{
+				"identifier":  str("session key / session id / 'this'"),
+				"injected_by": str("identify the recommending agent (required, e.g. hero:watchdog)"),
+				"candidates": map[string]any{
+					"type":  "array",
+					"items": map[string]any{"type": "object", "properties": map[string]any{"emoji": map[string]any{"type": "string"}, "reason": map[string]any{"type": "string"}}},
+				},
+				"ttl_seconds": num("expire after N seconds (0 = no expiry)"),
+			}, "identifier", "injected_by"),
+			Invoke: func(ctx context.Context, be Backend, args json.RawMessage) (any, error) {
+				raw, err := decode[sessionEmojiInjectArgs](args)
+				if err != nil {
+					return nil, err
+				}
+				req := wshrpc.SessionEmojiInjectRequest{Identifier: raw.Identifier, InjectedBy: raw.InjectedBy, TTLSeconds: raw.TTLSeconds}
+				for _, c := range raw.Candidates {
+					req.Candidates = append(req.Candidates, wshrpc.SessionEmojiRecommendation{Emoji: c.Emoji, Reason: c.Reason})
+				}
+				return be.SessionEmojiInject(ctx, req)
+			},
+		},
+		{
+			Name:        "snorkeling_session_emoji_recommendations",
+			Description: "Read the current injected recommendation payload for one session. found=false when nothing was injected or the payload expired (the picker then hides the recommendation section). Candidate list is capped at 8.",
+			Scope:       ScopeObserve,
+			Annotations: &Annotations{Title: "Sessions: emoji recommendations"},
+			Schema: obj(map[string]any{
+				"identifier": str("session key / session id / 'this'"),
+			}, "identifier"),
+			Invoke: func(ctx context.Context, be Backend, args json.RawMessage) (any, error) {
+				raw, err := decode[sessionEmojiGetArgs](args)
+				if err != nil {
+					return nil, err
+				}
+				return be.SessionEmojiRecommendations(ctx, wshrpc.SessionEmojiRecommendationsRequest{Identifier: raw.Identifier})
+			},
+		},
+		{
+			Name:        "snorkeling_session_emoji_prefs",
+			Description: "Read the emoji preference buckets (project / persona / global pick counts plus the global pref version) so an external recommender can consult the user's history before injecting.",
+			Scope:       ScopeObserve,
+			Annotations: &Annotations{Title: "Sessions: emoji prefs"},
+			Schema: obj(map[string]any{
+				"identifier": str("session key / session id / 'this'"),
+			}, "identifier"),
+			Invoke: func(ctx context.Context, be Backend, args json.RawMessage) (any, error) {
+				raw, err := decode[sessionEmojiGetArgs](args)
+				if err != nil {
+					return nil, err
+				}
+				return be.SessionEmojiPrefs(ctx, wshrpc.SessionEmojiPrefsRequest{Identifier: raw.Identifier})
+			},
+		},
+
+		{
+			Name:        "snorkeling_session_emoji_record_pick",
+			Description: "Record one user hand-pick: writes the session emoji prop as source=user and bumps the three preference counters in one transaction (empty emoji = clear, which decrements the counters). Use this for UI-channel picks; for agent-channel writes use snorkeling_session_emoji_set (source=ai, no preference recorded).",
+			Scope:       ScopeData,
+			Annotations: &Annotations{Title: "Sessions: record emoji pick", DestructiveHint: true},
+			Schema: obj(map[string]any{
+				"identifier": str("session key / session id / 'this'"),
+				"emoji":      str("the picked emoji; empty string = clear"),
+			}, "identifier"),
+			Invoke: func(ctx context.Context, be Backend, args json.RawMessage) (any, error) {
+				raw, err := decode[sessionEmojiRecordPickArgs](args)
+				if err != nil {
+					return nil, err
+				}
+				return be.RecordEmojiPick(ctx, wshrpc.SessionEmojiRecordPickRequest{Identifier: raw.Identifier, Emoji: raw.Emoji})
+			},
+		},
 		{
 			Name:        "snorkeling_agent_create",
 			Description: "Launch a TUI agent block from the agent catalog (profile + optional model). The block is a normal, visible block in the target tab. Optional message delivers text to the new TUI after it goes quiet.",
@@ -520,6 +649,36 @@ type agentCreateArgs struct {
 	Wait        bool   `json:"wait,omitempty"`
 	WaitMs      int    `json:"waitms,omitempty"`
 	Message     string `json:"message,omitempty"`
+}
+
+type sessionEmojiRecordPickArgs struct {
+	Identifier string `json:"identifier"`
+	Emoji      string `json:"emoji"`
+}
+
+// sessionEmojiGetArgs is the shared read-side shape for the emoji tools.
+type sessionEmojiGetArgs struct {
+	Identifier string `json:"identifier"`
+}
+
+type sessionEmojiSetArgs struct {
+	Identifier   string `json:"identifier"`
+	Emoji        string `json:"emoji"`
+	IfAbsent     bool   `json:"if_absent"`
+	Force        bool   `json:"force"`
+	ExpectedHash string `json:"expectedhash"`
+	DryRun       bool   `json:"dryrun"`
+	Confirm      bool   `json:"confirm"`
+}
+
+type sessionEmojiInjectArgs struct {
+	Identifier string `json:"identifier"`
+	InjectedBy string `json:"injected_by"`
+	TTLSeconds int64  `json:"ttl_seconds"`
+	Candidates []struct {
+		Emoji  string `json:"emoji"`
+		Reason string `json:"reason"`
+	} `json:"candidates"`
 }
 
 // sessionAnnotateArgs is the MCP-side shape. `confirm` is the tool-facing name

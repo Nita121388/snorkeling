@@ -622,3 +622,295 @@ func sessionAnnotateRun(cmd *cobra.Command, args []string) (rtnErr error) {
 	}
 	return nil
 }
+
+var (
+	sessionEmojiValue        string
+	sessionEmojiIfAbsent     bool
+	sessionEmojiForce        bool
+	sessionEmojiExpectedHash string
+	sessionEmojiYes          bool
+	sessionEmojiInjectedBy   string
+	sessionEmojiCandidates   []string
+	sessionEmojiTTLSeconds   int64
+)
+
+var sessionEmojiCmd = &cobra.Command{
+	Use:   "emoji",
+	Short: "Session emoji: read/write the backend emoji prop and manage external recommendations",
+	Long: `Read and write the backend session emoji (ai_session_props prop_key='emoji')
+and manage externally injected recommendations (design §8.2: 所有推荐来源都是
+外部 agent，内部只展示).
+
+  wsh session emoji get             <key|id|this>           # {emoji, source, updatedAt}
+  wsh session emoji set             <key|id|this> --emoji X [--if-absent] [--force] [--expected-hash H] [--yes]
+  wsh session emoji inject          <key|id|this> --injected-by hero:watchdog --candidate "🛡:reason" [--ttl-seconds 600]
+  wsh session emoji recommendations <key|id|this>          # read injected payload
+  wsh session emoji prefs           <key|id|this>           # preference buckets
+
+Rules: a user-authored emoji is never overwritten by this channel (--force
+overrides, humans only); --if-absent makes an existing slot an idempotent
+no-op; empty candidates in inject clears the recommendation section.`,
+}
+
+var sessionEmojiGetCmd = &cobra.Command{
+	Use:     "get <sessionKey|sessionId|this>",
+	Short:   "Read the backend emoji prop of one session",
+	Example: "wsh session emoji get this --json",
+	Args:    cobra.ExactArgs(1),
+	RunE:    sessionEmojiGetRun,
+	PreRunE: preRunSetupRpcClient,
+}
+
+var sessionEmojiSetCmd = &cobra.Command{
+	Use:   "set <sessionKey|sessionId|this> --emoji <e>",
+	Short: "Write the session emoji (agent channel, source=ai)",
+	Long: `Write the session emoji through the agent channel (source=ai always).
+
+  wsh session emoji set this --emoji 🐛 --if-absent --yes
+
+A user-authored value is skipped (skipped: "emoji: user-authored value")
+unless --force. --if-absent makes an existing slot an idempotent no-op
+(skipped: "emoji: exists (--if-absent)") and doubles as the concurrency
+precondition for a real write. Without --if-absent a real write requires
+--expected-hash. Writes are dry-run unless --yes.`,
+	Example: "wsh session emoji set this --emoji 🐛 --if-absent --yes",
+	Args:    cobra.ExactArgs(1),
+	RunE:    sessionEmojiSetRun,
+	PreRunE: preRunSetupRpcClient,
+}
+
+var sessionEmojiInjectCmd = &cobra.Command{
+	Use:   "inject <sessionKey|sessionId|this>",
+	Short: "Push live emoji recommendations from an external agent",
+	Long: `Push an external agent's live recommendations for one session, replacing any
+previous injection wholesale (design §8.2). Candidates are "emoji[:reason]"
+strings; each is validated (one invalid rejects the whole injection) and the
+list is capped at 8. Empty candidates clears the section (the picker then
+hides it). --ttl-seconds expires the injection; omit for no expiry.`,
+	Example: "wsh session emoji inject this --injected-by hero:watchdog --candidate '🛡:在修 wavesrv OOM' --candidate 🐛 --ttl-seconds 600",
+	Args:    cobra.ExactArgs(1),
+	RunE:    sessionEmojiInjectRun,
+	PreRunE: preRunSetupRpcClient,
+}
+
+var sessionEmojiRecommendationsCmd = &cobra.Command{
+	Use:     "recommendations <sessionKey|sessionId|this>",
+	Short:   "Read the injected recommendation payload of one session",
+	Example: "wsh session emoji recommendations this --json",
+	Args:    cobra.ExactArgs(1),
+	RunE:    sessionEmojiRecommendationsRun,
+	PreRunE: preRunSetupRpcClient,
+}
+
+var sessionEmojiPrefsCmd = &cobra.Command{
+	Use:     "prefs <sessionKey|sessionId|this>",
+	Short:   "Read the emoji preference buckets an external recommender can consult",
+	Example: "wsh session emoji prefs this --json",
+	Args:    cobra.ExactArgs(1),
+	RunE:    sessionEmojiPrefsRun,
+	PreRunE: preRunSetupRpcClient,
+}
+
+func init() {
+	sessionEmojiCmd.AddCommand(sessionEmojiGetCmd, sessionEmojiSetCmd, sessionEmojiInjectCmd,
+		sessionEmojiRecommendationsCmd, sessionEmojiPrefsCmd)
+
+	sessionEmojiGetCmd.Flags().StringVar(&sessionBlockId, "block", "", "block id for 'this' resolution (defaults to WAVETERM_BLOCKID)")
+
+	sessionEmojiSetCmd.Flags().StringVar(&sessionBlockId, "block", "", "block id for 'this' resolution (defaults to WAVETERM_BLOCKID)")
+	sessionEmojiSetCmd.Flags().StringVar(&sessionEmojiValue, "emoji", "", "the single emoji grapheme to write (REQUIRED)")
+	sessionEmojiSetCmd.Flags().BoolVar(&sessionEmojiIfAbsent, "if-absent", false, "skip when the slot already holds a value (idempotent; doubles as the precondition for --yes)")
+	sessionEmojiSetCmd.Flags().BoolVar(&sessionEmojiForce, "force", false, "overwrite even a user-authored emoji (humans only)")
+	sessionEmojiSetCmd.Flags().StringVar(&sessionEmojiExpectedHash, "expected-hash", "", "card hash from 'session emoji get'/'session get' (required for --yes without --if-absent)")
+	sessionEmojiSetCmd.Flags().BoolVar(&sessionEmojiYes, "yes", false, "confirm the real write (otherwise dry-run)")
+
+	sessionEmojiInjectCmd.Flags().StringVar(&sessionBlockId, "block", "", "block id for 'this' resolution (defaults to WAVETERM_BLOCKID)")
+	sessionEmojiInjectCmd.Flags().StringVar(&sessionEmojiInjectedBy, "injected-by", "", "identify the recommending agent (REQUIRED, e.g. hero:watchdog)")
+	sessionEmojiInjectCmd.Flags().StringSliceVar(&sessionEmojiCandidates, "candidate", nil, "emoji[:reason] to recommend; repeatable")
+	sessionEmojiInjectCmd.Flags().Int64Var(&sessionEmojiTTLSeconds, "ttl-seconds", 0, "expire the injection after N seconds (0 = no expiry)")
+
+	sessionEmojiRecommendationsCmd.Flags().StringVar(&sessionBlockId, "block", "", "block id for 'this' resolution (defaults to WAVETERM_BLOCKID)")
+	sessionEmojiPrefsCmd.Flags().StringVar(&sessionBlockId, "block", "", "block id for 'this' resolution (defaults to WAVETERM_BLOCKID)")
+}
+
+// sessionEmojiRenderError surfaces the stable control-surface codes. In --json
+// mode the error is also printed as a structured object on stdout; the process
+// still exits non-zero (the returned error) so agents can branch on either.
+func sessionEmojiRenderError(err error) error {
+	if err == nil {
+		return nil
+	}
+	if sessionJSON {
+		code, message := splitEmojiError(err.Error())
+		_ = writeJSON(map[string]any{"error": map[string]any{"code": code, "message": message}})
+	}
+	return err
+}
+
+func splitEmojiError(message string) (string, string) {
+	message = strings.TrimSpace(message)
+	if strings.HasPrefix(message, "E_") {
+		if idx := strings.Index(message, ": "); idx > 0 {
+			return message[:idx], strings.TrimSpace(message[idx+2:])
+		}
+	}
+	return "", message
+}
+
+func sessionEmojiGetRun(cmd *cobra.Command, args []string) error {
+	result, err := wshclient.SessionEmojiGetCommand(RpcClient, wshrpc.SessionEmojiGetRequest{
+		Identifier: args[0],
+		BlockId:    sessionBlockArg(sessionBlockId),
+	}, sessionRpcOpts())
+	if err != nil {
+		return sessionEmojiRenderError(err)
+	}
+	if sessionJSON {
+		return writeJSON(result)
+	}
+	emoji := result.Emoji
+	if emoji == "" {
+		emoji = "-"
+	}
+	fmt.Fprintf(WrappedStdout, "id:      %s\n", orDash(result.ID))
+	fmt.Fprintf(WrappedStdout, "key:     %s\n", orDash(result.SessionKey))
+	fmt.Fprintf(WrappedStdout, "emoji:   %s\n", emoji)
+	fmt.Fprintf(WrappedStdout, "source:  %s\n", orDash(result.Source))
+	if result.UpdatedAt > 0 {
+		fmt.Fprintf(WrappedStdout, "updated: %s\n", time.UnixMilli(result.UpdatedAt).Format(time.RFC3339))
+	}
+	return nil
+}
+
+func sessionEmojiSetRun(cmd *cobra.Command, args []string) error {
+	if strings.TrimSpace(sessionEmojiValue) == "" {
+		return fmt.Errorf("--emoji is required")
+	}
+	result, err := wshclient.SessionEmojiSetCommand(RpcClient, wshrpc.SessionEmojiSetRequest{
+		Identifier:   args[0],
+		BlockId:      sessionBlockArg(sessionBlockId),
+		Emoji:        sessionEmojiValue,
+		IfAbsent:     sessionEmojiIfAbsent,
+		Force:        sessionEmojiForce,
+		ExpectedHash: sessionEmojiExpectedHash,
+		DryRun:       !sessionEmojiYes,
+		Yes:          sessionEmojiYes,
+	}, sessionRpcOpts())
+	if err != nil {
+		return sessionEmojiRenderError(err)
+	}
+	if sessionJSON {
+		return writeJSON(result)
+	}
+	if result.DryRun {
+		fmt.Fprintf(WrappedStdout, "dry-run: changed=%v", result.Changed)
+		if len(result.Skipped) > 0 {
+			fmt.Fprintf(WrappedStdout, " skipped=[%s]", strings.Join(result.Skipped, ", "))
+		}
+		fmt.Fprintf(WrappedStdout, "\n(re-run with --yes to write)\n")
+		return nil
+	}
+	if result.Changed {
+		fmt.Fprintf(WrappedStdout, "written: emoji = %s (source=ai)\n", sessionEmojiValue)
+	} else {
+		fmt.Fprintf(WrappedStdout, "skipped: %s\n", strings.Join(result.Skipped, ", "))
+	}
+	return nil
+}
+
+func sessionEmojiInjectRun(cmd *cobra.Command, args []string) error {
+	if strings.TrimSpace(sessionEmojiInjectedBy) == "" {
+		return fmt.Errorf("--injected-by is required")
+	}
+	candidates := make([]wshrpc.SessionEmojiRecommendation, 0, len(sessionEmojiCandidates))
+	for _, raw := range sessionEmojiCandidates {
+		emojiPart := raw
+		reasonPart := ""
+		if idx := strings.Index(raw, ":"); idx > 0 {
+			emojiPart, reasonPart = raw[:idx], raw[idx+1:]
+		}
+		candidates = append(candidates, wshrpc.SessionEmojiRecommendation{Emoji: emojiPart, Reason: reasonPart})
+	}
+	result, err := wshclient.SessionEmojiInjectCommand(RpcClient, wshrpc.SessionEmojiInjectRequest{
+		Identifier: args[0],
+		BlockId:    sessionBlockArg(sessionBlockId),
+		InjectedBy: sessionEmojiInjectedBy,
+		Candidates: candidates,
+		TTLSeconds: sessionEmojiTTLSeconds,
+	}, sessionRpcOpts())
+	if err != nil {
+		return sessionEmojiRenderError(err)
+	}
+	if sessionJSON {
+		return writeJSON(result)
+	}
+	if len(candidates) == 0 {
+		fmt.Fprintf(WrappedStdout, "cleared: recommendations for %s\n", orDash(result.SessionKey))
+	} else {
+		fmt.Fprintf(WrappedStdout, "injected: %d candidate(s) for %s (by %s)\n", result.Candidates, orDash(result.SessionKey), sessionEmojiInjectedBy)
+		if len(candidates) > result.Candidates {
+			fmt.Fprintf(WrappedStdout, "note: %d candidate(s) dropped (invalid or over the cap)\n", len(candidates)-result.Candidates)
+		}
+	}
+	return nil
+}
+
+func sessionEmojiRecommendationsRun(cmd *cobra.Command, args []string) error {
+	result, err := wshclient.SessionEmojiRecommendationsCommand(RpcClient, wshrpc.SessionEmojiRecommendationsRequest{
+		Identifier: args[0],
+		BlockId:    sessionBlockArg(sessionBlockId),
+	}, sessionRpcOpts())
+	if err != nil {
+		return sessionEmojiRenderError(err)
+	}
+	if sessionJSON {
+		return writeJSON(result)
+	}
+	if !result.Found || len(result.Candidates) == 0 {
+		fmt.Fprintln(WrappedStdout, "no recommendations (inject first, or the payload expired)")
+		return nil
+	}
+	fmt.Fprintf(WrappedStdout, "session:  %s\n", orDash(result.SessionKey))
+	fmt.Fprintf(WrappedStdout, "injected: %s (%s)\n", orDash(result.InjectedBy), time.UnixMilli(result.InjectedAt).Format(time.RFC3339))
+	if result.ExpiresAt > 0 {
+		fmt.Fprintf(WrappedStdout, "expires:  %s\n", time.UnixMilli(result.ExpiresAt).Format(time.RFC3339))
+	}
+	for idx, candidate := range result.Candidates {
+		if candidate.Reason != "" {
+			fmt.Fprintf(WrappedStdout, "%d. %-2s %s\n", idx+1, candidate.Emoji, candidate.Reason)
+		} else {
+			fmt.Fprintf(WrappedStdout, "%d. %s\n", idx+1, candidate.Emoji)
+		}
+	}
+	return nil
+}
+
+func sessionEmojiPrefsRun(cmd *cobra.Command, args []string) error {
+	result, err := wshclient.SessionEmojiPrefsCommand(RpcClient, wshrpc.SessionEmojiPrefsRequest{
+		Identifier: args[0],
+		BlockId:    sessionBlockArg(sessionBlockId),
+	}, sessionRpcOpts())
+	if err != nil {
+		return sessionEmojiRenderError(err)
+	}
+	if sessionJSON {
+		return writeJSON(result)
+	}
+	fmt.Fprintf(WrappedStdout, "session:    %s\n", orDash(result.SessionKey))
+	fmt.Fprintf(WrappedStdout, "prefVersion:%d\n", result.PrefVersion)
+	dumpPrefs := func(label string, values map[string]int) {
+		if len(values) == 0 {
+			fmt.Fprintf(WrappedStdout, "%s: (none)\n", label)
+			return
+		}
+		parts := make([]string, 0, len(values))
+		for emoji, count := range values {
+			parts = append(parts, fmt.Sprintf("%s=%d", emoji, count))
+		}
+		fmt.Fprintf(WrappedStdout, "%s: %s\n", label, strings.Join(parts, ", "))
+	}
+	dumpPrefs("project", result.Project)
+	dumpPrefs("persona", result.Persona)
+	dumpPrefs("global", result.Global)
+	return nil
+}

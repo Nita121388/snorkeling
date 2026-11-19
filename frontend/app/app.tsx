@@ -70,6 +70,13 @@ const App = ({ onFirstRender }: { onFirstRender: () => void }) => {
                 ? window.requestIdleCallback(() => void loadEmojiCatalog(), { timeout: 8000 })
                 : null;
         const fallback = idle == null ? window.setTimeout(() => void loadEmojiCatalog(), 4000) : null;
+        // Legacy localStorage → backend emoji migration (source=user, if-absent,
+        // idempotent): best-effort, never blocks first paint, key survives on failure.
+        void import("@/app/agent-persona/session-persona-store").then((store) =>
+            store.migrateLegacySessionEmojis().catch(() => {
+                /* keep the legacy key for the next launch */
+            })
+        );
         return () => {
             if (idle != null) window.cancelIdleCallback(idle);
             if (fallback != null) window.clearTimeout(fallback);

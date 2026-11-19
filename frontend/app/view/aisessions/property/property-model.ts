@@ -260,6 +260,11 @@ export function toPropertyDefs(summary: SessionSummary | null | undefined, schem
     for (const key of Object.keys(propsMap).sort()) {
         const cell = propsMap[key];
         if (cell == null) continue;
+        if (key === "emoji") {
+            // The emoji prop is virtual-mapped by the UI (menu palette), not a
+            // custom property: the picker is its only editor (design.md §2.1).
+            continue;
+        }
         usedSchemaKeys.add(key);
         const schemaDef = schemaByKey.get(key);
         const type: PropertyType = normalizePropertyType(
