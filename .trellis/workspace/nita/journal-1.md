@@ -344,3 +344,35 @@ merge 后 go build ./... 通过、四包测试全绿、`task generate` 无 diff�
   .trellis/tasks/11-19-wavesrv-oom-flash-quit/findings-fsmonitor-leak-20261119.md 末节「修复方案 A 的缺点分析」。
 - 今晚暂停时的状态：A/D 两个 agent 仍在跑；B/C/E/F/G 已提交（d8e2d38ee 等）；活跃任务 87；
   待办：A/D 收口 → 0.0.132 发版（agent 全收工后）→ 真机验 E 截断修复 + 两个新下拉 + prop-add-option 六条。
+
+## 2026-11-20 凌晨：11-19-scheduled-task-agent 收尾（commit a3466b225，已 push origin/main）
+
+三阶段全部落地 + 真机判据 A1-A10 全过（临时 wavesrv + 自制 JWT mint / agent token 验证，环境已清理）。
+
+- **P0 CLI+MCP**：`wsh scheduledtask list/get/create/update/delete/run`；create 默认 dry-run（`--yes` 落库）；
+  MCP `snorkeling_scheduledtask_{list,create,run}` 同 handler；**createdBy 服务端判定**（`callerIsAgent`），
+  agent 配额 10 → 第 11 个 `E_QUOTA (10/10)` exit 1；顺带堵了两个洞：update 不再 upsert（原实现缺 id 即 append，
+  可绕过配额）、update 不能改 createdBy/createdAt（防改归属脱管）。
+- **P1 双模式 + launch --headless**：`ScheduledTaskType.Mode(""|headless|block) + Tab(current|new|<tabid>)`；
+  runner 走 `scheduler.HeadlessArgs` 单一参数表；block 模式注入 `LaunchBlock`（wshserver 复用 AgentLaunchCommand，
+  校验失败不建块）；`wsh agent launch --headless` 与 `--tab` 互斥 E_USAGE，返回 exitcode/outputPath。
+- **P2 启动补跑**：`CatchUpMissed`（CATCHUP_ENABLED 开关默认 true），按 lastRunAt 锚点算错过窗口 → 串行补跑一次 →
+  LastRunStatus=missed-run；真机验证：lastRunAt 拨回 1h + every:10m → 重启补跑一次，再重启不重复。
+- **判据数字**：A1 `go build ./...` 0 错；A2 三个包单测全绿；A3 list --json=[]；A4 dry-run 后 settings 任务数不变；
+  A5 E_QUOTA(10/10) exit1（user 任务不计入，delete 释放后可再建）；A6 headless run 日志含 "ACK"、db_block 前后 0；
+  A7 block run db_block 0→1、meta `agent:provider=pi`+`cmd:cwd`；A8 launch --headless exitcode 0 + outputpath、
+  --tab 并给 E_USAGE；A9 见上；A10 生成物 add-only（0 删除行）。
+
+### 踩坑与交接事项（留给主 agent / 后续包）
+
+1. **go2ts 生成器 Origin 顺序随机翻转**（今天第二次踩）：`syncproto.Origin` 与 `hero.Origin` TS 名同名 → sort.Slice
+   不稳定 tie → 每次 generate 可能互换。本次两次生成都翻成 hero 在前，已手工恢复 syncproto 在前、最终 diff add-only。
+   **建议跟包修 generator**（tsgen.TypeToTSType 加包名前缀或 sort 加稳定 tie-breaker），否则每个改 wshrpctypes 的包都要手工还。
+2. **wshcmd-mcp.go 的 rpcBackend 新增 3 方法**虽不在本包白名单，但是 Backend 接口扩展的必要适配（薄转发，无逻辑）——
+   已在 commit 中，请知悉。
+3. **scheduledtask\* 命令未加入 `agentscope.commandScopes`**（scope.go 不在白名单）：MCP 工具层 scopeAllows 已挡写类工具，
+   但 scoped token 直连 RPC 时 transport 层不校验这些命令。非本包新引入（历史同款），建议后续补 gate（list→observe /
+   create/update/delete→data / run→launch）。
+4. 复用了 `canonicalizeModelArg`（经 `scheduler.CanonicalizeModelArg` 包级变量注入排 configure）：pi 裸 id 多 provider
+   歧义问题在 scheduled headless 路径同样成立，已同一映射修正。
+5. 真机事实：`~/.snorkeling/scheduledtask-runs/` 现留有本功能验收日志（含 05e0e8a3 开头的他人/后跑痕迹），属功能正常产物。
