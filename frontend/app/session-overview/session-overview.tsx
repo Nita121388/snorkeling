@@ -24,6 +24,8 @@ import { globalStore } from "@/app/store/jotaiStore";
 import { uxCloseBlock } from "@/app/store/keymodel";
 import { modalsModel } from "@/app/store/modalmodel";
 import { AISessionsServiceType, BlockServiceType, ObjectService } from "@/app/store/services";
+import { RpcApi } from "@/app/store/wshclientapi";
+import { TabRpcClient } from "@/app/store/wshrpcutil";
 import { primeSessionNote } from "@/app/store/session-note-cache";
 import { openedThisLaunchTabIdsAtom, wasTabOpenedThisLaunch } from "@/app/tab/tab-open-state";
 import {
@@ -43,7 +45,7 @@ import {
 import { i18n } from "@/i18n/config";
 import { localeTextAtom, useActiveLocale } from "@/i18n/i18nmodel";
 import { getHiddenBlockIdsFromTab, getLayoutModelForTabById } from "@/layout/index";
-import { basename, cn, fireAndForget, formatCompactDuration, makeIconClass } from "@/util/util";
+import { basename, cn, fireAndForget, formatCompactDuration, makeIconClass, stringToBase64 } from "@/util/util";
 import debug from "debug";
 import * as jotai from "jotai";
 import React, { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
@@ -51,7 +53,7 @@ import { useTranslation } from "react-i18next";
 import { AgentStatusChip, shouldShowAgentStatusChip } from "./agent-status-chip";
 import { planBlockRemoval } from "./block-removal";
 import { buildAddAgentLaunchContext } from "./overview-add-agent";
-import { OverviewAddAgentModal, type AddAgentSubmitRequest } from "./overview-add-agent-modal";
+import { OverviewAddAgentModal, type AddAgentSubmitRequest, type AddAgentSubmitResult } from "./overview-add-agent-modal";
 import { OverviewBoard } from "./overview-board";
 import {
     normalizeBoardTags,
@@ -2743,7 +2745,7 @@ function SessionOverviewPanel({ blockId, model }: ViewComponentProps<SessionOver
             defaultPath: tabCwd === "" ? null : tabCwd,
         };
     }, [addAgentTab]);
-    const submitAddAgent = React.useCallback(async (request: AddAgentSubmitRequest) => {
+    const submitAddAgent = React.useCallback(async (request: AddAgentSubmitRequest): Promise<AddAgentSubmitResult> => {
         const settings = globalStore.get(atoms.settingsAtom);
         const blockDef = createAgentBlockDefForProfile(
             request.profileName,
@@ -2756,8 +2758,35 @@ function SessionOverviewPanel({ blockId, model }: ViewComponentProps<SessionOver
         );
         const runtimeOpts: RuntimeOpts = { termsize: { rows: 25, cols: 80 } };
         // activateTargetTab=false：建块后不抢焦点，用户留在 Overview 看到新卡入列。
-        await ObjectService.CreateBlockInTab(request.tabId, blockDef, runtimeOpts, false, false);
+        const blockId = await ObjectService.CreateBlockInTab(request.tabId, blockDef, runtimeOpts, false, false);
+        // v2「新建并发送」：建块成功后再发消息。就绪等待/bracketed paste/回车全部由后端
+        // agentsend 承担（看 term 输出 quiet 轮询），前端不写第二份等待逻辑。
+        // 发送失败不回滚块（块已可用），失败信息回传给弹窗内联展示。
+        const text = request.message;
+        if (text != null && text !== "") {
+            try {
+                const sendResult = await RpcApi.AgentSendCommand(TabRpcClient, {
+                    blockid: blockId,
+                    text64: stringToBase64(text),
+                    submit: true,
+                });
+                if (sendResult?.ok === false) {
+                    return {
+                        ok: false,
+                        blockId,
+                        error: sendResult.warnings?.join(", ") ?? "send-failed",
+                    };
+                }
+            } catch (error) {
+                return {
+                    ok: false,
+                    blockId,
+                    error: (error as Error)?.message ?? "send-failed",
+                };
+            }
+        }
         setAddAgentTab(null);
+        return { ok: true, blockId };
     }, []);
 
     return (

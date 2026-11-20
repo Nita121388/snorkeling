@@ -9,6 +9,7 @@ import { describe, expect, it } from "vitest";
 import {
     buildAddAgentLaunchContext,
     collectAddAgentPathRows,
+    normalizeAddAgentMessage,
     parseBoardTabColumnKey,
     shouldShowAddAgent,
 } from "./overview-add-agent";
@@ -125,5 +126,21 @@ describe("buildAddAgentLaunchContext（建块上下文）", () => {
         const context = buildAddAgentLaunchContext({ connection: null, cwd: null });
         expect(context.cwd).toBeUndefined();
         expect(context.inheritWorkspaceContext).toBe(false);
+    });
+});
+
+describe("normalizeAddAgentMessage（v2 发送内容归一）", () => {
+    it("trim 后非空才算消息", () => {
+        expect(normalizeAddAgentMessage("  hello  ")).toBe("hello");
+    });
+
+    it("空白 / 空串 / null / undefined → null（只建块不发送）", () => {
+        for (const value of ["", "   ", "\n\t ", null, undefined]) {
+            expect(normalizeAddAgentMessage(value as string | null | undefined)).toBeNull();
+        }
+    });
+
+    it("多行文本保留内部换行（只裁首尾空白）", () => {
+        expect(normalizeAddAgentMessage("line1\nline2\n")).toBe("line1\nline2");
     });
 });

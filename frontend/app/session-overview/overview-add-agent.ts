@@ -107,6 +107,16 @@ export type AddAgentTabContextInput = {
 };
 
 /**
+ * 弹窗「发送内容」的归一：trim 后非空才算消息（null = 只建块，不发送）。
+ * 与 wsh agentsend 的 64KB 上限对齐在这里提前拦（超长直接截为 null 并交给调用万报错）——
+ * 不做静默截断：静默截断会把用户意图改掉，比报错更糟。
+ */
+export function normalizeAddAgentMessage(value: string | null | undefined): string | null {
+    const text = typeof value === "string" ? value.trim() : "";
+    return text === "" ? null : text;
+}
+
+/**
  * 建块上下文：显式传该 Tab 的 connection/cwd，**绝不**继承当前焦点块。
  *
  * `inheritWorkspaceContext: false` 是关键 —— agent-launch.ts 的 GUI 对话块路径

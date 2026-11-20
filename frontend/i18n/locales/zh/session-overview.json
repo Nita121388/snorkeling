@@ -135,6 +135,15 @@
         "addAgentInTab": "在 Tab {{name}} 新建 agent",
         "addAgentInTabShort": "在此 Tab 新建 agent"
     },
+    "addAgent": {
+        "messageLabel": "发送内容",
+        "messagePlaceholder": "让这个 agent 从什么开始？可留空——留空则只建块不发送。",
+        "messageRemoteBlocked": "远端 Tab 暂不支持发送内容：会只在远端帮你建好块。",
+        "modelDefault": "默认 · {{model}}",
+        "modelDefaultOnly": "默认（跟随 agent 配置）",
+        "sendFailed": "块已创建，但消息没送达：{{error}}",
+        "close": "关闭"
+    },
     "note": {
         "loading": "正在加载备注…",
         "placeholder": "添加备注",

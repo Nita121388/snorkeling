@@ -135,6 +135,15 @@
         "addAgentInTab": "Create an agent in tab {{name}}",
         "addAgentInTabShort": "New agent in this tab"
     },
+    "addAgent": {
+        "messageLabel": "Message",
+        "messagePlaceholder": "What should this agent start with? Optional — leave empty to just create the block.",
+        "messageRemoteBlocked": "Remote tabs can't receive a message yet — the agent will be created on the remote host without one.",
+        "modelDefault": "Default · {{model}}",
+        "modelDefaultOnly": "Default (agent config)",
+        "sendFailed": "Block created, but the message was not delivered: {{error}}",
+        "close": "Close"
+    },
     "note": {
         "loading": "Loading note...",
         "placeholder": "Add a note",

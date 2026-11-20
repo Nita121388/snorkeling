@@ -535,9 +535,9 @@ function AddAgentButton({
             data-board-add-tab={tabId}
             onClick={() => onAddAgent(tabId, columnTitle)}
             aria-label={i18n.t("session-overview:board.addAgentAria", { name: columnTitle })}
+            title={i18n.t("workspace:agentLaunch.newAction")}
         >
             <i className={makeIconClass("plus", false)} />
-            <span>{i18n.t("workspace:agentLaunch.newAction")}</span>
         </button>
     );
 }

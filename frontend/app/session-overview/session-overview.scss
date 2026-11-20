@@ -2516,6 +2516,11 @@
     }
 }
 
+.session-overview-board-add {
+    min-height: 30px;
+    padding: 6px 0;
+}
+
 .session-overview-tab-add {
     justify-content: flex-start;
     margin-top: 2px;
@@ -2524,8 +2529,9 @@
 
 /* 弹窗：标题右侧的 Tab 名（只在头部出现一次，别再往段标签里塞） */
 .session-overview-add-agent-modal {
-    /* 显式宽度：不由 chip 行的内容宽决定（贴边观感的另一半根因） */
-    width: min(480px, calc(100vw - 32px));
+    /* 显式宽度：不由 chip 行的内容宽决定（贴边观感的另一半根因）
+       v2（2026-11-20 用户：再大点、宽松点）：480 → 560 */
+    width: min(560px, calc(100vw - 48px));
 }
 
 .session-overview-add-agent-tabname {
@@ -2543,9 +2549,89 @@
        段落自带 padding 会叠成 28px+ 的不对称边距 */
     & + & {
         margin-top: 2px;
-        padding-top: 10px;
+        padding-top: 14px;
         border-top: 1px solid var(--border-color);
     }
+}
+
+/* v2 发送内容：多行输入（留空 = 只建块） */
+.session-overview-add-agent-message {
+    width: 100%;
+    min-height: 64px;
+    max-height: 160px;
+    padding: 8px 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: var(--surface-color, transparent);
+    box-sizing: border-box;
+    color: var(--main-text-color);
+    font-family: inherit;
+    font-size: 12px;
+    line-height: 1.5;
+    resize: vertical;
+    outline: none;
+
+    &::placeholder {
+        color: var(--secondary-text-color);
+    }
+
+    &:focus {
+        border-color: var(--accent-color);
+    }
+
+    &:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+    }
+}
+
+.session-overview-add-agent-hint {
+    margin-top: 6px;
+    color: var(--secondary-text-color);
+    font-size: 11px;
+    line-height: 1.4;
+}
+
+/* v2 模型选择器：点选 agent 后展开（下拉优先，目录无模型时手填） */
+.session-overview-add-agent-model {
+    margin-top: 8px;
+}
+
+.session-overview-add-agent-model-select,
+.session-overview-add-agent-model-input {
+    width: 100%;
+    height: 28px;
+    padding: 0 8px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: var(--surface-color, transparent);
+    box-sizing: border-box;
+    color: var(--main-text-color);
+    font-family: inherit;
+    font-size: 12px;
+    outline: none;
+
+    &:focus {
+        border-color: var(--accent-color);
+    }
+
+    &:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+    }
+}
+
+/* v2 建块成功但消息未送达：内联错误（不复用 toast，弹窗内就地报） */
+.session-overview-add-agent-error {
+    margin-top: 10px;
+    padding: 8px 10px;
+    border: 1px solid rgb(from var(--error-color, #d64545) r g b / 0.5);
+    border-radius: 6px;
+    background: rgb(from var(--error-color, #d64545) r g b / 0.08);
+    color: var(--error-color, #d64545);
+    font-size: 11px;
+    line-height: 1.5;
+    word-break: break-word;
 }
 
 .session-overview-add-agent-label {
@@ -2617,7 +2703,7 @@
 /* 路径候选：可滚动列表（不是下拉/手风琴） */
 .session-overview-add-agent-paths {
     display: flex;
-    max-height: min(280px, 36vh);
+    max-height: min(320px, 40vh);
     flex-direction: column;
     margin-top: 2px;
     padding-bottom: 2px;

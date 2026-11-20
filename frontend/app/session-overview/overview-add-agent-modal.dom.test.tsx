@@ -1,16 +1,18 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-// 「＋ 新建 Agent」弹窗 DOM 回归（F-1120-overview-add-agent-card）。
+// 「＋ 新建 Agent」弹窗 DOM 回归（F-1120-overview-add-agent-card，v2）。
 //
-// 只测结构与提交请求体；profile 探测（FindCommand RPC）与建块（CreateBlockInTab）
-// 都在组件外 —— 探测 mock 掉，建块由 onSubmit 回传的 AddAgentSubmitRequest 锁定：
+// 只测结构与提交请求体；profile 探测（FindCommand RPC）、模型目录（agentprofilelist RPC）
+// 与建块/发送（CreateBlockInTab + AgentSendCommand）都在组件外 —— 探测与目录 mock 掉，
+// 建块与发送由 onSubmit 回传的 AddAgentSubmitRequest 锁定：
 //   - tabId/tabName = 入口所属 Tab
 //   - cwd = 弹窗里选中的路径（默认随 Tab），connection 仅远端行
-//   - modelOverride 仅输入框非空时
-//   - 未选 agent 时「创建」disabled
-// 真实建块链路（context.inheritWorkspaceContext=false / activateTargetTab=false）
-// 由 session-overview.tsx 的 submitAddAgent 保证，纯函数部分在 overview-add-agent.test.ts。
+//   - message = 输入框 trim 后非空才算（null = 只建块不发送；远端行恒 null）
+//   - modelOverride = 模型下拉显式切换才有（默认项 = 跟随 profile 配置 → null）
+//   - sendFailure 回执：块已建但消息没送到 → 弹窗保持打开、内联报错、footer 只留「关闭」
+// 真实建块/发送链路（context.inheritWorkspaceContext=false / activateTargetTab=false /
+// text64 + submit=true）由 session-overview.tsx 的 submitAddAgent 保证，纯函数在 overview-add-agent.test.ts。
 
 // @vitest-environment jsdom
 
@@ -18,7 +20,12 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AgentLaunchTarget } from "@/app/workspace/agent-launch";
-import { OverviewAddAgentModal, type AddAgentSubmitRequest } from "./overview-add-agent-modal";
+import { initI18n } from "@/i18n/config";
+import {
+    OverviewAddAgentModal,
+    type AddAgentSubmitRequest,
+    type AddAgentSubmitResult,
+} from "./overview-add-agent-modal";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -29,6 +36,47 @@ vi.mock("@/app/workspace/use-agent-profile-options", () => ({
         { name: "claude", label: "Claude", cmd: "claude", isDefault: false },
     ],
 }));
+
+// 模型目录 mock：不触发 RPC（agentprofilelist），每组模型都带默认值，验证「点 agent 看到模型」。
+vi.mock("@/app/workspace/agent-catalog", () => {
+    const profiles = [
+        {
+            name: "pi",
+            label: "Pi",
+            cmd: "pi",
+            defaultModel: "deepseek-v4.1-flash",
+            models: [
+                { id: "deepseek-v4.1-flash", label: "DeepSeek V4.1", source: "discovery" },
+                { id: "gpt-5.2", label: "GPT-5.2", source: "discovery" },
+            ],
+        },
+        {
+            name: "claude",
+            label: "Claude",
+            cmd: "claude",
+            defaultModel: "claude-sonnet-4.5",
+            models: [
+                { id: "claude-sonnet-4.5", label: "Sonnet 4.5", source: "discovery" },
+                { id: "claude-opus-4.5", label: "Opus 4.5", source: "discovery" },
+            ],
+        },
+    ];
+    return {
+        loadAgentCatalog: async () => profiles,
+        findAgentProfile: (list: any[], name: string | undefined) => list.find((p) => p.name === name) ?? null,
+        pickDefaultModel: (profile: any) =>
+            profile == null ? "" : (profile.defaultModel ?? "") || (profile.models?.[0]?.id ?? ""),
+        modelOptionsFor: (profile: any, current: string | undefined) => {
+            if (profile == null) return [];
+            const options = [...(profile.models ?? [])];
+            const value = typeof current === "string" ? current.trim() : "";
+            if (value !== "" && !options.some((m) => m.id === value)) {
+                options.push({ id: value, label: value, source: "task" });
+            }
+            return options;
+        },
+    };
+});
 
 // 全局 store 在 jsdom 里懒加载失败（与 commontext-send-popover-geometry.dom.test.tsx 同一处理）
 vi.mock("@/app/store/global", async () => {
@@ -60,7 +108,9 @@ const mounted: { container: HTMLDivElement; root: Root }[] = [];
 
 let mainDiv: HTMLDivElement | null = null;
 
-beforeEach(() => {
+beforeEach(async () => {
+    // 文案断言需要真翻译（未 init 的 i18next 返回空串）：与 blockframe-header.menu.test 同款
+    await initI18n("en");
     // Modal 通过 createPortal 挂到 #main
     mainDiv = document.createElement("div");
     mainDiv.id = "main";
@@ -81,7 +131,7 @@ type MountOpts = {
     tabName?: string;
     targets?: AgentLaunchTarget[];
     defaultPath?: string | null;
-    onSubmit?: (request: AddAgentSubmitRequest) => void;
+    onSubmit?: (request: AddAgentSubmitRequest) => Promise<AddAgentSubmitResult> | AddAgentSubmitResult | void;
 };
 
 function mountModal(opts: MountOpts = {}) {
@@ -105,19 +155,39 @@ function mountModal(opts: MountOpts = {}) {
     return { modalEl: mainDiv?.querySelector(".session-overview-add-agent-modal") as HTMLElement, onSubmit };
 }
 
+/** 等模型目录（loadAgentCatalog 的 promise）落到 state 里。 */
+async function flushCatalog() {
+    await act(async () => {
+        await Promise.resolve();
+    });
+}
+
 function modalButtons(modalEl: HTMLElement) {
     const footer = modalEl.querySelector(".modal-footer") as HTMLElement;
     const buttons = [...footer.querySelectorAll("button")];
-    // [取消, 创建]
-    return { cancel: buttons[0], create: buttons[buttons.length - 1] };
+    // 正常态 [取消, 创建]；发送失败态 [关闭]
+    return { cancel: buttons.length > 1 ? buttons[0] : null, create: buttons[buttons.length - 1] };
+}
+
+async function clickCreate(modalEl: HTMLElement) {
+    const { create } = modalButtons(modalEl);
+    await act(async () => {
+        (create as HTMLButtonElement).dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
 }
 
 describe("OverviewAddAgentModal 结构", () => {
-    it("全局 Modal 居中壳 + 两段内容（agent/模型 + 路径）", () => {
-        const { modalEl } = mountModal();
+    it("全局 Modal 居中壳 + 三段内容（发送内容 / agent+模型 / 路径）", async () => {
+        mountModal();
+        await flushCatalog();
+        const modalEl = mainDiv?.querySelector(".session-overview-add-agent-modal") as HTMLElement;
         expect(modalEl).not.toBeNull();
         expect(modalEl.closest(".modal-wrapper")).not.toBeNull();
-        expect(modalEl.querySelectorAll(".session-overview-add-agent-section")).toHaveLength(2);
+        expect(modalEl.querySelectorAll(".session-overview-add-agent-section")).toHaveLength(3);
+        // ① 发送内容（多行输入）
+        expect(modalEl.querySelector(".session-overview-add-agent-message")).not.toBeNull();
+        // ② 模型选择器随 agent 展开
+        expect(modalEl.querySelector(".session-overview-add-agent-model")).not.toBeNull();
     });
 
     it("头部右侧显示 Tab 名（只出现一次）", () => {
@@ -143,6 +213,45 @@ describe("OverviewAddAgentModal 结构", () => {
     });
 });
 
+describe("OverviewAddAgentModal 模型选择（v2：点 agent 展示对应模型，支持切换）", () => {
+    it("默认展示该 agent 的默认模型；选项 = 默认项 + 目录模型", async () => {
+        mountModal();
+        await flushCatalog();
+        const select = mainDiv.querySelector(".session-overview-add-agent-model-select") as HTMLSelectElement;
+        expect(select).not.toBeNull();
+        expect(select.value).toBe("");
+        const options = [...select.querySelectorAll("option")].map((o) => o.textContent ?? "");
+        expect(options[0]).toContain("deepseek-v4.1-flash");
+        expect(options).toHaveLength(3); // 默认 + 2 个目录模型
+    });
+
+    it("切 agent 时模型选择回位到新 agent 的默认项", async () => {
+        const { modalEl } = mountModal();
+        await flushCatalog();
+        const chips = modalEl.querySelectorAll(".session-overview-add-agent-chip-btn");
+        act(() => {
+            (chips[1] as HTMLElement).dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+        const select = modalEl.querySelector(".session-overview-add-agent-model-select") as HTMLSelectElement;
+        expect(select.value).toBe("");
+        const options = [...select.querySelectorAll("option")].map((o) => o.textContent ?? "");
+        expect(options[0]).toContain("claude-sonnet-4.5");
+    });
+
+    it("切模型 → 提交请求带 modelOverride；不切则 null", async () => {
+        const onSubmit = vi.fn();
+        const { modalEl } = mountModal({ onSubmit });
+        await flushCatalog();
+        const select = modalEl.querySelector(".session-overview-add-agent-model-select") as HTMLSelectElement;
+        act(() => {
+            select.value = "gpt-5.2";
+            select.dispatchEvent(new Event("change", { bubbles: true }));
+        });
+        await clickCreate(modalEl);
+        expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ modelOverride: "gpt-5.2" }));
+    });
+});
+
 describe("OverviewAddAgentModal 路径列表", () => {
     it("默认项（随 Tab）排最前并选中；本地行无第二行", () => {
         const { modalEl } = mountModal();
@@ -153,24 +262,6 @@ describe("OverviewAddAgentModal 路径列表", () => {
             "E:/code/snorkeling"
         );
         expect(rows[0].querySelector(".session-overview-add-agent-path-sub")).toBeNull();
-    });
-
-    it("本地 connection=local 行无第二行", () => {
-        const { modalEl } = mountModal({
-            targets: [
-                {
-                    blockId: "b1",
-                    connection: "local",
-                    cwd: "E:/code/snorkeling",
-                    source: "terminal",
-                    isLocal: false,
-                    label: "local",
-                    detail: "E:/code/snorkeling",
-                },
-            ],
-            defaultPath: "E:/code/snorkeling",
-        });
-        expect(modalEl.querySelector(".session-overview-add-agent-path-sub")).toBeNull();
     });
 
     it("远端行第二行显示 connection", () => {
@@ -192,60 +283,71 @@ describe("OverviewAddAgentModal 路径列表", () => {
     });
 });
 
-describe("OverviewAddAgentModal 提交请求体", () => {
-    it("默认：选中第一个 profile + 随 Tab 路径；modelOverride=null；connection=null", () => {
+describe("OverviewAddAgentModal 发送内容（v2）", () => {
+    it("默认（未填）：message=null，只建块不发送", async () => {
         const onSubmit = vi.fn();
         const { modalEl } = mountModal({ onSubmit });
-        const { create } = modalButtons(modalEl);
-        // 未显式选 agent 时默认第一个 profile（pi）
-        act(() => {
-            (create as HTMLButtonElement).dispatchEvent(new MouseEvent("click", { bubbles: true }));
-        });
+        await flushCatalog();
+        await clickCreate(modalEl);
         expect(onSubmit).toHaveBeenCalledWith({
             tabId: "tab-1",
             tabName: "snorkel-dev",
             profileName: "pi",
             connection: null,
             cwd: "E:/code/snorkeling",
+            message: null,
             modelOverride: null,
         });
     });
 
-    it("切路径 → cwd 跟随；本版无模型输入框（modelOverride 恒 null）", async () => {
+    it("填写内容：trim 后随请求下发", async () => {
         const onSubmit = vi.fn();
         const { modalEl } = mountModal({ onSubmit });
-        expect(modalEl.querySelector(".session-overview-add-agent-model")).toBeNull();
-        const rows = modalEl.querySelectorAll(".session-overview-add-agent-path");
+        await flushCatalog();
+        const textarea = modalEl.querySelector(".session-overview-add-agent-message") as HTMLTextAreaElement;
+        const valueSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value")?.set;
         act(() => {
-            (rows[1] as HTMLElement).dispatchEvent(new MouseEvent("click", { bubbles: true }));
+            // 走原生 value setter：直接赋 textarea.value 不会触发 React 的 onChange
+            valueSetter?.call(textarea, "  帮我跑一遍 frontend 单测  ");
+            textarea.dispatchEvent(new Event("input", { bubbles: true }));
         });
-        const { create } = modalButtons(modalEl);
-        await act(async () => {
-            (create as HTMLButtonElement).dispatchEvent(new MouseEvent("click", { bubbles: true }));
-        });
-        expect(onSubmit).toHaveBeenCalledWith({
-            tabId: "tab-1",
-            tabName: "snorkel-dev",
-            profileName: "pi",
-            connection: null,
-            cwd: "E:/code/other",
-            modelOverride: null,
-        });
+        await clickCreate(modalEl);
+        expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ message: "帮我跑一遍 frontend 单测" }));
     });
 
-    it("远端路径：connection 跟随该行", () => {
+    it("远端路径：禁用消息输入 + 提示，且 message 恒 null", async () => {
         const onSubmit = vi.fn();
         const { modalEl } = mountModal({
             targets: [RemoteTarget("b1", "/Users/nita/work")],
             defaultPath: "/Users/nita/work",
             onSubmit,
         });
-        const { create } = modalButtons(modalEl);
-        act(() => {
-            (create as HTMLButtonElement).dispatchEvent(new MouseEvent("click", { bubbles: true }));
-        });
+        await flushCatalog();
+        const textarea = modalEl.querySelector(".session-overview-add-agent-message") as HTMLTextAreaElement;
+        expect(textarea.disabled).toBe(true);
+        expect(modalEl.querySelector(".session-overview-add-agent-hint")).not.toBeNull();
+        await clickCreate(modalEl);
         expect(onSubmit).toHaveBeenCalledWith(
-            expect.objectContaining({ cwd: "/Users/nita/work", connection: "ssh://mac" })
+            expect.objectContaining({ cwd: "/Users/nita/work", connection: "ssh://mac", message: null })
         );
+    });
+
+    it("发送失败回执：内联报错 + footer 只留「关闭」，再点即关闭（不建第二个块）", async () => {
+        const onSubmit = vi.fn(async (): Promise<AddAgentSubmitResult> => ({
+            ok: false,
+            blockId: "block-new",
+            error: "E_AGENT_NOT_READY: timeout",
+        }));
+        const { modalEl } = mountModal({ onSubmit });
+        await flushCatalog();
+        await clickCreate(modalEl);
+        const errorEl = modalEl.querySelector(".session-overview-add-agent-error");
+        expect(errorEl).not.toBeNull();
+        expect(errorEl?.textContent).toContain("E_AGENT_NOT_READY");
+        const buttons = [...modalEl.querySelectorAll(".modal-footer button")];
+        expect(buttons).toHaveLength(1);
+        // 再点一次：不重新提交，只关闭
+        await clickCreate(modalEl);
+        expect(onSubmit).toHaveBeenCalledTimes(1);
     });
 });
