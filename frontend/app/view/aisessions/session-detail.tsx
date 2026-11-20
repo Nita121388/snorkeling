@@ -2388,7 +2388,12 @@ export function SessionDetailPane({
     const projectDirectory = summary?.projectPath?.trim() ?? "";
     const sessionFilePath = summary?.filePath?.trim() ?? "";
     return (
-        <div ref={containerRef} className="relative flex h-full min-h-0 flex-col">
+        <div
+            ref={containerRef}
+            className="relative flex h-full min-h-0 flex-col"
+            // 机器验证钩子：当前面板渲染的会话 key（验证台按它断言「面板正文=被点的那一行」）。
+            data-detail-session-key={summary?.key ?? ""}
+        >
             {historySyncError && effectiveDetail != null ? (
                 <div
                     className="flex shrink-0 items-center gap-2 border-b border-warning/40 bg-warning/10 px-3 py-1.5 text-xs text-warning"

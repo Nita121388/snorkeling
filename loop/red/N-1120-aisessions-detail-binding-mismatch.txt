@@ -1,0 +1,53 @@
+# N-1120-aisessions-detail-binding-mismatch — G2 红证（修前行为锁定）
+
+## 修前代码（frontend/app/view/aisessions/aisessions.tsx @ 8b5afd25f）
+
+loadSessions() 收尾的回落分支没有 else —— 绑定会话即使解析成功，也会被
+「列表第一行」覆盖；解析失败时同样静默改绑第一行：
+
+    const boundSessionId = selectedKey === "" ? this.getBoundSessionId() : "";
+    const boundSession = findSessionById(sessions, boundSessionId);
+    if (boundSession != null) {
+        globalStore.set(this.selectedKeyAtom, boundSession.key);   // ← 正确解析结果
+        globalStore.set(this.detailAtom, null);
+    } else if (boundSessionId !== "") {
+        if (await this.loadDetailById(boundSessionId, refresh)) { return; }
+        ...
+    }
+    if (this.shouldAutoStartNewChat()) {          // ← 没有 else，bound 命中也被吞掉
+        this.startNewSession();
+    } else {
+        const firstSession = sortSessionsByTime(sessions, sortDescending)[0];
+        globalStore.set(this.selectedKeyAtom, firstSession?.key ?? "");   // ← 覆盖
+        globalStore.set(this.detailAtom, null);
+    }
+
+修前效果：双击「非最新一行」打开的详情块，挂载后 selectedKey 被改成列表第一行
+（= 最新会话），且因 selectedKey 落在列表内，后续刷新永不重解绑定 → 粘死错会话。
+两条入口（列表双击 / Agent TUI 右键 Open Session Detail）共用该逻辑，都中。
+
+同源两洞：
+- loadDetailById 无 seq/选中守卫（loadDetail 有），慢响应回来无条件覆盖用户刚点的行。
+- 面板 detail.summary.key ≠ 选中 key 时旧正文照常渲染（loading 只在 detail==null 显示）。
+
+## 红证（把修前规则原样写进测试，断言它违反不变式）
+
+frontend/app/view/aisessions/detail-binding.test.ts
+describe("修前回落规则（红证对照）"):
+  oldFallback(false, "pi:list-first") === "pi:list-first"   // 修前规则返回列表第一行
+  detailFallbackDecision({blockBound:true, loadByIdFailed:true, ...})
+    .kind !== "first-session"                              // 修后规则永不回落
+
+修后不变式（detail-binding.ts 纯函数，14 条用例）：
+  1. detailFallbackDecision：blockBound=true 恒返回 {kind:"keep"}，永不 first-session；
+     未绑定块保留「自动选最新一行」/ newchat 原行为。
+  2. shouldCommitDetailLoad：seq 过期或选中已变 → 不提交（loadDetailById 补同款守卫）。
+  3. detailBelongsToSelection：归属不符 → 面板收 null（骨架），旧正文不冒充当前选中。
+
+## 运行记录（2026-11-20）
+
+- npx vitest run frontend/app/view/aisessions/detail-binding.test.ts → 14/14 passed
+- npx vitest run frontend/app/view/aisessions → 52 files / 818 tests passed（含新测试）
+- npx tsc --noEmit -p tsconfig.json → 61 既有错误，本包三文件 0 新增
+- 真机验证台 scripts/verify/aisessions-detail-binding/verify.mjs 已备未跑
+  （用户 2026-11-20 明确：本机性能不够，暂不做真机；判据由上述单测锁定）

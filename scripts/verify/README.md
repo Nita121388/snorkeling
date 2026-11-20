@@ -107,6 +107,7 @@ node scripts/verify/vcs-panel-buttons/verify.mjs --port 9232
 | `agent-property-scope` | `verify.mjs` | Agent 属性 scope：浮层面板（3 范围默认 session / 类型下拉 9 项 / Esc）+ UI 与外部写入（agent card set 同链）落 settings.json + codex 跨 Agent 过滤（ai-sessions 用临时目录隔离，独立 profile + 端口 9235） | —       |
 | `theme-monochrome`     | `verify.mjs` | 三主题矩阵：dark/light token 基线不变 + monochrome 目标值生效 + 终端 default-monochrome 16 色可读可辨（另有 check.py 纯静态判据，不启 GUI） | ✅       |
 | `aisessions-run-indicator` | `verify.mjs` | AI Sessions 行内运行指示：左列单点（非 animate-spin 四点）/ 右侧徽章在 row-meta 末尾且 ml-auto 贴右 / 徽章高 15px / 无第二个 GUI Chat spinner | ✅       |
+| `aisessions-detail-binding` | `verify.mjs` | 会话详情块绑定错位：双击非第一行 → 详情面板 `data-detail-session-key` 逐字等于被点行（不是列表第一行）/ 再双击另一行 → 面板切到新行 | —       |
 | `agent-session-rail` | `verify.mjs` | 会话轨水平滚动轴回归：用 >37 条用户消息的真实会话播种 TUI 轨，断言 overflow-x hidden / 无横向溢出 / 竖滚动条真出现（独立 profile + 端口 9233） | ✅       |
 | `header-hover-latch`   | `verify.mjs` | Files block header 锁存式悬停分区：无硬切 / 可达性（可见+溢出=总数）/ 横穿全宽不翻区 / 宽限内保持方向 / 与 isHovered 解耦 / 右锁让位腾宽（A3–A7） | ✅       |
 | `sync-conflict-copy`   | `verify.mjs` | Settings → Sync 冲突行 Copy for Agent（title 含计数）/ payload 走 Go 渲染源（SyncConflictsCopy == RenderAll，含 Task + 输出契约）/ Review 抽屉逐条复制+粘回 resolve / conflicts=0 零态不渲染（造 store 文件驱动） | ✅       |

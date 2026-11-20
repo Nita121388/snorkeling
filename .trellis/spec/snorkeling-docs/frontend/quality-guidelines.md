@@ -857,3 +857,26 @@ vitest 按目录跑时会把项目里所有匹配 glob 的文件当测试收集�
 完整路径只降级到 tooltip / 点击复制（复制用原值，`displayPath()` 仅展示用、且远端块禁用）。
 参照实现：`buildHeroLaunchBlockDef`（写入）→ `heroHeaderName`（读取）→
 `block.tsx defaultTitle` / `buildCmdCwdHeaderElem`（接线）。
+
+---
+
+## 详情块绑定解析失败不得回落「列表第一行」(2026-11-20, task 11-20-aisessions-detail-binding-mismatch)
+
+绑定会话（block meta `aisessions:sessionid` 非空）的详情块，挂载解析失败（meta 未就绪 /
+`limit:200` 窗口外 / Detail 请求瞬时报错）时**只能保留绑定 + 报错等重试**，绝不静默改绑列表任何一行。
+修前 `loadSessions` 收尾的回落分支漏了 else：绑定解析成功的结果也会被 `列表第一行` 覆盖，
+且因 `selectedKey` 落在列表内，后续刷新永不自愈 → 详情块粘死在错误会话上（列表双击与
+Agent TUI 右键 Open Session Detail 两条入口共用该逻辑，都中招）。
+
+- 三条判定收口在 `frontend/app/view/aisessions/detail-binding.ts`（纯函数）：
+  `detailFallbackDecision`（绑定块恒 `keep`，永不 `first-session`）、
+  `shouldCommitDetailLoad`（seq 最新且仍选中才提交，`loadDetailById` 与 `loadDetail` 共用）、
+  `detailBelongsToSelection`（归属不符时面板收 `null` 走骨架，旧正文不得冒充当前选中）。
+- 孤儿绑定 id（session not found）清绑后要记 `boundDetailLost`：清绑让 meta 变回「未绑定块」，
+  下一次刷新会当成普通列表块自动选最新一行 —— 错位换个马甲回来。
+- 「自动选最新一行 / 自动起新会话」只属于**未绑定**块；给任何回落分支加代码时先问
+  「这个块是不是绑定详情块」。
+- 机器验证钩子：详情面板根节点 `data-detail-session-key`（= 正在渲染的会话 key），
+  验证台 `scripts/verify/aisessions-detail-binding/`（真实指针双击 → 断言面板 key 逐字
+  等于被点行、不等于列表第一行）。真机 skipped：本机性能不够（2026-11-20），判据由
+  `detail-binding.test.ts` 的 14 条用例（含修前规则红证对照）锁定。

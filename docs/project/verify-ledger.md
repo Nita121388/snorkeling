@@ -263,3 +263,4 @@
 | 2026-11-19 05:43 | N-1119 Hero header emoji 去重（真机 skipped：用户本机性能差，明确暂不做） | ✅ 36/36 | vitest + queue prove | `loop/red/N-1119-hero-header-dup-emoji.txt` | working-tree |
 | 2026-11-19 12:15 | agent-card-model | ❌ fatal（未跑） | launch+reset | `20261119T12153-agent-card-model` | 3955216fe |
 | 2026-11-19 13:06 | agent-card-model | ❌ fatal（未跑） | launch+reset | `20261119T13060-agent-card-model` | 8eb023350 |
+| 2026-11-20 03:40 | aisessions-detail-binding（真机 skipped：用户明确本机性能不够，暂不做；verify.mjs 已备） | ✅ 14/14 | vitest + 红证对照 | `loop/red/N-1120-aisessions-detail-binding-mismatch.txt` | working-tree |

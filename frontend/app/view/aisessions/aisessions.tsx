@@ -32,6 +32,7 @@ import { isSameSessionSummary } from "../../session-overview/session-overview-se
 import "../../session-overview/session-overview.scss";
 import { autoGenerate } from "./aisession-gen-store";
 import { GroupModeSwitch, IconButton, type ListGroupMode } from "./controls";
+import { detailBelongsToSelection, detailFallbackDecision, shouldCommitDetailLoad } from "./detail-binding";
 import { EmptyState } from "./empty-state";
 import { FilterPanel } from "./filter-panel";
 import { FilterPresetMenu } from "./filter-preset-menu";
@@ -300,6 +301,9 @@ export class AiSessionsViewModel implements ViewModel {
     private filterStateLastWritten: string | null = null;
     detailLoadSeq = 0;
     detailToolsLoadSeq = 0;
+    // 绑定详情块的孤儿 id 被清绑后置位：这个块曾绑定过一个会话，
+    // 后续刷新也不允许回落成「列表第一行」（只能展示错误态，由用户自己选）。
+    boundDetailLost = false;
     markRequestSeqByKey = new Map<string, number>();
 
     constructor({ blockId, nodeModel, tabModel, waveEnv }: ViewModelInitType) {
@@ -638,8 +642,14 @@ export class AiSessionsViewModel implements ViewModel {
                 if (background) {
                     return;
                 }
-                const boundSessionId = selectedKey === "" ? this.getBoundSessionId() : "";
+                // 绑定块（详情块）的解析失败绝不能回落成「列表第一行」：那会把块粘死在
+                // 一个无关会话上（修前这里没有 else，绑定命中的结果也会被下面覆盖）。
+                const blockBoundId = this.getBoundSessionId();
+                const blockBound = blockBoundId !== "" || this.boundDetailLost;
+                const boundSessionId = selectedKey === "" ? blockBoundId : "";
                 const boundSession = findSessionById(sessions, boundSessionId);
+                let loadByIdFailed = false;
+                let sessionNotFound = false;
                 if (boundSession != null) {
                     globalStore.set(this.selectedKeyAtom, boundSession.key);
                     globalStore.set(this.detailAtom, null);
@@ -647,20 +657,35 @@ export class AiSessionsViewModel implements ViewModel {
                     if (await this.loadDetailById(boundSessionId, refresh)) {
                         return;
                     }
-                    // 绑定已失效（孤儿 id：未落盘/已删除）：静默清绑 + 清错误，再走既有 fallback。
+                    loadByIdFailed = true;
+                    // 绑定已失效（孤儿 id：未落盘/已删除）：清掉 meta 绑定，但保留错误展示
+                    // （面板显示 not found，而不是空白或别的会话）。
                     // 其他失败（连接/网络/瞬时）保留错误展示，不清绑。
-                    if (isSessionNotFoundError(globalStore.get(this.errorAtom), boundSessionId)) {
+                    sessionNotFound = isSessionNotFoundError(globalStore.get(this.errorAtom), boundSessionId);
+                    if (sessionNotFound) {
+                        // 孤儿 id：只清掉 block meta 绑定，但保留「这曾是一个绑定块」的事实，
+                        // 否则下一次刷新会当成普通列表块自动选最新一行（就又会错位）。
+                        this.boundDetailLost = true;
                         await this.clearBoundSessionMeta();
-                        globalStore.set(this.errorAtom, "");
                     }
                 }
-                if (this.shouldAutoStartNewChat()) {
-                    this.startNewSession();
-                } else {
-                    const firstSession = sortSessionsByTime(sessions, sortDescending)[0];
-                    globalStore.set(this.selectedKeyAtom, firstSession?.key ?? "");
-                    globalStore.set(this.detailAtom, null);
+                const fallback = detailFallbackDecision({
+                    blockBound,
+                    loadByIdFailed,
+                    sessionNotFound,
+                    newChat: this.shouldAutoStartNewChat(),
+                });
+                if (fallback.kind === "keep") {
+                    // 绑定块：保留现状（错误态 / 骨架），下次刷新或重试再说。
+                    return;
                 }
+                if (fallback.kind === "newchat") {
+                    this.startNewSession();
+                    return;
+                }
+                const firstSession = sortSessionsByTime(sessions, sortDescending)[0];
+                globalStore.set(this.selectedKeyAtom, firstSession?.key ?? "");
+                globalStore.set(this.detailAtom, null);
             }
         } catch (e) {
             if (
@@ -1476,6 +1501,9 @@ export class AiSessionsViewModel implements ViewModel {
     async loadDetailById(sessionId: string, refresh = false): Promise<boolean> {
         const trimmedSessionId = sessionId.trim();
         if (trimmedSessionId === "") return false;
+        // 与 loadDetail 同款守卫：旧响应 / 用户已改选一律不提交（修前这里没有任何守卫，
+        // 详情块冷启动的慢响应会把用户刚点的那一行覆盖掉）。
+        const loadSeq = ++this.detailLoadSeq;
         globalStore.set(this.selectedKeyAtom, trimmedSessionId);
         globalStore.set(this.detailLoadingAtom, true);
         globalStore.set(this.errorAtom, "");
@@ -1487,15 +1515,26 @@ export class AiSessionsViewModel implements ViewModel {
                 refresh,
                 includeTools: true,
             });
+            const stillCurrent = shouldCommitDetailLoad({
+                loadSeq,
+                latestSeq: this.detailLoadSeq,
+                selectedKey: globalStore.get(this.selectedKeyAtom),
+                targetKey: trimmedSessionId,
+            });
+            if (!stillCurrent) return false;
             globalStore.set(this.selectedKeyAtom, detail.summary.key);
             if (!this.commitDetail(detail)) return false;
             this.replaceSession(detail.summary);
             return true;
         } catch (e) {
-            globalStore.set(this.errorAtom, getErrorMessage(e));
+            if (loadSeq === this.detailLoadSeq) {
+                globalStore.set(this.errorAtom, getErrorMessage(e));
+            }
             return false;
         } finally {
-            globalStore.set(this.detailLoadingAtom, false);
+            if (loadSeq === this.detailLoadSeq) {
+                globalStore.set(this.detailLoadingAtom, false);
+            }
         }
     }
 
@@ -2393,7 +2432,10 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
     }, [backgroundRefresh, blockVisible]);
 
     const selectedSession = visibleSessions.find((session) => session.key === selectedKey);
-    const fallbackSession = selectedKey === "" ? visibleSessions[0] : null;
+    // 绑定到具体会话的详情块绝不能"回落成列表第一行"（那正是详情和选中项不对应的来源）；
+    // 只有未绑定的纯列表块才允许"没选中就自动绑最新一行"。
+    const boundToSession = blockSessionId !== "" || model.boundDetailLost;
+    const fallbackSession = selectedKey === "" && !boundToSession ? visibleSessions[0] : null;
     const activeSession = selectedSession ?? fallbackSession;
 
     useEffect(() => {
@@ -3092,11 +3134,16 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                 {showsDetailPane ? (
                     <SessionDetailPane
                         model={model}
-                        detail={detail}
+                        // 正文只在"属于当前选中会话"时渲染：否则切换瞬间会拿旧会话的正文
+                        // 冒充新选中项（视觉上的详情/选中不对应），这里退回骨架。
+                        detail={detailBelongsToSelection(detail, selectedKey) ? detail : null}
                         isNewChat={activeSession?.key === NewSessionKey}
                         newChatEpoch={newChatEpoch}
                         loading={
-                            error === "" && detailLoading && detail == null && activeSession?.key !== NewSessionKey
+                            error === "" &&
+                            detailLoading &&
+                            !detailBelongsToSelection(detail, selectedKey) &&
+                            activeSession?.key !== NewSessionKey
                         }
                         deltaLoading={detailDeltaLoading}
                         toolCallsLoading={toolCallsLoading}
