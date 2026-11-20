@@ -10,6 +10,7 @@ task: 11-20-f-1120-overview-add-agent-card
 order: 100
 touch: [frontend/app/session-overview/overview-add-agent.ts, frontend/app/session-overview/overview-add-agent.test.ts, frontend/app/session-overview/overview-add-agent-modal.tsx, frontend/app/session-overview/overview-add-agent-modal.dom.test.tsx, frontend/app/session-overview/overview-board.tsx, frontend/app/session-overview/overview-board-model.ts, frontend/app/session-overview/overview-board-add.test.tsx, frontend/app/session-overview/session-overview.tsx, frontend/app/session-overview/session-overview.scss, frontend/i18n/locales/en/session-overview.json, frontend/i18n/locales/zh/session-overview.json, design/prototypes/overview-dashboard/overview-add-agent-card/**, .trellis/tasks/11-20-f-1120-overview-add-agent-card/**, loop/items/F-1120-overview-add-agent-card.md, loop/red/F-1120-overview-add-agent-card.txt, loop/gates.json, docs/project/**]
 rollback: null
+rubricPath: .trellis/tasks/11-20-f-1120-overview-add-agent-card/design-rubric.md
 budget: {minutes: 300, retries: 2}
 releaseCandidate: false
 createdAt: "2026-11-20T03:16:03Z"
