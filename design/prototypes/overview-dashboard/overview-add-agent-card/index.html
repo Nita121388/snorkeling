@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<!--
+  原型：Overview 看板 · Tab 下新建 Agent 卡
+  镜像源：frontend/app/session-overview/overview-board.tsx / session-overview.tsx / session-overview.scss
+  规则（PROCESS.md）：DOM 结构与类名逐字段对齐真实组件，仅新增「＋ 新建」入口相关的结构。
+  新增类名一律 session-overview-board-add* / session-overview-add-popover*，实现时原样搬走。
+-->
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<title>原型 · Overview 看板 Tab 下新建 Agent</title>
+<style>
+  :root {
+    --bg: #1a1b26; --panel: #1f2231; --card: #262a3d; --card-hover: #2c3147;
+    --border: #333850; --text: #d7dcec; --text-dim: #8b93ab; --accent: #4f7cff;
+    --green: #4cc38a; --yellow: #e5c07b; --red: #e06c75; --purple: #bf55ec; --mono: ui-monospace, monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font: 13px/1.5 -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif; padding: 20px; }
+
+  /* ── 原型说明横幅（非镜像部分） ── */
+  .proto-banner { background: #14161f; border: 1px solid var(--border); border-radius: 6px; padding: 10px 14px; margin-bottom: 14px; font-size: 12px; color: var(--text-dim); }
+  .proto-banner b { color: var(--yellow); }
+
+  /* ── 以下类名镜像 session-overview.scss ── */
+  .session-overview-panel { display: flex; flex-direction: column; gap: 12px; }
+  .session-overview-header { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 0 4px; }
+  .session-overview-subtitle { font-size: 11px; color: var(--text-dim); }
+  .session-overview-header-actions { display: flex; gap: 10px; align-items: center; }
+
+  .session-overview-view-switch { display: flex; background: var(--panel); border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+  .session-overview-view-switch-button { display: flex; align-items: center; gap: 5px; padding: 4px 10px; background: none; border: none; color: var(--text-dim); font: inherit; cursor: pointer; }
+  .session-overview-view-switch-button.is-active { background: var(--card-hover); color: var(--text); }
+  .session-overview-group-picker { display: flex; align-items: center; gap: 6px; background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 3px 8px; color: var(--text-dim); font-size: 12px; }
+  .session-overview-group-picker select { background: none; border: none; color: var(--text); font: inherit; cursor: pointer; outline: none; }
+  .session-overview-group-picker select option { background: var(--panel); }
+
+  .session-overview-board { display: flex; gap: 14px; align-items: flex-start; overflow-x: auto; padding-bottom: 8px; }
+  .session-overview-board-column { flex: 0 0 264px; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 10px; display: flex; flex-direction: column; }
+  .session-overview-board-column-head { display: flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 600; padding: 2px 4px 8px; }
+  .session-overview-board-column-dot { width: 8px; height: 8px; border-radius: 50%; }
+  .session-overview-board-column-dot.is-blue { background: var(--accent); }
+  .session-overview-board-column-dot.is-green { background: var(--green); }
+  .session-overview-board-column-dot.is-purple { background: var(--purple); }
+  .session-overview-board-column-count { font-size: 11px; color: var(--text-dim); background: #33385088; border-radius: 8px; padding: 0 7px; margin-left: auto; }
+  .session-overview-board-column-count.is-bumping { animation: count-bump .7s ease; }
+  @keyframes count-bump { 0% { transform: scale(1); background: #4f7cff55; } 40% { transform: scale(1.35); background: #4f7cff77; } 100% { transform: scale(1); } }
+  .session-overview-board-cards { display: flex; flex-direction: column; gap: 8px; }
+  .session-overview-board-empty { color: var(--text-dim); font-size: 11px; text-align: center; padding: 10px 0; }
+  .session-overview-board-column.is-empty { opacity: .8; }
+
+  .session-overview-board-card { background: var(--card); border: 1px solid var(--border); border-radius: 7px; padding: 8px 10px; display: flex; flex-direction: column; gap: 5px; cursor: pointer; transition: background .12s, border-color .12s; }
+  .session-overview-board-card:hover { background: var(--card-hover); border-color: #4a5470; }
+  .session-overview-board-card.is-entering { animation: board-card-enter .18s cubic-bezier(.2, .9, .16, 1); }
+  @keyframes board-card-enter { from { opacity: 0; transform: translateY(8px) scale(.97); } }
+  .session-overview-board-card-head { display: flex; align-items: center; gap: 6px; min-width: 0; }
+  .session-overview-board-card-avatar { width: 18px; height: 18px; flex: none; display: flex; align-items: center; justify-content: center; font-size: 12px; border-radius: 5px; }
+  .session-overview-board-card-title { font-weight: 600; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .session-overview-board-card-age { margin-left: auto; flex: none; font-size: 10px; color: var(--text-dim); }
+  .session-overview-board-card-meta { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
+  .session-overview-board-chip { font-size: 10px; color: var(--text-dim); background: #33385077; padding: 0 6px; border-radius: 8px; white-space: nowrap; }
+  .session-overview-board-chip.is-tag { color: #9ecbff; background: #4f7cff22; }
+  .agent-status-chip { font-size: 10px; padding: 0 7px; border-radius: 8px; display: inline-flex; gap: 4px; align-items: center; }
+  .agent-status-chip.is-working { color: var(--green); background: #4cc38a22; }
+  .agent-status-chip.is-blocked { color: var(--red); background: #e06c7522; }
+  .agent-status-chip.is-done { color: var(--text-dim); background: #33385066; }
+  .agent-status-chip.is-idle { color: var(--text-dim); background: #33385044; }
+  .agent-status-chip.is-starting { color: var(--accent); background: #4f7cff22; }
+  .session-overview-board-card-preview { font-size: 10.5px; color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-family: var(--mono); }
+
+  /* ═══ 新增点 1：＋ 新建占位卡（board 视图） ═══ */
+  .session-overview-board-add {
+    margin-top: 2px; border: 1px dashed var(--border); border-radius: 7px;
+    background: none; color: var(--text-dim); font: inherit; cursor: pointer;
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+    padding: 9px 0; font-size: 12px; transition: all .12s; margin-bottom: 0;
+  }
+  .session-overview-board-add:hover, .session-overview-board-add:focus-visible {
+    border-color: var(--accent); color: var(--accent); background: #4f7cff11; outline: none;
+  }
+  .session-overview-board-add.is-busy { opacity: .45; pointer-events: none; }
+
+  /* ── 列表视图（镜像 session-overview.scss .session-overview-tab-*） ── */
+  .session-overview-tab-group { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; }
+  .session-overview-tab-title { display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 600; }
+  .session-overview-tab-title strong { color: var(--text-dim); font-size: 11px; font-weight: 400; }
+  .session-overview-block-list { display: flex; flex-direction: column; gap: 5px; margin-top: 4px; }
+  .session-overview-block-row { display: flex; align-items: center; gap: 8px; font-size: 12px; padding: 6px 8px; border-radius: 6px; cursor: pointer; }
+  .session-overview-block-row:hover { background: var(--card-hover); }
+  .session-overview-muted { color: var(--text-dim); font-size: 11px; padding: 6px 8px; }
+
+  /* ═══ 新增点 2：＋ 新建行（list 视图） ═══ */
+  .session-overview-tab-add {
+    border: 1px dashed var(--border); background: none; border-radius: 6px; color: var(--text-dim);
+    font: inherit; font-size: 12px; cursor: pointer; padding: 6px 8px; margin-top: 2px;
+    display: flex; align-items: center; gap: 6px; transition: all .12s;
+  }
+  .session-overview-tab-add:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* ═══ 新增点 3：Agent 选择器 popover ═══ */
+  .session-overview-add-popover {
+    position: fixed; z-index: 100; width: 300px; background: var(--panel);
+    border: 1px solid #4a5470; border-radius: 10px; box-shadow: 0 12px 40px #000000aa;
+    padding: 12px; animation: popover-in .14s ease;
+  }
+  @keyframes popover-in { from { opacity: 0; transform: translateY(4px); } }
+  .session-overview-add-popover-head { display: flex; align-items: center; font-size: 12px; font-weight: 600; margin-bottom: 10px; }
+  .session-overview-add-popover-head .tab-name { margin-left: auto; font-weight: 400; color: var(--text-dim); font-size: 11px; }
+  .session-overview-add-popover-label { font-size: 11px; color: var(--text-dim); margin: 8px 0 4px; }
+  .session-overview-add-agent-list { display: flex; flex-direction: column; gap: 3px; }
+  .session-overview-add-agent { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 6px; cursor: pointer; font-size: 12px; border: 1px solid transparent; }
+  .session-overview-add-agent:hover { background: var(--card-hover); }
+  .session-overview-add-agent.is-selected { background: var(--card-hover); border-color: var(--accent); }
+  .session-overview-add-agent .desc { color: var(--text-dim); font-size: 10.5px; margin-left: auto; white-space: nowrap; }
+  .session-overview-add-popover select {
+    width: 100%; background: var(--card); color: var(--text); border: 1px solid var(--border);
+    border-radius: 6px; padding: 5px 8px; font: inherit; font-size: 12px;
+  }
+  .session-overview-add-path-row {
+    display: flex; align-items: center; gap: 6px; background: var(--card);
+    border: 1px solid var(--border); border-radius: 6px; padding: 5px 8px; font-size: 11px;
+  }
+  .session-overview-add-path-row .path { font-family: var(--mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .session-overview-add-path-row .badge-remote { color: var(--yellow); }
+  .session-overview-add-path-row .lock-btn { margin-left: auto; background: none; border: none; color: var(--text-dim); cursor: pointer; font-size: 12px; }
+  .session-overview-add-path-row .lock-btn:hover { color: var(--accent); }
+  .session-overview-add-path-opts { display: none; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+  .session-overview-add-path-opts.is-open { display: flex; }
+  .session-overview-add-path-opt { font-size: 10px; font-family: var(--mono); background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 2px 7px; cursor: pointer; color: var(--text-dim); }
+  .session-overview-add-path-opt.is-selected { color: var(--accent); border-color: var(--accent); }
+  .session-overview-add-popover-footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
+  .session-overview-add-popover-footer button { font: inherit; font-size: 12px; border-radius: 6px; padding: 5px 12px; cursor: pointer; }
+  .btn-cancel { background: none; border: 1px solid var(--border); color: var(--text-dim); }
+  .btn-create { background: var(--accent); border: none; color: #fff; font-weight: 600; }
+  .btn-create:disabled { opacity: .4; cursor: not-allowed; }
+  .popover-backdrop { position: fixed; inset: 0; z-index: 90; }
+
+  /* ── 原型辅助（非镜像）：事件日志 / 说明 ── */
+  .proto-log { margin-top: 16px; background: #14161f; border: 1px solid var(--border); border-radius: 6px; padding: 10px 14px; font-family: var(--mono); font-size: 11px; color: var(--text-dim); max-height: 140px; overflow: auto; }
+  .proto-log div::before { content: "▸ "; color: var(--green); }
+  .proto-notes { margin-top: 14px; border: 1px solid var(--border); border-radius: 8px; padding: 14px; font-size: 12px; color: var(--text-dim); }
+  .proto-notes h3 { color: var(--text); font-size: 12px; margin-bottom: 8px; }
+  .proto-notes code { color: #9ecbff; font-family: var(--mono); font-size: 11px; }
+  .proto-notes ul { margin-left: 18px; display: flex; flex-direction: column; gap: 4px; }
+</style>
+</head>
+<body>
+
+<div class="proto-banner">
+  <b>原型</b>：Overview 看板 · Tab 下新建 Agent 卡（▲ 未实现）。交互：点每列底部 <b>＋ 新建</b> → 选 Agent → 创建。
+  分组切到 状态/Provider/标签 试试 —— <b>＋ 会消失</b>（派生列不可加卡）。底部有事件日志。
+</div>
+
+<div class="session-overview-panel">
+  <div class="session-overview-header">
+    <div>
+      <div class="session-overview-subtitle">7 个块中显示 5 · 2 未读</div>
+    </div>
+    <div class="session-overview-header-actions">
+      <div class="session-overview-group-picker" title="看板分组方式">
+        <span>⊑</span>
+        <select id="group-select" aria-label="看板分组方式">
+          <option value="status">状态</option>
+          <option value="tab" selected>Tab</option>
+          <option value="provider">Provider</option>
+          <option value="tags">标签</option>
+        </select>
+      </div>
+      <div class="session-overview-view-switch" role="group" aria-label="总览视图">
+        <button type="button" class="session-overview-view-switch-button" data-view="list" aria-label="列表视图" title="列表视图"><span>☰</span><span>列表</span></button>
+        <button type="button" class="session-overview-view-switch-button is-active session-overview-view-toggle" data-view="board" aria-label="看板视图" title="看板视图" aria-pressed="true"><span>▦</span><span>看板</span></button>
+        <button type="button" class="session-overview-view-switch-button" data-view="timeline" aria-label="时间线视图" title="时间线视图"><span>-------------</span></button>
+      </div>
+    </div>
+  </div>
+  <div id="overview-body"></div>
+</div>
+
+<div class="proto-log" id="proto-log"><div>事件日志（原型交互记录）</div></div>
+
+<div class="proto-notes">
+  <h3>实现落点（原型 → 代码）</h3>
+  <ul>
+    <li>＋ 占位卡 <code>.session-overview-board-add</code>：挂在 <code>overview-board.tsx</code> 列渲染分支末尾，仅 <code>group === "tab"</code> 时渲染；列表视图对应 <code>session-overview.tsx</code> <code>TabGroupSection</code> 末尾的 <code>.session-overview-tab-add</code></li>
+    <li>Agent 选择器：新组件，结构参照 <code>commontext-send-button.tsx</code>（profile 列表 + 模型覆盖 + 目录候选随 Tab：复用 <code>collectFolderCandidatesForTab</code> / <code>collectAgentLaunchTargetsInTab</code>）</li>
+    <li>建块：<code>agent-launch.ts:createAgentBlockDefForProfile</code> + <code>createBlock</code>，context 传该 Tab 的 cwd/connection 且 <code>inheritWorkspaceContext:false</code>（<code>agent-launch.ts:1117</code> 已注释此坑）</li>
+    <li>块落进该 Tab：复用 <code>inlinetab-addmenu.tsx</code> 的 <code>layoutModel.addBlockToInlineTab</code> 链路；enter 动画走 <code>overview-board-motion.ts</code> 既有 enter(180ms)</li>
+    <li>状态/Provider/标签 分组不显示 ＋（派生列）；远端 Tab 新卡继承同一 connection</li>
+  </ul>
+</div>
+
+<script>
+"use strict";
+/* ── 假数据：Tab → 块。tab.context 即新建时路径预填来源 ── */
+const TABS = [
+  { tabId: "t1", name: "snorkel-dev", context: { connection: null, cwd: "E:/code/snorkeling" }, tone: "blue", cards: [
+    { id: "b1", title: "修 tab 切换卡顿", agent: "🤖", provider: "pi", state: "working", age: "刚刚", preview: "reinitWave 5 次串行 RPC 拆 2 批…" },
+    { id: "b2", title: "夜间批改跑批", agent: "🤖", provider: "codex", state: "idle", age: "1小时前", preview: null },
+    { id: "b3", title: "fsmonitor 泄漏调查", agent: "🤖", provider: "claude", state: "blocked", age: "20分钟前", preview: "67 个 daemon，每个 36-80MB…" },
+  ]},
+  { tabId: "t2", name: "remote-mac", context: { connection: "ssh://mac", cwd: "/Users/nita/work" }, tone: "green", cards: [
+    { id: "b4", title: "远端构建验证", agent: "🤖", provider: "claude", state: "done", age: "2小时前", preview: null },
+  ]},
+  { tabId: "t3", name: "scratch", context: { connection: null, cwd: "E:/tmp" }, tone: "purple", cards: [] },
+];
+const STATUS_COLS = [
+  { key: "blocked", title: "待我处理", tone: "red", ids: ["b3"] },
+  { key: "working", title: "进行中", tone: "green", ids: ["b1"] },
+  { key: "done", title: "已完成", tone: null, ids: ["b4"] },
+  { key: "idle", title: "空闲", tone: null, ids: ["b2"] },
+];
+const AGENTS = [
+  { id: "pi", emoji: "🔵", name: "pi", desc: "每日主力" },
+  { id: "claude", emoji: "🟣", name: "claude", desc: "调研 / 长任务" },
+  { id: "codex", emoji: "⚪", name: "codex", desc: "夜班批改" },
+  { id: "gemini", emoji: "🟠", name: "gemini", desc: "便宜跑量" },
+];
+const MODELS = { pi: ["deepseek-v4", "pi-max"], claude: ["claude-x", "claude-lite"], codex: ["gpt-6", "gpt-6-mini"], gemini: ["gemini-3", "gemini-3-flash"] };
+
+let viewMode = "board", groupMode = "tab", seq = 100;
+const stateChip = (s) => `<span class="agent-status-chip is-${s}">${{working:"●", blocked:"✖", done:"✓", idle:"⏸", starting:"○"}[s] || ""} ${s}</span>`;
+
+function allCards() { return TABS.flatMap((t) => t.cards); }
+function cardById(id) { return allCards().find((c) => c.id === id); }
+
+function log(msg) {
+  const el = document.getElementById("proto-log");
+  el.insertAdjacentHTML("beforeend", `<div>${msg}</div>`);
+  el.scrollTop = el.scrollHeight;
+}
+
+/* ── board 卡片 DOM：镜像 overview-board.tsx BoardCard 结构（保留真实类名/aria） ── */
+function boardCardHTML(card, extra = "") {
+  return `
+  <div class="session-overview-board-card ${extra}" data-block-id="${card.id}" role="button" tabindex="0"
+       aria-label="打开会话 ${card.title}" onclick="log('打开卡片 → ${card.title}')">
+    <span class="session-overview-board-card-head">
+      <span class="session-overview-board-card-avatar" data-avatar-kind="emoji">${card.agent}</span>
+      <span class="session-overview-board-card-title">${card.title}</span>
+      <span class="session-overview-board-card-age">${card.age}</span>
+    </span>
+    <span class="session-overview-board-card-meta">
+      ${stateChip(card.state)}
+      <span class="session-overview-board-chip">${card.provider}</span>
+    </span>
+    ${card.preview ? `<span class="session-overview-board-card-preview">${card.preview}</span>` : ""}
+  </div>`;
+}
+
+/* ═══ 新增点：＋ 占位卡（仅容器型分组渲染） ═══ */
+function addCardHTML(tab) {
+  return `
+  <button type="button" class="session-overview-board-add" data-add-tab="${tab.tabId}"
+          aria-label="在 Tab ${tab.name} 新建 agent 会话">
+    <span>＋</span><span>新建</span>
+  </button>`;
+}
+
+function render() {
+  const body = document.getElementById("overview-body");
+  document.querySelectorAll(".session-overview-view-switch-button").forEach((b) => {
+    b.classList.toggle("is-active", b.dataset.view === viewMode);
+    b.setAttribute("aria-pressed", String(b.dataset.view === viewMode));
+  });
+  document.getElementById("group-select").parentElement.style.display = viewMode === "board" ? "" : "none";
+
+  if (viewMode === "list") { body.innerHTML = renderList(); return; }
+
+  if (groupMode !== "tab") {
+    /* 派生分组：镜像真实看板（.session-overview-board-column），但没有 ＋ */
+    const cards = allCards();
+    body.innerHTML = `<div class="session-overview-board" role="group" aria-label="总览看板">` +
+      STATUS_COLS.map((col) => {
+        const list = col.ids.map(cardById).filter(Boolean);
+        return `
+        <section class="session-overview-board-column ${list.length === 0 ? "is-empty" : ""}" data-column-key="${col.key}">
+          <h3 class="session-overview-board-column-head">
+            ${col.tone ? `<span class="session-overview-board-column-dot is-${col.tone}"></span>` : ""}
+            <span class="session-overview-board-column-title">${col.title}</span>
+            <span class="session-overview-board-column-count" role="status">${list.length}</span>
+          </h3>
+          <div class="session-overview-board-cards">
+            ${list.length === 0 ? `<div class="session-overview-board-empty">暂无</div>` : list.map((c) => boardCardHTML(c)).join("")}
+          </div>
+        </section>`;
+      }).join("") + `</div>`;
+    return;
+  }
+
+  /* Tab 分组（默认演示态）：镜像真实结构 + 每列尾部 ＋ */
+  body.innerHTML = `<div class="session-overview-board" role="group" aria-label="总览看板">` +
+    TABS.map((tab) => `
+    <section class="session-overview-board-column ${tab.cards.length === 0 ? "is-empty" : ""}" data-column-key="tab:${tab.tabId}"
+             aria-label="${tab.name}，${tab.cards.length} 个会话">
+      <h3 class="session-overview-board-column-head">
+        <span class="session-overview-board-column-dot is-${tab.tone}"></span>
+        <span class="session-overview-board-column-title">${tab.name}</span>
+        <span class="session-overview-board-column-count" id="count-${tab.tabId}" role="status">${tab.cards.length}</span>
+      </h3>
+      <div class="session-overview-board-cards" id="cards-${tab.tabId}">
+        ${tab.cards.length === 0 ? "" : tab.cards.map((c) => boardCardHTML(c)).join("")}
+      </div>
+      ${addCardHTML(tab)}
+    </section>`).join("") + `</div>`;
+}
+
+function renderList() {
+  /* 列表视图：镜像 TabGroupSection 结构，末尾加 ＋ 行 */
+  return TABS.map((tab) => `
+  <section class="session-overview-tab-group">
+    <div class="session-overview-tab-title">
+      <span>▸</span><span>▦</span><span>${tab.name}</span><strong>${tab.cards.length}</strong>
+    </div>
+    <div class="session-overview-block-list">
+      ${tab.cards.length === 0
+        ? `<div class="session-overview-muted">没有块</div>`
+        : tab.cards.map((c) => `
+          <div class="session-overview-block-row" onclick="log('打开卡片 → ${c.title}')">
+            <span class="session-overview-board-card-avatar">${c.agent}</span>
+            <span>${c.title}</span>
+            ${stateChip(c.state)}
+            <span class="session-overview-board-chip">${c.provider}</span>
+            <span class="session-overview-board-card-age" style="margin-left:auto">${c.age}</span>
+          </div>`).join("")}
+      <button type="button" class="session-overview-tab-add" data-add-tab="${tab.tabId}">
+        <span>＋</span><span>在此 Tab 新建 agent</span>
+      </button>
+    </div>
+  </section>`).join("");
+}
+
+/* ── 选择器 popover：锚定被点击的 ＋（原型用 fixed 定位近似） ── */
+let picker = null;
+function openPicker(tabId, anchor) {
+  closePicker();
+  const tab = TABS.find((t) => t.tabId === tabId);
+  const rect = anchor.getBoundingClientRect();
+  picker = { tabId, agent: null, model: null, path: tab.context.cwd, pathOpen: false };
+  const backdrop = document.createElement("div");
+  backdrop.className = "popover-backdrop";
+  backdrop.onclick = closePicker;
+  document.body.appendChild(backdrop);
+  const pop = document.createElement("div");
+  pop.className = "session-overview-add-popover";
+  pop.style.left = Math.min(rect.left, innerWidth - 320) + "px";
+  pop.style.top = Math.min(rect.bottom + 8, innerHeight - 380) + "px";
+  pop.innerHTML = pickerHTML(tab);
+  document.body.appendChild(pop);
+  picker.el = pop;
+  log(`Tab「${tab.name}」打开新建选择器（路径预填 = ${tab.context.connection ? tab.context.connection + ":" : ""}${tab.context.cwd}）`);
+}
+function pickerHTML(tab) {
+  return `
+    <div class="session-overview-add-popover-head">新建 Agent 会话<span class="tab-name">Tab: ${tab.name}</span></div>
+    <div class="session-overview-add-popover-label">选择 Agent</div>
+    <div class="session-overview-add-agent-list">
+      ${AGENTS.map((a) => `
+        <div class="session-overview-add-agent" data-agent="${a.id}" role="button" tabindex="0">
+          <span class="session-overview-board-card-avatar">${a.emoji}</span><span>${a.name}</span>
+          <span class="desc">${a.desc}</span>
+        </div>`).join("")}
+    </div>
+    <div class="session-overview-add-popover-label">模型（默认 = profile 模型，可覆盖）</div>
+    <select id="add-model-select"><option value="">默认</option></select>
+    <div class="session-overview-add-popover-label">工作路径（继承自该 Tab）</div>
+    <div class="session-overview-add-path-row">
+      <span>📁</span>
+      ${tab.context.connection ? `<span class="badge-remote">⇄</span>` : ""}
+      <span class="path">${tab.context.cwd}</span>
+      <button type="button" class="lock-btn" title="切换路径候选" onclick="togglePathOpts(event)">▾</button>
+    </div>
+    <div class="session-overview-add-path-opts" id="add-path-opts">
+      <span class="session-overview-add-path-opt is-selected">${tab.context.cwd} · 随 Tab</span>
+      <span class="session-overview-add-path-opt" onclick="log('切目录候选（真实实现复用 collectFolderCandidatesForTab）')">E:/code/other</span>
+    </div>
+    <div class="session-overview-add-popover-footer">
+      <button type="button" class="btn-cancel" onclick="closePicker()">取消</button>
+      <button type="button" class="btn-create" id="add-create-btn" disabled onclick="createAgent()">创建会话 ↵</button>
+    </div>`;
+}
+function togglePathOpts(e) {
+  e.stopPropagation();
+  document.getElementById("add-path-opts").classList.toggle("is-open");
+}
+function selectAgent(id) {
+  picker.agent = id;
+  picker.el.querySelectorAll(".session-overview-add-agent").forEach((n) => n.classList.toggle("is-selected", n.dataset.agent === id));
+  const sel = picker.el.querySelector("#add-model-select");
+  sel.innerHTML = `<option value="">默认</option>` + MODELS[id].map((m) => `<option>${m}</option>`).join("");
+  picker.el.querySelector("#add-create-btn").disabled = false;
+}
+function createAgent() {
+  const tab = TABS.find((t) => t.tabId === picker.tabId);
+  const agent = AGENTS.find((a) => a.id === picker.agent);
+  const model = picker.el.querySelector("#add-model-select").value || MODELS[picker.agent][0];
+  const id = "b" + seq++;
+  const card = {
+    id, title: `${agent.name} · ${tab.name}`, agent: agent.emoji, provider: agent.name,
+    state: "starting", age: "刚刚", preview: null,
+  };
+  tab.cards.push(card);
+  closePicker();
+  log(`createAgentBlockDefForProfile("${agent.name}", model=${model}, cwd=${tab.context.cwd}${tab.context.connection ? ", connection=" + tab.context.connection : ""}, inheritWorkspaceContext=false) → addBlockToInlineTab(${tab.tabId})`);
+  /* board 视图直接落卡（含 enter 动画 + 计数 bump，镜像 motion 层行为）；list 视图重渲染 */
+  if (viewMode === "board" && groupMode === "tab") {
+    const cards = document.getElementById("cards-" + tab.tabId);
+    cards.insertAdjacentHTML("beforeend", boardCardHTML(card, "is-entering"));
+    const count = document.getElementById("count-" + tab.tabId);
+    count.textContent = tab.cards.length;
+    count.classList.remove("is-bumping"); void count.offsetWidth; count.classList.add("is-bumping");
+  } else {
+    render();
+  }
+}
+function closePicker() {
+  document.querySelector(".popover-backdrop")?.remove();
+  document.querySelector(".session-overview-add-popover")?.remove();
+  picker = null;
+}
+
+/* ── 事件委托 ── */
+document.addEventListener("click", (e) => {
+  const addBtn = e.target.closest("[data-add-tab]");
+  if (addBtn) { openPicker(addBtn.dataset.addTab, addBtn); return; }
+  const agentRow = e.target.closest(".session-overview-add-agent");
+  if (agentRow) { selectAgent(agentRow.dataset.agent); return; }
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") closePicker();
+  if (e.key === "Enter" && picker?.agent) createAgent();
+});
+document.getElementById("group-select").addEventListener("change", (e) => {
+  groupMode = e.target.value;
+  log(`分组切换 → ${groupMode}${groupMode !== "tab" ? "（派生列，＋ 新建不显示）" : ""}`);
+  render();
+});
+document.querySelectorAll(".session-overview-view-switch-button").forEach((b) => {
+  if (b.dataset.view === "timeline") return; // 原型范围外
+  b.addEventListener("click", () => { viewMode = b.dataset.view; log(`视图切换 → ${viewMode}`); render(); });
+});
+
+render();
+</script>
+</body>
+</html>
