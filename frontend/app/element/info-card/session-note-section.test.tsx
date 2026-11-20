@@ -242,7 +242,7 @@ describe("SessionNoteSection 写路径 id 契约", () => {
         expect(h.setPropertySchema).not.toHaveBeenCalled();
 
         act(() => {
-            onAdd("risk", "status", "agent");
+            onAdd("risk", "select", "agent");
         });
         expect(h.setPropertySchema).toHaveBeenCalledTimes(1);
         const agentDefs = (h.setPropertySchema.mock.calls[0] as unknown[])[0] as any[];
