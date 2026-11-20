@@ -68,6 +68,22 @@ describe("collectAddAgentPathRows（路径候选行）", () => {
         expect(rows[1].sub).toBe("");
     });
 
+    it('connection="local" 视为本地行（不显示 "local" 第二行）', () => {
+        const targets = [
+            {
+                blockId: "b1",
+                connection: "local",
+                cwd: "E:/code/snorkeling",
+                source: "terminal" as const,
+                isLocal: false,
+                label: "local",
+                detail: "E:/code/snorkeling",
+            },
+        ] as AgentLaunchTarget[];
+        const rows = collectAddAgentPathRows(targets, "E:/code/snorkeling");
+        expect(rows[0].sub).toBe("");
+    });
+
     it("远端行第二行 = connection", () => {
         const targets = [
             {

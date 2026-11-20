@@ -155,6 +155,27 @@ describe("OverviewAddAgentModal 路径列表", () => {
         expect(rows[0].querySelector(".session-overview-add-agent-path-sub")).toBeNull();
     });
 
+    it("模型输入框不带占位文案（只保留 aria-label），本地 connection=local 行无第二行", () => {
+        const { modalEl } = mountModal({
+            targets: [
+                {
+                    blockId: "b1",
+                    connection: "local",
+                    cwd: "E:/code/snorkeling",
+                    source: "terminal",
+                    isLocal: false,
+                    label: "local",
+                    detail: "E:/code/snorkeling",
+                },
+            ],
+            defaultPath: "E:/code/snorkeling",
+        });
+        const model = modalEl.querySelector(".session-overview-add-agent-model") as HTMLInputElement;
+        expect(model.getAttribute("placeholder")).toBeNull();
+        expect(model.getAttribute("aria-label")).not.toBeNull();
+        expect(modalEl.querySelector(".session-overview-add-agent-path-sub")).toBeNull();
+    });
+
     it("远端行第二行显示 connection", () => {
         const { modalEl } = mountModal({
             targets: [RemoteTarget("b1", "/Users/nita/work")],

@@ -140,7 +140,6 @@ export function OverviewAddAgentModal({
                     className="session-overview-add-agent-model"
                     value={modelInput}
                     onChange={(event) => setModelInput(event.target.value)}
-                    placeholder={i18n.t("session-overview:dialog.addAgentModelPlaceholder")}
                     spellCheck={false}
                     aria-label={i18n.t("workspace:agentLaunch.modelLabel")}
                 />

@@ -133,8 +133,7 @@
         "moveToTrash": "Move to trash",
         "deletePermanently": "Delete permanently",
         "addAgentInTab": "Create an agent in tab {{name}}",
-        "addAgentInTabShort": "New agent in this tab",
-        "addAgentModelPlaceholder": "Auto"
+        "addAgentInTabShort": "New agent in this tab"
     },
     "note": {
         "loading": "Loading note...",

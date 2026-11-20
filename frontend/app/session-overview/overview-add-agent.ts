@@ -43,6 +43,14 @@ export type AddAgentPathRow = {
     source: AgentLaunchTarget["source"] | "fallback";
 };
 
+/** 是否远端连接：空 / "local"（含 `local:` 前缀）都算本机。 */
+export function isRemoteConnection(connection: string | null | undefined): boolean {
+    const value = typeof connection === "string" ? connection.trim() : "";
+    if (value === "" || value === "local") return false;
+    if (value.startsWith("local:")) return false;
+    return true;
+}
+
 function cleanPath(value: string | null | undefined): string | null {
     const path = value?.trim();
     return path === "" || path == null ? null : path;
@@ -63,10 +71,13 @@ export function collectAddAgentPathRows(
     for (const target of targets ?? []) {
         const key = cleanPath(target?.cwd);
         if (key == null || byKey.has(key)) continue;
+        // `connection === "local"` 是本机连接的规范写法（agent-launch 的 dedupe key 就用它），
+        // 不能当远端处理 —— 否则本地行会多出一行 "local" 噪音。
+        const isLocalRow = target.isLocal || isRemoteConnection(target.connection) === false;
         byKey.set(key, {
             key,
             detail: key,
-            sub: target.isLocal ? "" : (target.connection ?? "").trim(),
+            sub: isLocalRow ? "" : (target.connection ?? "").trim(),
             isDefault: false,
             isLocal: target.isLocal,
             source: target.source,

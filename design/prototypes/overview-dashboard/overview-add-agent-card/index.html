@@ -413,8 +413,7 @@ function pickerHTML(tab) {
             <span class="session-overview-board-card-avatar">${a.emoji}</span><span>${a.name}</span>
           </div>`).join("")}
       </div>
-      <input type="text" class="agent-model-input" id="add-model-input"
-             placeholder="自动" aria-label="模型" />
+      <input type="text" class="agent-model-input" id="add-model-input" aria-label="模型" />
     </div>
     <div class="agent-launch-section">
       <div class="agent-launch-label">选择一个路径。</div>
@@ -443,8 +442,6 @@ function selectPath(path) {
 function selectAgent(id) {
   picker.agent = id;
   picker.el.querySelectorAll(".session-overview-add-agent").forEach((n) => n.classList.toggle("is-selected", n.dataset.agent === id));
-  const modelInput = picker.el.querySelector("#add-model-input");
-  modelInput.placeholder = "自动";
   picker.el.querySelector("#add-create-btn").disabled = false;
 }
 function createAgent() {
