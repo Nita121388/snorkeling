@@ -82,6 +82,13 @@ func SetAgentCard(ctx context.Context, req wshrpc.AgentCardSetRequest) (*wshrpc.
 			WithHint("use 'wsh session list' or 'wsh session live' to find a session key")
 	}
 
+	// The retired "status" type is normalized once at the command boundary so
+	// the value write, the add-options validation and the schema sync all agree
+	// on "select" (an addoption on a legacy status prop must keep working).
+	for key, prop := range req.Props {
+		prop.Type = aisessions.NormalizePropertyType(prop.Type)
+		req.Props[key] = prop
+	}
 	if err := validateCardPropScopes(req.Props); err != nil {
 		return nil, newError(CodeUsage, "%s", err.Error()).
 			WithHint("scope must be session (default), agent or all")

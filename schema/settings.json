@@ -75,7 +75,6 @@
             "number",
             "select",
             "multi_select",
-            "status",
             "date",
             "person",
             "checkbox",

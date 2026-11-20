@@ -29,16 +29,16 @@ describe("resolveBoardPropRows", () => {
             titleSource: cell("user"),
             created_at: cell("2026-01-01"),
             updated_at: cell("2026-01-02"),
-            status: cell("done", { type: "status" }),
+            status: cell("done", { type: "select" }),
         };
         const { visible } = resolveBoardPropRows(props);
         // note/tags/starred/title_source/created_at/updated_at 全被过滤，只剩自定义 status
         expect(visible.map((row) => row.key)).toEqual(["status"]);
     });
 
-    it("renders status/select single value (hash-colored deterministically)", () => {
+    it("renders select single value (legacy status cells normalize to select; hash-colored deterministically)", () => {
         const props: Record<string, PropertyCell> = {
-            status: cell("进行中", { type: "status" }),
+            status: cell("进行中", { type: "select" }),
         };
         expect(resolveBoardPropRows(props).visible[0]).toMatchObject({
             key: "status",
@@ -48,7 +48,7 @@ describe("resolveBoardPropRows", () => {
     });
 
     it("maps the same value to the same color every time (9-tone palette)", () => {
-        const colorOf = (key: string) => resolveBoardPropRows({ [key]: cell("done", { type: "status" }) }).visible[0].single?.color;
+        const colorOf = (key: string) => resolveBoardPropRows({ [key]: cell("done", { type: "select" }) }).visible[0].single?.color;
         expect(colorOf("a")).toBe(colorOf("a"));
         expect(colorOf("b")).toBe(colorOf("b"));
         const known = ["blue", "green", "yellow", "orange", "red", "purple", "pink", "brown", "gray"];

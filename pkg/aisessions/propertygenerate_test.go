@@ -188,3 +188,39 @@ func TestManagerApplyAIPropertiesSafety(t *testing.T) {
 		t.Fatalf("force touched note/tags: note=%q tags=%#v", forced.Note, forced.Tags)
 	}
 }
+
+func TestNormalizePropertyTypeLegacy(t *testing.T) {
+	cases := map[string]string{
+		"status":        "select",
+		" Status ":      "select",
+		"STATUS":        "select",
+		"select":        "select",
+		"multi_select":  "multi_select",
+		"text":          "text",
+		"  number ":     "number",
+		"":              "",
+		"created_time ": "created_time",
+	}
+	for in, want := range cases {
+		if got := NormalizePropertyType(in); got != want {
+			t.Fatalf("NormalizePropertyType(%q) = %q, want %q", in, got, want)
+		}
+	}
+	if ValidPropertyType("status") {
+		t.Fatal("retired status type must not be AI-writable")
+	}
+	if _, ok := ValidatePropertyValue("status", "in progress"); ok {
+		t.Fatal("retired status type must not validate values")
+	}
+}
+
+func TestParsePropertySuggestionsNormalizesRetiredStatusType(t *testing.T) {
+	reply := `{"properties":[{"key":"phase","type":"status","value":"doing"}]}`
+	got, err := parsePropertySuggestions(reply, nil, 8)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].Type != "select" || got[0].Value != "doing" {
+		t.Fatalf("status proposal was not normalized to select: %#v", got)
+	}
+}

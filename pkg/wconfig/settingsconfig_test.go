@@ -5,8 +5,12 @@ package wconfig
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"reflect"
 	"testing"
+
+	"github.com/wavetermdev/waveterm/pkg/wavebase"
 )
 
 // The agentstatus:osnotify* keys are written by the Wave Config "Agent Notifications" panel
@@ -114,5 +118,93 @@ func TestAIPromptsEnabledUnsetIsNil(t *testing.T) {
 	}
 	if cfg.Enabled != nil {
 		t.Fatal("unset enabled must stay nil so callers default to enabled")
+	}
+}
+
+// The retired "status" property type must be rewritten to "select" in
+// settings.json agent:propertyschema at startup, preserving every other field,
+// and must be a no-op (byte-identical settings) when no status def exists.
+func TestMigrateAgentPropertySchemaStatus(t *testing.T) {
+	oldHome := wavebase.ConfigHome_VarCache
+	dir := t.TempDir()
+	wavebase.ConfigHome_VarCache = dir
+	t.Cleanup(func() {
+		wavebase.ConfigHome_VarCache = oldHome
+	})
+
+	settingsPath := filepath.Join(dir, "settings.json")
+	seed := `{"agent:propertyschema":[` +
+		`{"key":"status","name":"状态","type":" Status ","options":["进行中","已完成"],"order":1,"aiManaged":true,"scope":"agent:pi"},` +
+		`{"key":"owner","name":"Owner","type":"text","order":2}` +
+		`]}`
+	if err := os.WriteFile(settingsPath, []byte(seed), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	MigrateAgentPropertySchemaStatus()
+
+	after, err := os.ReadFile(settingsPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var parsed struct {
+		Schema []AgentPropertyDefType `json:"agent:propertyschema"`
+	}
+	if err := json.Unmarshal(after, &parsed); err != nil {
+		t.Fatalf("migrated settings are not valid JSON: %v", err)
+	}
+	if len(parsed.Schema) != 2 {
+		t.Fatalf("expected 2 definitions, got %d: %+v", len(parsed.Schema), parsed.Schema)
+	}
+	status := parsed.Schema[0]
+	if status.Type != "select" {
+		t.Fatalf("status type not migrated: %+v", status)
+	}
+	if status.Name != "状态" || status.Order != 1 || !status.AIManaged || status.Scope != "agent:pi" ||
+		!reflect.DeepEqual(status.Options, []string{"进行中", "已完成"}) {
+		t.Fatalf("migration must preserve every other field, got %+v", status)
+	}
+	if parsed.Schema[1].Type != "text" || parsed.Schema[1].Name != "Owner" {
+		t.Fatalf("unrelated definition changed: %+v", parsed.Schema[1])
+	}
+
+	// Idempotent: a second run leaves the file byte-identical.
+	MigrateAgentPropertySchemaStatus()
+	again, err := os.ReadFile(settingsPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(again) != string(after) {
+		t.Fatalf("second migration changed settings:\n%s\n---\n%s", after, again)
+	}
+}
+
+// No status definitions -> the migration must not touch settings.json at all.
+func TestMigrateAgentPropertySchemaStatusNoopWithoutStatus(t *testing.T) {
+	oldHome := wavebase.ConfigHome_VarCache
+	dir := t.TempDir()
+	wavebase.ConfigHome_VarCache = dir
+	t.Cleanup(func() {
+		wavebase.ConfigHome_VarCache = oldHome
+	})
+
+	settingsPath := filepath.Join(dir, "settings.json")
+	seed := `{"agent:propertyschema":[{"key":"owner","type":"text","order":1}]}`
+	if err := os.WriteFile(settingsPath, []byte(seed), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	before, err := os.ReadFile(settingsPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	MigrateAgentPropertySchemaStatus()
+
+	after, err := os.ReadFile(settingsPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(after) != string(before) {
+		t.Fatalf("no-status settings must stay byte-identical:\n%s\n---\n%s", before, after)
 	}
 }

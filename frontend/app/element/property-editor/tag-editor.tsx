@@ -13,7 +13,13 @@
 // - 多选：点击 toggle；单选：点击即替换并关闭
 // - 回车：默认 = 创建（精确值不存在时，延续「无匹配时回车即建」）或选中第一行；
 //   方向键/悬停主动挑选过则选中高亮行（含创建行）
-// - Backspace（空输入）删最后一个 chip；Esc / 点击外部关闭
+// - Backspace（空输入）删最后一个 chip；Esc / 点击浮层外部关闭
+//
+// 关闭语义（2026-11-20 修「列表弹窗容易误关闭」，task 11-20-property-status-to-select）：
+// 只有三种情况关：Esc、点浮层外部（PropertyValuePopover 的 outsidePress）、
+// 单选点选提交。**不做 blur 关门** —— 旧版容器 onBlur 把「焦点逃逸」当关闭信号，
+// 在 Windows/Electron 下点浮层自身空白（列表 padding、行间隙）也会把焦点归 body
+// → 立即误关。空白区 mousedown 一律 preventDefault 保住输入焦点，用户能继续打字。
 //
 // 数据语义仍守 markdown 优先：本组件只产出 string[]，写回由上层走最小 diff。
 
@@ -84,7 +90,6 @@ export function PropertyTagEditor({
     // 挑选过则尊重 activeIndex —— 回车语义据此分流（见顶部交互注释）。
     const [activeTouched, setActiveTouched] = useState(false);
     const inputRef = useRef<HTMLInputElement>(null);
-    const containerRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
         requestAnimationFrame(() => inputRef.current?.focus());
@@ -179,13 +184,7 @@ export function PropertyTagEditor({
     );
 
     // 焦点移出整个浮层内容才关闭（点 chip 的 × 不算）
-    const handleBlur = useCallback(
-        (e: React.FocusEvent) => {
-            if (containerRef.current?.contains(e.relatedTarget as Node)) return;
-            onClose();
-        },
-        [onClose]
-    );
+    // ↑ 旧版行为已删除：见顶部「关闭语义」注释。关闭只认 Esc / 浀层外部点击 / 单选提交。
 
     const toggleValue = useCallback(
         (value: string) => {
@@ -199,7 +198,7 @@ export function PropertyTagEditor({
     );
 
     return (
-        <div className="property-tag-editor" ref={containerRef} onBlur={handleBlur} data-testid="property-tag-editor">
+        <div className="property-tag-editor" data-testid="property-tag-editor">
             <div className="ptag-selected">
                 {chips.map((chip) => (
                     <span key={chip} className="ptag-chip" style={tagColorVars(chip)}>
@@ -237,7 +236,10 @@ export function PropertyTagEditor({
                     onKeyDown={handleKeyDown}
                 />
             </div>
-            <div className="ptag-list">
+            {/* 列表区空白（padding、行间隙）mousedown 一律 preventDefault：
+                不让焦点归 body（旧版会因此触发 onBlur 误关），用户点空后还能继续打字。
+                选项行自身也有 preventDefault，这里是从容器层面兑底。 */}
+            <div className="ptag-list" onMouseDown={(e) => e.preventDefault()}>
                 {filtered.map((option, i) => (
                     <div
                         key={option}

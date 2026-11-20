@@ -92,6 +92,40 @@ function createBlockJs(meta) {
 
 const blockIdsProbe = `(() => [...document.querySelectorAll(".block[data-blockid]")].map((el) => el.getAttribute("data-blockid")))()`;
 
+/** agent 悬浮卡里首个可管理的自定义属性行（非内置 key）：返回 key、菜单按钮与值按钮中心点。 */
+const cardCustomRowProbe = `(() => {
+    const builtin = new Set(["note", "tags", "starred", "title_source", "created_at", "updated_at"]);
+    const portal = document.querySelector(".info-card-portal");
+    const list = portal?.querySelector(".property-list--agent");
+    if (list == null) return null;
+    for (const row of list.querySelectorAll("[data-property-key]")) {
+        const key = row.getAttribute("data-property-key");
+        if (builtin.has(key)) continue;
+        const menuBtn = row.querySelector(".property-row__menu-btn");
+        if (menuBtn == null) continue;
+        const mr = menuBtn.getBoundingClientRect();
+        if (mr.width < 4 || mr.height < 4) continue;
+        return {
+            key,
+            menu: { x: Math.round(mr.x + mr.width / 2), y: Math.round(mr.y + mr.height / 2) },
+        };
+    }
+    return null;
+})()`;
+
+/** 改类型浮层菜单现状：是否存在 / 选项类型列表 / 是否仍渲染原生 select。 */
+const typeMenuProbe = `(() => {
+    const menu = document.querySelector('[data-testid="property-type-menu"]');
+    const portal = document.querySelector(".info-card-portal");
+    return {
+        open: menu != null,
+        card: portal != null,
+        types: menu == null ? [] : [...menu.querySelectorAll("[data-type]")].map((el) => el.getAttribute("data-type")),
+        nativeSelect: document.querySelector('.info-card-portal select, [data-testid="property-type-menu"] select') != null,
+        center: menu == null ? null : (() => { const r = menu.getBoundingClientRect(); return { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) }; })(),
+    };
+})()`;
+
 /** md 预览属性卡里某个属性键的值单元格中心点。 */
 const mdRowValueProbe = (key) => `(() => {
     const clean = (s) => (s || "").replace(/[\\u200b-\\u200f\\ufeff]/g, "").trim();
@@ -378,6 +412,62 @@ async function runAgentCardCase(client) {
         }
         await shot(client, "04-agent-card-popover-hover");
     }
+
+    // ── 改类型浮层（task 11-20-property-status-to-select 的 bug 回归）──
+    // 旧实现是原生 <select>：Windows/Electron 原生下拉抢焦点 → blur → 控件卸载 = 点击即关。
+    // 只开菜单不点选（不写真实会话元数据，保持本台只读约束）。
+    await client.pressKey("Escape");
+    await sleep(400);
+    const customRow = await client.evaluate(cardCustomRowProbe);
+    if (customRow == null) {
+        skipped.push("agent 悬浮卡改类型：该会话没有可管理的自定义属性行（只能改非 builtin 属性）");
+        return;
+    }
+    await client.click(customRow.menu.x, customRow.menu.y);
+    const rowMenuItems = await waitFor(
+        client,
+        `(() => {
+            const menu = document.querySelector(".info-card-portal .property-row__menu");
+            if (menu == null) return null;
+            const items = [...menu.querySelectorAll('button[role="menuitem"]')].map((el) => {
+                const r = el.getBoundingClientRect();
+                return { text: (el.textContent || "").trim(), x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2), h: Math.round(r.height) };
+            });
+            return items.length > 0 && items.every((i) => i.h > 0) ? items : null;
+        })()`,
+        { timeoutMs: 6000, intervalMs: 200, label: "属性行 ⋯ 菜单" }
+    ).catch(() => null);
+    const changeType = (rowMenuItems ?? []).find((i) => i.text === "Change type" || i.text === "修改类型");
+    check("agent-retype-menu-item-present", changeType != null, (rowMenuItems ?? []).map((i) => i.text));
+    if (changeType == null) return;
+
+    await client.click(changeType.x, changeType.y);
+    const typeMenu = await waitFor(client, typeMenuProbe, {
+        timeoutMs: 6000,
+        intervalMs: 200,
+        label: "改类型浮层菜单",
+    }).catch(() => null);
+    check("agent-retype-menu-opens", typeMenu?.open === true, typeMenu);
+    if (typeMenu?.open !== true) return;
+    // 旧 bug 的验收点：菜单打开后不能被焦点了/指针移动立即关掉。
+    await sleep(1200);
+    const afterWait = await client.evaluate(typeMenuProbe);
+    check("agent-retype-menu-survives-1200ms", afterWait?.open === true, afterWait);
+    if (afterWait?.center != null) {
+        await client.move(afterWait.center.x, afterWait.center.y);
+        await sleep(600);
+        const afterMove = await client.evaluate(typeMenuProbe);
+        check("agent-retype-menu-survives-pointer-move", afterMove?.open === true && afterMove.card === true, afterMove);
+        check("agent-retype-no-native-select", afterMove?.nativeSelect === false, afterMove);
+        check(
+            "agent-retype-offers-select-only",
+            Array.isArray(afterMove?.types) && afterMove.types.includes("select") && !afterMove.types.includes("status"),
+            afterMove?.types
+        );
+        await shot(client, "05-agent-card-retype-menu");
+    }
+    await client.pressKey("Escape");
+    await sleep(300);
 }
 
 // ── 主流程 ──────────────────────────────────────────────────────────────────

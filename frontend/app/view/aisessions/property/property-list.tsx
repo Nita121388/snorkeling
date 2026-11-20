@@ -121,9 +121,10 @@ export type PropertyListProps = {
 };
 
 // 可创建的类型词表。
-// 注意：`status` 故意不在列表里 —— 本仓没有实现 Notion status 的分组/自动推进，
-// 行为与 select 完全一致，中文标签「状态」还会和用户属性名撞车。历史数据里的
-// status 由 normalizePropertyType 在读取时归一成 select（零迁移）。
+// 注意：`status` 已彻底退役（不在本表、不在 PropertyType 联合、不在后端白名单）；
+// 本仓没有实现 Notion status 的分组/自动推进，行为与 select 完全一致。
+// 存量数据由 sqlite / settings 一次性迁移写回 select，前端 normalizePropertyType
+// 只对未迁移的旧库/同步镜像做读侧兑底（见 11-20-property-status-to-select）。
 const CreatableTypes: PropertyType[] = [
     "text",
     "number",
@@ -146,13 +147,12 @@ export type PropertyAddScope = "session" | "agent" | "global";
 /** 多值类型：浮层里点击是 toggle，写回数组。 */
 const MultiValueTypes: ReadonlySet<PropertyType> = new Set<PropertyType>(["multi_select", "person", "relation"]);
 
-/** 用浮层下拉编辑的类型：多值类型 + 单选（select / status）。 */
+/** 用浮层下拉编辑的类型：多值类型 + 单选（select）。 */
 const DropdownTypes: ReadonlySet<PropertyType> = new Set<PropertyType>([
     "multi_select",
     "person",
     "relation",
     "select",
-    "status",
 ]);
 
 /** 属性值 → 浮层 chips 的字符串数组（单选也归一成数组）。 */
@@ -272,8 +272,7 @@ function ValueDisplay({
                     {value === true ? <i className="fa-sharp fa-solid fa-check" /> : null}
                 </span>
             );
-        case "select":
-        case "status": {
+        case "select": {
             if (value == null || value === "") {
                 return emptyNode;
             }
@@ -402,7 +401,7 @@ function InlineEditor({
     );
 }
 
-/** 新建属性的类型菜单图标（与 retype 下拉共用 CreatableTypes）。 */
+/** 新建属性的类型菜单图标（与 retype 浮层菜单共用 CreatableTypes）。 */
 const AddableTypeIcons: Record<string, string> = {
     text: "fa-font",
     number: "fa-hashtag",
@@ -647,8 +646,8 @@ export function PropertyList({
             const source = summary?.source ?? "";
             const values = (items ?? []).map((v) => String(v)).filter((v) => v.trim() !== "");
             if (values.length === 0 || appendSchemaRef.current.length === 0) return;
-            // 只有下拉型（select / status 归一为 select / multi_select）有「候选」概念；
-            // person / relation 不是选项表，不追加。
+            // 只有下拉型（select / multi_select）有「候选」概念；person / relation
+            // 不是选项表，不追加。
             const type = normalizePropertyType(def.type);
             if (type !== "select" && type !== "multi_select") return;
             try {
@@ -697,6 +696,9 @@ export function PropertyList({
     const [menuKey, setMenuKey] = React.useState<string | null>(null);
     const [renamingKey, setRenamingKey] = React.useState<string | null>(null);
     const [retypeKey, setRetypeKey] = React.useState<string | null>(null);
+    // 改类型浮层的锤点一律是值按钮（行内布局不变，浮层 portal 到 body）。
+    // 不再像旧原生 <select> 那样替换单元格 —— 那样会被原生下拉抢焦点触发 blur 立即卸载（点击即关）。
+    const [retypeAnchor, setRetypeAnchor] = React.useState<HTMLElement | null>(null);
 
     const { primary, secondary } = React.useMemo(() => {
         if (isAgent) {
@@ -740,6 +742,15 @@ export function PropertyList({
             closePopover();
         }
     }, [entries, popoverKey, closePopover]);
+
+    // 改类型浮层同理：属性被删或列表换会话时收起。
+    React.useEffect(() => {
+        if (retypeKey == null) return;
+        if (!entries.some((entry) => entry.def.key === retypeKey)) {
+            setRetypeKey(null);
+            setRetypeAnchor(null);
+        }
+    }, [entries, retypeKey]);
 
     const startEdit = (entry: PropertyEntry) => {
         if (!canEdit || entry.def.readOnly || onChange == null) return;
@@ -868,25 +879,6 @@ export function PropertyList({
                             onSubmit={(next) => submit(entry, next)}
                             onCancel={() => setEditingKey(null)}
                         />
-                    ) : isRetyping ? (
-                        <select
-                            autoFocus
-                            className="property-select"
-                            aria-label={i18n.t("aisessions:propertyList.changeType", { name: def.name })}
-                            value={def.type}
-                            onChange={(event) => {
-                                const next = event.target.value as PropertyType;
-                                setRetypeKey(null);
-                                onRetypeProperty?.(def.key, next);
-                            }}
-                            onBlur={() => setRetypeKey(null)}
-                        >
-                            {CreatableTypes.map((t) => (
-                                <option key={t} value={t}>
-                                    {typeLabel(t)}
-                                </option>
-                            ))}
-                        </select>
                     ) : (
                         <button
                             type="button"
@@ -954,6 +946,7 @@ export function PropertyList({
                                     role="menuitem"
                                     onClick={() => {
                                         setMenuKey(null);
+                                        setRetypeAnchor(valueBtnRefs.current[def.key] ?? null);
                                         setRetypeKey(def.key);
                                     }}
                                 >
@@ -1011,6 +1004,8 @@ export function PropertyList({
     const noteEntry = entries.find((entry) => entry.def.key === "note");
     // 当前打开的浮层对应的属性行（取最新 entry：值变更后梯子里的值也要跟上）。
     const popoverEntry = popoverKey == null ? null : (entries.find((entry) => entry.def.key === popoverKey) ?? null);
+    // 改类型浮层对应的属性行（同理取最新 entry，类型变更后当前标记也要跟上）。
+    const retypeEntry = retypeKey == null ? null : (entries.find((entry) => entry.def.key === retypeKey) ?? null);
 
     return (
         <div
@@ -1097,6 +1092,40 @@ export function PropertyList({
                         }}
                         onClose={() => setAdding(false)}
                     />
+                </PropertyValuePopover>
+            ) : null}
+            {/* 改类型浮层菜单（替掉旧原生 <select>，见 retypeAnchor 注释）：
+                点选项提交后关；浮层外点 / Esc 由 PropertyValuePopover 自带；
+                在 hover 卡上由 useInfoCardPin 保活，不依赖任何 focus/blur。 */}
+            {retypeEntry != null && onRetypeProperty != null ? (
+                <PropertyValuePopover open anchor={retypeAnchor} onClose={() => setRetypeKey(null)}>
+                    <div
+                        className="property-type-menu"
+                        role="listbox"
+                        aria-label={i18n.t("aisessions:propertyList.propertyType")}
+                        data-testid="property-type-menu"
+                    >
+                        {CreatableTypes.map((t) => (
+                            <button
+                                type="button"
+                                role="option"
+                                key={t}
+                                data-type={t}
+                                aria-selected={t === retypeEntry.def.type}
+                                className={cn("property-type-menu__item", t === retypeEntry.def.type && "is-active")}
+                                onClick={() => {
+                                    setRetypeKey(null);
+                                    onRetypeProperty(retypeEntry.def.key, t);
+                                }}
+                            >
+                                <i className={cn("fa-sharp fa-solid", AddableTypeIcons[t] ?? "fa-font")} aria-hidden="true" />
+                                <span>{typeLabel(t)}</span>
+                                {t === retypeEntry.def.type ? (
+                                    <i className="fa-sharp fa-solid fa-check" aria-hidden="true" />
+                                ) : null}
+                            </button>
+                        ))}
+                    </div>
                 </PropertyValuePopover>
             ) : null}
             {/* 浮层下拉编辑器（共享层，与 md 预览属性卡同源）。

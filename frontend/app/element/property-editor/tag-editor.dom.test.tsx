@@ -207,3 +207,57 @@ describe("PropertyTagEditor — 创建行不被子串命中挡住", () => {
         expect(onChange.mock.calls[0][0]).toEqual(["原型设计中"]);
     });
 });
+
+// 关闭语义回归（task 11-20-property-status-to-select）：列表弹窗不能因为
+// “点浮层自身空白 / 焦点逃逸”被误关。旧实现是容器 onBlur → 立即 onClose，
+// Windows/Electron 下点列表 padding 就会触发。
+describe("PropertyTagEditor — 误关闭回归：只认 Esc / 外部点击", () => {
+    const input = () => document.querySelector<HTMLInputElement>(".ptag-input")!;
+
+    beforeEach(() => {
+        vi.useFakeTimers();
+    });
+    afterEach(() => {
+        act(() => root.unmount());
+        container.remove();
+        vi.useRealTimers();
+    });
+
+    it("点浮层自身空白（列表 padding / 行间隙）不关闭，且不丢输入焦点路径", () => {
+        const onClose = vi.fn();
+        mount(
+            <PropertyTagEditor items={[]} options={["fix", "feat"]} onChange={vi.fn()} onClose={onClose} />
+        );
+        const list = document.querySelector(".ptag-list")!;
+        act(() => {
+            list.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
+            list.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+        });
+        expect(onClose).not.toHaveBeenCalled();
+        // 空白区 mousedown 被 preventDefault（默认行为被取消）→ 焦点不会归 body。
+        const ev = new MouseEvent("mousedown", { bubbles: true, cancelable: true });
+        act(() => {
+            list.dispatchEvent(ev);
+        });
+        expect(ev.defaultPrevented).toBe(true);
+    });
+
+    it("焦点逃逸（focusout 到 body）不再关闭浮层", () => {
+        const onClose = vi.fn();
+        mount(<PropertyTagEditor items={[]} options={["fix"]} onChange={vi.fn()} onClose={onClose} />);
+        act(() => {
+            input().dispatchEvent(new FocusEvent("focusout", { bubbles: true, relatedTarget: null }));
+            input().dispatchEvent(new FocusEvent("blur"));
+        });
+        expect(onClose).not.toHaveBeenCalled();
+    });
+
+    it("Esc 仍然关闭（键盘退出路径保留）", () => {
+        const onClose = vi.fn();
+        mount(<PropertyTagEditor items={[]} options={["fix"]} onChange={vi.fn()} onClose={onClose} />);
+        act(() => {
+            input().dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+        });
+        expect(onClose).toHaveBeenCalledTimes(1);
+    });
+});

@@ -76,7 +76,7 @@ type PropPatch struct {
 	// (done by the command layer, not by this data pipeline).
 	Scope string `json:"scope,omitempty"`
 	// AddOptions appends new option values to this property's definition in
-	// agent:propertyschema (select/multi_select/status only). The append is
+	// agent:propertyschema (select/multi_select only). The append is
 	// idempotent, order-preserving and never removes existing options. Only
 	// the command layer writes the schema (after a real apply); this field is
 	// carried through the patch pipeline so dry-run can preview the diff.
@@ -334,6 +334,7 @@ func ApplyPatch(ctx context.Context, patch Patch, opts ApplyOptions) (Report, er
 	if err := normalizeSessionEmojiPatchOperations(patch.Operations); err != nil {
 		return report, err
 	}
+	normalizeLegacyPropTypes(patch.Operations)
 	if err := validatePatch(patch, opts); err != nil {
 		return report, err
 	}
@@ -435,6 +436,20 @@ func normalizeSessionEmojiPatchOperations(operations []PatchOperation) error {
 		op.Type = "session_prop.update"
 	}
 	return nil
+}
+
+// normalizeLegacyPropTypes rewrites the retired "status" property type to
+// "select" on every write boundary. It mutates the operations in place (the
+// slice is shared with the caller), so preview, apply and the command-layer
+// schema sync all observe the normalized type.
+func normalizeLegacyPropTypes(operations []PatchOperation) {
+	for i := range operations {
+		op := &operations[i]
+		for key, prop := range op.Props {
+			prop.Type = aisessions.NormalizePropertyType(prop.Type)
+			op.Props[key] = prop
+		}
+	}
 }
 
 func validateOperation(idx int, op PatchOperation, opts ApplyOptions) error {
@@ -794,7 +809,7 @@ func validatePropScopes(op PatchOperation) error {
 // list that --prop-add-option may extend.
 func validAddOptionPropertyType(propType string) bool {
 	switch strings.ToLower(strings.TrimSpace(propType)) {
-	case "select", "multi_select", "status":
+	case "select", "multi_select":
 		return true
 	}
 	return false
@@ -816,7 +831,7 @@ func validatePropAddOptions(op PatchOperation) error {
 			continue
 		}
 		if !validAddOptionPropertyType(prop.Type) {
-			return fmt.Errorf("property %q of type %q cannot add options: expected select, multi_select or status", key, prop.Type)
+			return fmt.Errorf("property %q of type %q cannot add options: expected select or multi_select", key, prop.Type)
 		}
 		for _, opt := range prop.AddOptions {
 			if strings.TrimSpace(opt) == "" {

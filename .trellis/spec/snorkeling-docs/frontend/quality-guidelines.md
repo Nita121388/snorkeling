@@ -880,3 +880,22 @@ Agent TUI 右键 Open Session Detail 两条入口共用该逻辑，都中招）�
   验证台 `scripts/verify/aisessions-detail-binding/`（真实指针双击 → 断言面板 key 逐字
   等于被点行、不等于列表第一行）。真机 skipped：本机性能不够（2026-11-20），判据由
   `detail-binding.test.ts` 的 14 条用例（含修前规则红证对照）锁定。
+
+---
+
+## 浮层/下拉的关闭语义：只认 Esc / 真外部 / 提交，禁止 blur 关门（2026-11-20, task 11-20-property-status-to-select）
+
+Windows/Electron 下「焦点逃逸（blur）」不是可靠的关闭信号：
+
+- **原生 `<select>` 不能承载浮层内编辑**：展开是独立原生弹窗，会夺走 web 焦点 → `onBlur` →
+  组件被卸载 = 「点一下就关，根本选不了」。属性改类型控件因此从原生 select 改成
+  `PropertyValuePopover` 点击式菜单（不依赖任何 focus/blur 保活）。
+- **浮层容器 `onBlur` 关门同样不可靠**：点浮层自身空白（`.ptag-list` padding、行间隙）就会把焦点
+  归 body → 误关。共享 `PropertyTagEditor` 已删掉容器 onBlur；关闭只认三条：Esc /
+  `PropertyValuePopover` 的 outsidePress / 单选点选提交。列表区空白 `mousedown` 一律
+  `preventDefault`，保住输入焦点（用户点空后还能继续打字）。
+- **`outsidePress` 只豁免「浮动元素内部」，不豁免锚点**：锚点附近误点仍会关。窄卡里浮层要保证
+  可点面积；不要给列表做「点击后重排」（已选值在前），重排会让连点第二下踩空。
+- 回归判据（DOM）：打开后派发 `blur`/`focusout` 浮层仍挂载；点浮层空白 `onClose` 0 次且
+  `mousedown.defaultPrevented === true`；Esc 仍关。真机台（性能允许时）：
+  `scripts/verify/property-editor/verify.mjs` 的 `agent-retype-menu-*` —— 1200ms 后仍在 + 指针移入不收。

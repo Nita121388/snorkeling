@@ -17,7 +17,6 @@ export type PropertyType =
     | "number"
     | "select"
     | "multi_select"
-    | "status"
     | "date"
     | "person"
     | "checkbox"
@@ -136,13 +135,14 @@ export function tagToOption(tag: string): SelectOption {
 }
 
 /**
- * 读时归一：历史数据里 Notion 词表带来的 `status` 与本仓的 `select` 值形状完全一致
- * （单值 + 彩色 pill，编辑浮层也共用），且本仓并未实现 Notion 的 status 分组/自动推进，
- * 留着只会与用户属性名「状态」撞车。统一归一到 select：历史数据零迁移，
- * 下次编辑值时以 select 写回即自愈；`PropertyType` 仍保留 `"status"` 字面量以描述原始数据形状。
+ * 读侧 legacy 兑底：历史数据里 Notion 词表带来的 `status` 与本仓的 `select` 值形状完全一致
+ * （单值 + 彩色 pill），且本仓从未实现 Notion 的 status 分组/自动推进。status 已彻底退役
+ * （写边界归一 + 存量迁移，见 11-20-property-status-to-select）；`PropertyType` 联合里
+ * 不再保留该字面量。本函数只为未迁移的旧库/同步镜像兑底，读到的原始 type 在进
+ * `PropertyDef` 之前先过这里。
  */
-export function normalizePropertyType(type: PropertyType): PropertyType {
-    return type === "status" ? "select" : type;
+export function normalizePropertyType(raw: string): PropertyType {
+    return raw === "status" ? "select" : (raw as PropertyType);
 }
 
 function inferPropertyTypeFor(key: string, value: PropertyValue): PropertyType {
@@ -273,7 +273,7 @@ export function toPropertyDefs(summary: SessionSummary | null | undefined, schem
                 inferPropertyTypeFor(key, cell.value as PropertyValue)
         );
         let options: SelectOption[] | undefined;
-        if (type === "select" || type === "status" || type === "multi_select") {
+        if (type === "select" || type === "multi_select") {
             const values = Array.isArray(cell.value)
                 ? (cell.value as string[])
                 : cell.value != null
@@ -399,7 +399,6 @@ export const ALL_PROPERTY_TYPES: PropertyType[] = [
     "number",
     "select",
     "multi_select",
-    "status",
     "date",
     "person",
     "checkbox",
@@ -416,7 +415,6 @@ export function typeLabel(type: PropertyType): string {
         number: "aisessions:propertyType.number",
         select: "aisessions:propertyType.select",
         multi_select: "aisessions:propertyType.multi_select",
-        status: "aisessions:propertyType.status",
         date: "aisessions:propertyType.date",
         person: "aisessions:propertyType.person",
         checkbox: "aisessions:propertyType.checkbox",

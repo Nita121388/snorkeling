@@ -1004,6 +1004,10 @@ func (m *Manager) SetProps(ctx context.Context, identifier string, props map[str
 		if cell.UpdatedAt == 0 {
 			cell.UpdatedAt = now
 		}
+		// Write-boundary legacy normalization: the retired "status" type never
+		// reaches storage, whichever surface (RPC service, retype UI, agent
+		// patch pipeline via ApplyAIProperties) handed the cell in.
+		cell.Type = NormalizePropertyType(cell.Type)
 		normalized[key] = cell
 	}
 	// Custom properties are sqlite-only on purpose: the legacy JSON meta store
@@ -1064,7 +1068,7 @@ func (m *Manager) ApplyAIProperties(ctx context.Context, identifier string, sugg
 				continue
 			}
 		}
-		propType := strings.TrimSpace(suggestion.Type)
+		propType := NormalizePropertyType(suggestion.Type)
 		if !ValidPropertyType(propType) {
 			skipped = append(skipped, key)
 			continue

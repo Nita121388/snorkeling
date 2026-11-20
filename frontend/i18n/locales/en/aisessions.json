@@ -544,7 +544,6 @@
         "number": "Number",
         "select": "Select",
         "multi_select": "Multi-select",
-        "status": "Status",
         "date": "Date",
         "person": "Person",
         "checkbox": "Checkbox",

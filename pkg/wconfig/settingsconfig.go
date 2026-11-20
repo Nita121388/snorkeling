@@ -82,7 +82,7 @@ type AgentProfileConfigType struct {
 type AgentPropertyDefType struct {
 	Key           string   `json:"key,omitempty"`
 	Name          string   `json:"name,omitempty"`
-	Type          string   `json:"type,omitempty" jsonschema:"enum=text,enum=number,enum=select,enum=multi_select,enum=status,enum=date,enum=person,enum=checkbox,enum=url,enum=formula,enum=relation,enum=created_time,enum=updated_time"`
+	Type          string   `json:"type,omitempty" jsonschema:"enum=text,enum=number,enum=select,enum=multi_select,enum=date,enum=person,enum=checkbox,enum=url,enum=formula,enum=relation,enum=created_time,enum=updated_time"`
 	Options       []string `json:"options,omitempty"`
 	Order         int      `json:"order,omitempty"`
 	AIManaged     bool     `json:"aiManaged,omitempty"`
@@ -1227,6 +1227,34 @@ func SetConnectionsConfigValue(connName string, toMerge waveobj.MetaMapType) err
 	}
 	m[connName] = connData
 	return WriteWaveHomeConfigFile(ConnectionsFile, m)
+}
+
+// MigrateAgentPropertySchemaStatus rewrites the retired "status" property
+// type to "select" in settings.json agent:propertyschema (identical value
+// shape, nothing else changes). One-shot at server start: no status
+// definitions -> returns without writing, so settings stay byte-identical.
+// Failure only logs — a config migration must never block startup.
+func MigrateAgentPropertySchemaStatus() {
+	defs := ReadFullConfig().Settings.AgentPropertySchema
+	changed := 0
+	for i := range defs {
+		if strings.EqualFold(strings.TrimSpace(defs[i].Type), "status") {
+			defs[i].Type = "select"
+			changed++
+		}
+	}
+	if changed == 0 {
+		return
+	}
+	err := SetBaseConfigValue(waveobj.MetaMapType{
+		ConfigKey_AgentPropertySchema: defs,
+	})
+	if err != nil {
+		log.Printf("error migrating agent:propertyschema status types: %v\n", err)
+		return
+	}
+	BroadcastConfigUpdate()
+	log.Printf("migrated %d agent:propertyschema definition(s) from status to select\n", changed)
 }
 
 func MigratePresetsBackgrounds() {

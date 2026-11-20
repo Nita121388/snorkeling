@@ -544,7 +544,6 @@
         "number": "数字",
         "select": "单选",
         "multi_select": "多选",
-        "status": "状态",
         "date": "日期",
         "person": "人员",
         "checkbox": "勾选",

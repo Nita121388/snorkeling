@@ -264,3 +264,7 @@
 | 2026-11-19 12:15 | agent-card-model | ❌ fatal（未跑） | launch+reset | `20261119T12153-agent-card-model` | 3955216fe |
 | 2026-11-19 13:06 | agent-card-model | ❌ fatal（未跑） | launch+reset | `20261119T13060-agent-card-model` | 8eb023350 |
 | 2026-11-20 03:40 | aisessions-detail-binding（真机 skipped：用户明确本机性能不够，暂不做；verify.mjs 已备） | ✅ 14/14 | vitest + 红证对照 | `loop/red/N-1120-aisessions-detail-binding-mismatch.txt` | working-tree |
+| 2026-11-20 03:41 | property-editor | ❌ fatal（未跑） | launch+reset | `20261120T03392-property-editor` | 1dd2d612e |
+| 2026-11-20 03:43 | property-editor | ❌ fatal（未跑） | launch+reset | `20261120T03424-property-editor` | 1dd2d612e |
+| 2026-11-20 03:56 | property-editor | ❌ fatal（未跑） | launch+reset | `20261120T03540-property-editor` | 1dd2d612e |
+| 2026-11-20 12:20 | property-editor（真机 skipped：用户明确本机性能不够，暂不做；verify.mjs 已备「修改类型」浮层 case + R7 误关闭回归） | ✅ 154/154（含新增 7 条） | vitest + sqlite/settings 迁移抽样 | live 库 status 行 0 / settings 副本 status→select | working-tree |

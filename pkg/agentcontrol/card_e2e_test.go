@@ -339,11 +339,14 @@ func TestAgentCardEndToEndAppendsPropOptions(t *testing.T) {
 	if statusDef == nil {
 		t.Fatalf("status definition must be published to the schema, got %#v", final.Schema)
 	}
-	if !reflect.DeepEqual(statusDef.Options, []string{"闲置"}) || statusDef.Type != "status" || statusDef.Scope != "agent:codex" {
+	if !reflect.DeepEqual(statusDef.Options, []string{"闲置"}) || statusDef.Type != "select" || statusDef.Scope != "agent:codex" {
 		t.Fatalf("published definition wrong: %#v", statusDef)
 	}
 	if final.Summary.Props["status"].Value != "闲置" {
 		t.Fatalf("session value must be written too, got %#v", final.Summary.Props)
+	}
+	if final.Summary.Props["status"].Type != "select" {
+		t.Fatalf("legacy status input must be stored as select, got %q", final.Summary.Props["status"].Type)
 	}
 
 	// Re-running the same command: same session value (no change), option deduped.

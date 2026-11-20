@@ -844,16 +844,26 @@ func TestValidatePropAddOptions(t *testing.T) {
 			Props: map[string]PropPatch{"status": {Type: propType, Value: "Idle", AddOptions: add}},
 		}
 	}
-	for _, propType := range []string{"select", "multi_select", "status", " Status "} {
+	for _, propType := range []string{"select", "multi_select"} {
 		if err := validatePropAddOptions(build([]string{"Idle"}, propType)); err != nil {
 			t.Fatalf("type %q must accept options, got %v", propType, err)
 		}
 	}
-	err := validatePropAddOptions(build([]string{"Idle"}, "text"))
+	// The retired status type is rejected raw at this layer, but every caller
+	// normalizes first (ApplyPatch + the command layer), so add-options keeps
+	// working for legacy status props through the normalized "select".
+	err := validatePropAddOptions(build([]string{"Idle"}, "status"))
+	if err == nil || !strings.Contains(err.Error(), "expected select or multi_select") {
+		t.Fatalf("retired status type must be rejected with the new wording, got %v", err)
+	}
+	if err := validatePropAddOptions(build([]string{"Idle"}, aisessions.NormalizePropertyType("status"))); err != nil {
+		t.Fatalf("normalized legacy status type must accept options, got %v", err)
+	}
+	err = validatePropAddOptions(build([]string{"Idle"}, "text"))
 	if err == nil || !strings.Contains(err.Error(), "text") {
 		t.Fatalf("text properties must reject options with the offending type, got %v", err)
 	}
-	err = validatePropAddOptions(build([]string{"  "}, "status"))
+	err = validatePropAddOptions(build([]string{"  "}, "select"))
 	if err == nil || !strings.Contains(err.Error(), "empty option") {
 		t.Fatalf("blank option values must be rejected, got %v", err)
 	}
@@ -964,5 +974,60 @@ func TestApplyPatchRejectsOptionsOnTextProperty(t *testing.T) {
 	_, err = ApplyPatch(context.Background(), patch, ApplyOptions{DryRun: true})
 	if err == nil || !strings.Contains(err.Error(), "cannot add options") {
 		t.Fatalf("expected a validation error for options on a text property, got %v", err)
+	}
+}
+
+// A legacy "status" prop type handed in by an agent/CLI is normalized to
+// "select" at the write boundary: preview and apply both see select and the
+// stored cell carries select (no status ever reaches storage).
+func TestApplyPatchNormalizesRetiredStatusType(t *testing.T) {
+	sessionID, manager := setupAgentDataSession(t)
+	ctx := context.Background()
+	before, err := manager.Summary(ctx, sessionID, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	patch := Patch{
+		Version: PatchVersion,
+		Source:  "test-status-retired",
+		Operations: []PatchOperation{{
+			Type:       "session_prop.update",
+			SessionKey: sessionID,
+			Props: map[string]PropPatch{
+				"phase": {Type: " Status ", Value: "doing", Scope: "session"},
+			},
+			ExpectedHash: HashSession(before),
+		}},
+	}
+	preview, err := ApplyPatch(ctx, patch, ApplyOptions{DryRun: true})
+	if err != nil {
+		t.Fatalf("dry-run: %v", err)
+	}
+	if len(preview.Operations) != 1 || preview.Operations[0].Error != "" {
+		t.Fatalf("preview rejected a legacy status type: %#v", preview.Operations)
+	}
+
+	// ApplyPatch mutates the shared operations slice: the caller-visible patch
+	// (used by the command layer for the schema sync) must see "select".
+	if got := patch.Operations[0].Props["phase"].Type; got != "select" {
+		t.Fatalf("patch operation type not normalized, got %q", got)
+	}
+
+	if _, err := ApplyPatch(ctx, patch, ApplyOptions{Yes: true}); err != nil {
+		t.Fatalf("apply: %v", err)
+	}
+	after, err := manager.Summary(ctx, sessionID, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cell, found := after.Props["phase"]
+	if !found || cell.Type != "select" || cell.Value != "doing" {
+		t.Fatalf("expected stored cell {select, doing}, got %#v found=%v", cell, found)
+	}
+
+	// Add-options on a legacy status definition keeps working (normalized
+	// before validAddOptionPropertyType sees it).
+	if !validAddOptionPropertyType(aisessions.NormalizePropertyType("status")) {
+		t.Fatal("add-options on a legacy status prop was rejected after normalization")
 	}
 }

@@ -1,0 +1,82 @@
+# 红证 — N-1120-property-status-to-select（修前，2026-11-20）
+
+采集时间：2026-11-20，采集时 HEAD = 4bd9c4ae5（未改任何代码）
+
+## 1. 存量数据仍是 status 类型（用户真实本机库，只读）
+
+命令：
+```bash
+sqlite3 -readonly "$HOME/.snorkeling/ai-sessions/index-v2.sqlite" \
+  "SELECT count(*) FROM ai_session_props WHERE lower(trim(prop_type))='status';" \
+  "SELECT prop_key, prop_type, count(*) FROM ai_session_props GROUP BY 1,2 ORDER BY 3 DESC LIMIT 5;"
+```
+
+输出：
+```
+37
+status|text|1
+status|select|17
+status|status|37
+```
+
+结论：**37 行 prop_type='status' 未迁移**；同一属性 key 还有 17 行是 select（前端读时归一后新写入的自愈行），
+证明"UI 看起来是单选、数据层还是 status"的半成品状态。
+
+## 2. 用户真实 settings.json 的模板定义仍是 status 类型
+
+命令：
+```bash
+python -c "import json;d=json.load(open(r'C:/Users/chemclin/.config/snorkeling/settings.json',encoding='utf-8'));print(d.get('agent:propertyschema'))"
+```
+
+输出（节选）：
+```
+[{'key':'status','name':'状态','type':'status','options':['原样输出中','进行中','待验证','阻塞','已完成','已放弃','待继续'],'order':1,'aiManaged':True,'scope':'agent:pi'}]
+```
+
+结论：`agent:propertyschema[0].type == "status"`，与 UI 展示的"单选"不一致。
+
+## 3. 后端词表仍接受 status
+
+命令：
+```bash
+grep -n '"status"' pkg/aisessions/propertygenerate.go
+grep -n 'status' pkg/agentdata/patch.go | grep -E 'select|multi_select'
+grep -n '"status"' schema/settings.json
+grep -n '"status"' frontend/app/view/aisessions/property/property-model.ts
+```
+
+输出：
+```
+pkg/aisessions/propertygenerate.go:46:  "status": {},
+pkg/aisessions/propertygenerate.go:397:  case "text", "url", "select", "status":
+pkg/agentdata/patch.go:797:  case "select", "multi_select", "status":
+pkg/agentdata/patch.go:819:  "expected select, multi_select or status"
+schema/settings.json:78:  "status",
+frontend/app/view/aisessions/property/property-model.ts:402:  "status",   (ALL_PROPERTY_TYPES)
+```
+
+结论：白名单 / 值校验 / add-options / jsonschema / 前端类型词表 5 处仍有 status，"彻底剥离"未达成。
+
+## 4. 改类型点击即关闭的代码证据
+
+命令：
+```bash
+grep -n "autoFocus" -A6 pkg/../../frontend/app/view/aisessions/property/property-list.tsx | grep -n "select\|onBlur\|retypeKey"
+```
+
+输出：
+```
+property-list.tsx:  <select autoFocus ... onBlur={() => setRetypeKey(null)} ... >
+```
+
+结论：改类型控件是原生 `<select>`，`onBlur` 直接卸载自身。Windows/Electron 原生下拉展开会夺走 web 焦点 →
+blur → 控件卸载 → "一点击就关闭，编辑不了"。该行为已由用户真机复现（2026-11-20 口头反馈）。
+
+## 红证判定
+
+- 第 1、2 条是**数据层**红（37 行 + 1 条模板定义）
+- 第 3 条是**代码层**红（5 处词表）
+- 第 4 条是**交互层**红（原生 select onBlur 卸载）
+
+修后绿证判据见 `.trellis/tasks/11-20-property-status-to-select/prd.md` 的 Acceptance Criteria。

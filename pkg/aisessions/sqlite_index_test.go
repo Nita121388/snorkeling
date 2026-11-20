@@ -1147,3 +1147,144 @@ func TestManagerMetaWriteSkipsProviderScan(t *testing.T) {
 		t.Fatalf("tags did not survive the writes: %#v", reloaded.Tags)
 	}
 }
+
+// The retired "status" property type must be rewritten to "select" once, with
+// a VACUUM INTO backup, and the migration must be idempotent (a second open
+// neither re-runs the UPDATE nor produces another backup).
+func TestSQLiteMigratePropTypeStatus(t *testing.T) {
+	dir := t.TempDir()
+	sqlitePath := filepath.Join(dir, "index-v2.sqlite")
+	metaPath := filepath.Join(dir, "meta.json")
+
+	idx, err := OpenSQLiteIndex(sqlitePath, metaPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	seed := []struct {
+		session string
+		key     string
+		propTyp string
+	}{
+		{"pi:old-1", "status", "status"},
+		{"pi:old-2", "状态", " Status "},
+		{"pi:old-3", "phase", "STATUS"},
+		{"pi:old-4", "status", "select"},
+		{"pi:old-5", "owner", "text"},
+	}
+	for _, row := range seed {
+		if _, err := idx.db.Exec(
+			`INSERT INTO ai_session_props(session_key, prop_key, value_json, prop_type, source, updated_at) VALUES(?, ?, '"in progress"', ?, 'user', 1)`,
+			row.session, row.key, row.propTyp); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// A genuine pre-migration database has no sentinel yet; the fresh database
+	// created above already set it during its own (empty) migration pass.
+	if _, err := idx.db.Exec(`DELETE FROM ai_schema_meta WHERE key = 'session_props_status_type_migrated'`); err != nil {
+		t.Fatal(err)
+	}
+	if err := idx.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Old library opens: migration runs once and rewrites every status row.
+	idx, err = OpenSQLiteIndex(sqlitePath, metaPath)
+	if err != nil {
+		t.Fatalf("open old database: %v", err)
+	}
+	var statusRows, selectRows int
+	if err := idx.db.Get(&statusRows, `SELECT count(*) FROM ai_session_props WHERE lower(trim(prop_type)) = 'status'`); err != nil {
+		t.Fatal(err)
+	}
+	if err := idx.db.Get(&selectRows, `SELECT count(*) FROM ai_session_props WHERE prop_type = 'select'`); err != nil {
+		t.Fatal(err)
+	}
+	if statusRows != 0 {
+		t.Fatalf("status rows remain after migration: %d", statusRows)
+	}
+	if selectRows != 4 {
+		t.Fatalf("expected 3 migrated status rows + 1 pre-existing select = 4 select rows, got %d", selectRows)
+	}
+	if _, done, err := idx.schemaMeta(context.Background(), "session_props_status_type_migrated"); err != nil || !done {
+		t.Fatalf("migration sentinel missing: done=%v err=%v", done, err)
+	}
+	if err := idx.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	backups, err := filepath.Glob(filepath.Join(dir, "index-v2.sqlite.backup-before-prop-status-*"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(backups) != 1 {
+		t.Fatalf("expected exactly one pre-migration backup, got %d: %#v", len(backups), backups)
+	}
+
+	// Second open is a no-op: no extra backup, data untouched.
+	idx, err = OpenSQLiteIndex(sqlitePath, metaPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := idx.db.Get(&selectRows, `SELECT count(*) FROM ai_session_props WHERE prop_type = 'select'`); err != nil {
+		t.Fatal(err)
+	}
+	if selectRows != 4 {
+		t.Fatalf("idempotent reopen changed row count: %d", selectRows)
+	}
+	if err := idx.Close(); err != nil {
+		t.Fatal(err)
+	}
+	backups, err = filepath.Glob(filepath.Join(dir, "index-v2.sqlite.backup-before-prop-status-*"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(backups) != 1 {
+		t.Fatalf("second open must not create another backup, got %d", len(backups))
+	}
+}
+
+// Manager.SetProps is the lowest write boundary (frontend RPC service path):
+// the retired "status" type is normalized to "select" there as well.
+func TestManagerSetPropsNormalizesRetiredStatusType(t *testing.T) {
+	dir := t.TempDir()
+	indexPath := filepath.Join(dir, "index.json")
+	metaPath := filepath.Join(dir, "meta.json")
+	sqlitePath := filepath.Join(dir, "index-v2.sqlite")
+	sessionKey := "codex:props-normalize:/tmp/props-normalize.jsonl"
+	provider := &cacheProvider{
+		source: SourceCodex,
+		summaries: []SessionSummary{
+			{Key: sessionKey, ID: "props-normalize", Source: SourceCodex, FilePath: "/tmp/props-normalize.jsonl", MTime: 1, Size: 10},
+		},
+		messages: []Message{{Seq: 1, Role: RoleUser, Text: "hello"}},
+	}
+	manager := NewManagerWithOptions(ManagerOptions{
+		Providers:  []Provider{provider},
+		IndexPath:  indexPath,
+		MetaPath:   metaPath,
+		SQLitePath: sqlitePath,
+	})
+	ctx := context.Background()
+	summary, err := manager.SetProps(ctx, "props-normalize", map[string]PropertyCell{
+		"phase": {Value: "doing", Type: " STATUS "},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cell, ok := summary.Props["phase"]; !ok || cell.Type != "select" {
+		t.Fatalf("expected stored type select, got %#v found=%v", cell, ok)
+	}
+	// Re-read through the index: the normalized type is what is persisted.
+	idx, err := OpenSQLiteIndex(sqlitePath, metaPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer idx.Close()
+	props, err := idx.PropsForSession(ctx, sessionKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cell, ok := props["phase"]; !ok || cell.Type != "select" {
+		t.Fatalf("expected persisted type select, got %#v found=%v", cell, ok)
+	}
+}

@@ -75,7 +75,7 @@ describe("toPropertyDefs", () => {
         expect(entries[customIndex].def.name).toBe("Tech Stack");
     });
 
-    it("读时归一：历史 status 类型映射为 select（值/渲染形状一致，零迁移）", () => {
+    it("读侧 legacy 兑底：未迁移镜像里的 status 类型仍映射为 select（类型联合已无 status）", () => {
         const entries = toPropertyDefs(
             makeSummary({ props: { stage: { value: "done", type: "status", updatedAt: 1 } } }),
             [{ key: "stage", name: "Stage", type: "status", options: ["todo", "done"], order: 1 }]
@@ -88,7 +88,7 @@ describe("toPropertyDefs", () => {
         expect(stage.cell.value).toBe("done");
     });
 
-    it("schema-only 的 status 模板项也归一为 select", () => {
+    it("schema-only 的 legacy status 模板项也归一为 select", () => {
         const entries = toPropertyDefs(makeSummary({ props: {} }), [
             { key: "phase", name: "Phase", type: "status", order: 1 },
         ]);

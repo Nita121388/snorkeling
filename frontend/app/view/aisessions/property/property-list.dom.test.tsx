@@ -563,3 +563,78 @@ describe("PropertyList — 新增属性浮层（范围三选一）", () => {
         expect(onAdd.mock.calls[0][2]).toBe("session");
     });
 });
+
+// 改类型浮层菜单 —— 锁住 "一点击就关闭" 回归（旧实现是原生 <select>，
+// Windows/Electron 下原生下拉抢焦点触发 blur → 控件被立即卸载）。
+describe("PropertyList — 改类型浮层菜单", () => {
+    beforeEach(() => {
+        vi.useFakeTimers();
+    });
+    afterEach(() => {
+        act(() => root.unmount());
+        container.remove();
+        vi.useRealTimers();
+    });
+
+    function mountWithRetype() {
+        const onRetype = vi.fn();
+        mount(
+            <PropertyList
+                summary={
+                    makeSummary({
+                        props: { phase: { value: "doing", type: "text", source: "user", updatedAt: 1 } },
+                    }) as SessionSummary
+                }
+                mode="detail"
+                layout="agent"
+                canEdit
+                onChange={vi.fn()}
+                onRetypeProperty={onRetype}
+            />
+        );
+        return onRetype;
+    }
+
+    function openTypeMenu() {
+        const rowEl = row("phase");
+        expect(rowEl).not.toBeNull();
+        click(rowEl!.querySelector(".property-row__menu-btn"));
+        const changeType = Array.from(rowEl!.querySelectorAll(".property-row__menu button")).find(
+            (b) => b.textContent?.trim() === "Change type"
+        );
+        expect(changeType).toBeDefined();
+        click(changeType!);
+    }
+
+    it("不再渲染原生 select；菜单打开后 blur/focusout 不把它关掉", () => {
+        mountWithRetype();
+        openTypeMenu();
+        expect(document.querySelector("select")).toBeNull();
+        const menu = document.querySelector('[data-testid="property-type-menu"]');
+        expect(menu).not.toBeNull();
+        // 旧 bug：焦点离开（原生下拉抢焦点）→ 控件卸载。现在任何 blur/focusout 都不该收菜单。
+        const anchor = row("phase")!.querySelector(".property-row__button")!;
+        act(() => {
+            anchor.dispatchEvent(new FocusEvent("blur", { bubbles: false }));
+            anchor.dispatchEvent(new FocusEvent("focusout", { bubbles: true }));
+            vi.advanceTimersByTime(1500);
+        });
+        expect(document.querySelector('[data-testid="property-type-menu"]')).not.toBeNull();
+    });
+
+    it("点菜单里的单选 → onRetypeProperty(key, 'select') 并关闭菜单", () => {
+        const onRetype = mountWithRetype();
+        openTypeMenu();
+        const option = document.querySelector('[data-testid="property-type-menu"] [data-type="select"]');
+        expect(option).not.toBeNull();
+        click(option);
+        expect(onRetype).toHaveBeenCalledWith("phase", "select");
+        expect(document.querySelector('[data-testid="property-type-menu"]')).toBeNull();
+    });
+
+    it("菜单里不提供已退役的 status 类型", () => {
+        mountWithRetype();
+        openTypeMenu();
+        expect(document.querySelector('[data-testid="property-type-menu"] [data-type="status"]')).toBeNull();
+    });
+});

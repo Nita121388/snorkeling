@@ -55,14 +55,19 @@ var reservedPropertyKeys = map[string]struct{}{
 	"updated_at":   {},
 }
 
-// PropertyTypes lists the custom property types the AI may produce. Formula /
-// relation / created_time / updated_time are derived and not AI-writable.
+// propertyTypeWhitelist lists the custom property types the AI may produce.
+// Formula / relation / created_time / updated_time are derived and not
+// AI-writable.
+//
+// "status" is retired: the Notion status type never had a distinct behaviour in
+// this repo (same single-value + colored pill as select, no group / auto
+// advance). It is normalized to "select" at every write boundary by
+// NormalizePropertyType, so it never reaches storage or this whitelist.
 var propertyTypeWhitelist = map[string]struct{}{
 	"text":         {},
 	"number":       {},
 	"select":       {},
 	"multi_select": {},
-	"status":       {},
 	"date":         {},
 	"checkbox":     {},
 	"url":          {},
@@ -97,6 +102,20 @@ func ValidPropertyType(t string) bool {
 	return ok
 }
 
+// NormalizePropertyType maps the retired Notion-style "status" type onto
+// "select" (identical value shape). It is the SINGLE legacy write-boundary
+// normalization: every writer runs this first, so "status" never reaches
+// storage, the schema template, or the AI whitelist. Only the legacy literal
+// is rewritten (trimmed, case-insensitive); every other type is returned
+// trimmed and otherwise untouched.
+func NormalizePropertyType(raw string) string {
+	trimmed := strings.TrimSpace(raw)
+	if strings.EqualFold(trimmed, "status") {
+		return "select"
+	}
+	return trimmed
+}
+
 func valueToFloat(value any) (float64, bool) {
 	switch v := value.(type) {
 	case float64:
@@ -119,7 +138,7 @@ func valueToFloat(value any) (float64, bool) {
 // ok=false means the proposal must be dropped (never guessed into storage).
 func ValidatePropertyValue(propType string, value any) (any, bool) {
 	switch propType {
-	case "text", "url", "select", "status":
+	case "text", "url", "select":
 		s, ok := value.(string)
 		if !ok {
 			return nil, false
@@ -302,7 +321,7 @@ func parsePropertySuggestions(text string, existing map[string]PropertyCell, max
 		if _, dup := seen[key]; dup {
 			continue
 		}
-		propType := strings.TrimSpace(item.Type)
+		propType := NormalizePropertyType(item.Type)
 		if !ValidPropertyType(propType) {
 			propType = inferPropertyTypeFromValue(item.Value)
 		}

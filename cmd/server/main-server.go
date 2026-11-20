@@ -641,6 +641,7 @@ func main() {
 	sigutil.InstallShutdownSignalHandlers(doShutdown)
 	sigutil.InstallSIGUSR1Handler()
 	wconfig.MigratePresetsBackgrounds()
+	wconfig.MigrateAgentPropertySchemaStatus()
 	startConfigWatcher()
 	aiusechat.InitAIModeConfigWatcher()
 	maybeStartPprofServer()

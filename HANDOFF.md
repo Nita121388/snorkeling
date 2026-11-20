@@ -5,6 +5,21 @@
 > **夜间无人值守开发的逐段记录在 `docs/project/night-run.md`**（计划 / 约束 / 看板 / 已知红灯），
 > 接手先看那一页，再看本页。
 
+## 2026-11-20：属性 status 类型彻底退役 + 改类型/值列表浮层点击即关修复（已完成，真机验证用户豁免）
+
+- **细节全文**：`.trellis/tasks/11-20-property-status-to-select/{prd,design,implement}.md`（implement 末节有全部绿证）。
+- **status 退役**：后端白名单/校验/add-options/jsonschema 只认 select；`NormalizePropertyType` 做唯一写边界归一
+  （`agentdata.ApplyPatch` / `Manager.SetProps` / AI 提案）；sqlite `ai_session_props.prop_type` 与 settings
+  `agent:propertyschema[].type` 一次性迁移 status→select（哨兵 + VACUUM INTO 备份）。
+  live sqlite 已迁移（status 行 0，备份 `index-v2.sqlite.backup-before-prop-status-20261120-103652` 3.05GB）；
+  live settings 那 1 条 status 会在下次重启新构建时由 `wconfig.MigrateAgentPropertySchemaStatus()` 改写。
+- **交互修复**：改类型原生 `<select>` → `PropertyValuePopover` 点击式类型菜单（不再 blur 卸载）；
+  共享 `PropertyTagEditor` 删除容器 onBlur 关门 + 列表空白 mousedown preventDefault（只认 Esc/外部点击/单选提交）。
+- **判据**：go 4 包全 ok（用 `-p 1`；并行编译会撞本机 commit 上限）；vitest 154/154（新增 13 条）；
+  eslint 0 error；tsc 白名单 0 新增；i18n parity exit 0（全仓 CJK scan 有 5 条既有红，非本包）。
+- **真机验证 skipped（用户明确本机性能不够）**：`scripts/verify/property-editor/verify.mjs` 已备
+  `agent-retype-menu-*` 5 条断言 + R7 误关闭回归单测；台账已记 3 次 fatal(未跑) + skip 结论。
+
 ## 2026-11-19（下班前）：闪退根因查清 = 整机 commit 耗尽 + git fsmonitor 常驻泄漏（纯调查，未改代码）
 
 > 用户报「闪退时提示 PowerShell 未处理异常」，此前怀疑内存。**内存判断是对的**。

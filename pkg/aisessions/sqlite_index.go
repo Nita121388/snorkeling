@@ -319,7 +319,7 @@ func (idx *SQLiteIndex) init(ctx context.Context) error {
 			return err
 		}
 	}
-	return nil
+	return idx.migratePropTypeStatus(ctx)
 }
 
 // ensurePropsColumns adds the rename/order columns to ai_session_props for
@@ -589,7 +589,7 @@ func (idx *SQLiteIndex) migrateSessionTags(ctx context.Context, existingSchemaVe
 		migrations = append(migrations, tagMigrationRow{key: row.Key, tags: tags, updatedAt: row.UpdatedAt})
 	}
 	if len(migrations) > 0 {
-		if err := idx.backupSQLiteBeforeTagMigration(); err != nil {
+		if err := idx.backupSQLiteBeforeMigration("tags"); err != nil {
 			debugf("SQLiteIndex skipping session tag migration because sqlite backup failed path=%q err=%v", idx.path, err)
 			return false, nil
 		}
@@ -635,18 +635,47 @@ func (idx *SQLiteIndex) migrateSessionTags(ctx context.Context, existingSchemaVe
 	return true, nil
 }
 
-func (idx *SQLiteIndex) backupSQLiteBeforeTagMigration() error {
+func (idx *SQLiteIndex) backupSQLiteBeforeMigration(label string) error {
 	if idx.path == "" {
 		return nil
 	}
 	if _, err := os.Stat(idx.path); err != nil {
 		return err
 	}
-	backupPath := uniqueDeletedPath(filepath.Join(filepath.Dir(idx.path), fmt.Sprintf("%s.backup-before-tags-%s", filepath.Base(idx.path), time.Now().Format("20060102-150405"))))
+	backupPath := uniqueDeletedPath(filepath.Join(filepath.Dir(idx.path), fmt.Sprintf("%s.backup-before-%s-%s", filepath.Base(idx.path), label, time.Now().Format("20060102-150405"))))
 	if _, err := idx.db.Exec(`VACUUM INTO ?`, backupPath); err != nil {
 		return err
 	}
 	return nil
+}
+
+// migratePropTypeStatus rewrites the retired "status" property type to
+// "select" in ai_session_props (value shape is identical, nothing else
+// changes). One-shot via the ai_schema_meta sentinel; runs before every open
+// so older databases upgrade lazily. Mirrors the tag migration's backup
+// policy: rows to touch -> VACUUM INTO backup first, backup failure -> skip
+// this round (sentinel stays unset) and retry on the next open.
+func (idx *SQLiteIndex) migratePropTypeStatus(ctx context.Context) error {
+	if _, done, err := idx.schemaMeta(ctx, "session_props_status_type_migrated"); err != nil {
+		return err
+	} else if done {
+		return nil
+	}
+	var count int
+	if err := idx.db.GetContext(ctx, &count, `SELECT count(*) FROM ai_session_props WHERE lower(trim(prop_type)) = 'status'`); err != nil {
+		return err
+	}
+	if count > 0 {
+		if err := idx.backupSQLiteBeforeMigration("prop-status"); err != nil {
+			debugf("SQLiteIndex skipping prop status->select migration because sqlite backup failed path=%q err=%v", idx.path, err)
+			return nil
+		}
+		if _, err := idx.db.ExecContext(ctx, `UPDATE ai_session_props SET prop_type = 'select' WHERE lower(trim(prop_type)) = 'status'`); err != nil {
+			return err
+		}
+		debugf("SQLiteIndex migrated %d prop rows status->select", count)
+	}
+	return idx.setSchemaMeta(ctx, "session_props_status_type_migrated", "1")
 }
 
 func (idx *SQLiteIndex) schemaMeta(ctx context.Context, key string) (string, bool, error) {
