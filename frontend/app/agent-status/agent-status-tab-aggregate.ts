@@ -10,6 +10,7 @@ import { isAgentStatusUnread, normalizeTimeMs, type AgentStatusFp } from "@/app/
 import { makeAgentTraceId, pslogEvent } from "@/app/store/pslog-trace";
 import { SessionOverviewModel } from "@/app/session-overview/session-overview-model";
 import * as WOS from "@/store/wos";
+import { expandBlockIdsWithSubblocks as expandBlockIdsWithSubblocksPure } from "@/app/tab/tab-block-collect";
 import { atom, Atom, Getter } from "jotai";
 import { useEffect } from "react";
 import { useAtomValue } from "jotai";
@@ -166,27 +167,15 @@ function updatedAtMs(status: AgentStatus): number {
  * 不会被 InlineTabBlock 渲染, 也不会触发 useInlineTabAgentStatus 的 acquire;
  * C 层聚合若只走 tab.blockids 就会漏掉它们的 agent 状态, 所以这里一并并入.
  */
+// 展开逻辑已收口到 tab/tab-block-collect（与「更多」菜单、Tab 悬浮卡同口径）。
+// 这里只保留 Getter 适配的薄包装，判定顺序与输出保持等价：
+//  - 空输入原样返回（不新建数组）
+//  - 顶层在前、子块紧随、首次出现优先去重
 function expandBlockIdsWithSubblocks(get: Getter, blockIds: string[]): string[] {
     if (blockIds.length === 0) return blockIds;
-    const out: string[] = [];
-    const seen = new Set<string>();
-    for (const blockId of blockIds) {
-        if (!seen.has(blockId)) {
-            seen.add(blockId);
-            out.push(blockId);
-        }
-        const blockAtom = WOS.getWaveObjectAtom<Block>(WOS.makeORef("block", blockId));
-        const block = get(blockAtom);
-        const sub = block?.subblockids;
-        if (sub == null) continue;
-        for (const subId of sub) {
-            if (!seen.has(subId)) {
-                seen.add(subId);
-                out.push(subId);
-            }
-        }
-    }
-    return out;
+    return expandBlockIdsWithSubblocksPure(blockIds, (blockId) =>
+        get(WOS.getWaveObjectAtom<Block>(WOS.makeORef("block", blockId))) as Block | null
+    );
 }
 
 function collectBlockDots(

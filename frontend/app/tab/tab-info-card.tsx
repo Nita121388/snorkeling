@@ -14,8 +14,13 @@
 //
 // 设计原则（与 BlockInfoCard 一致）：
 //  - 只读信息展示；操作（切换/跳转）留给后续 Phase。
-//  - 数据全部来自现成 store：tab/workspace WaveObj、block meta、AgentStatusStore。
+//  - 数据全部来自现成 store，且**必须订阅 WOS atom**：历史上这里用 `getObjectValue`
+//    做一次性快照读，waveobj:update 抵达后不重渲染，非激活 Tab 的块首次读取还是 null，
+//    于是卡片长期显示「0 agents / 1 other」直到移开鼠标再悬浮一次
+//    （见 design/plans/tab-info-card-stale-20261120.md）。
 //  - 槽位信息只出现一次：header 只放 agent 数量，其余类型走 chips。
+//  - block 全集 = `tab.blockids` + 各块 `subblockids`，与顶部状态点 / 「更多」菜单同口径
+//    （共享纯函数 `tab-block-collect.expandBlockIdsWithSubblocks`，别自己再写一遍展开）。
 
 import { useAgentPersonas } from "@/app/agent-persona/use-agent-personas";
 import { useSessionEmojis } from "@/app/agent-persona/use-session-personas";
@@ -30,13 +35,15 @@ import {
     InfoCardText,
     InfoCardTitle,
 } from "@/app/element/info-card";
-import { getObjectValue, makeORef } from "@/app/store/wos";
+import { getWaveObjectAtom, makeORef } from "@/app/store/wos";
 import { getAgentIcon } from "@/app/view/term/agent-logo";
 import { isAgentTerminalMeta, normalizeAgentProvider } from "@/app/view/term/agent-meta";
 import { cn, makeIconClass, useAtomValueSafe } from "@/util/util";
+import { atom, Atom, useAtomValue } from "jotai";
 import * as React from "react";
 import { useTranslation } from "react-i18next";
 import { i18n } from "@/i18n/config";
+import { expandBlockIdsWithSubblocks } from "./tab-block-collect";
 import {
     agentGroupHidesProvider,
     agentGroupLabel,
@@ -56,10 +63,78 @@ function readAgentProvider(block: Block | null): string {
     return normalizeAgentProvider(meta.provider ?? meta["agent:provider"]);
 }
 
+// ── 卡片数据（响应式派生） ──
+//
+// 一个派生 atom 订阅：tab atom → 展开后的每个 block atom + workspace atom。
+// 为什么收成一个 atom 而不是组件里逐个 useAtomValue：
+//  - block 数量随 tab 变化，逐个 hook 会破坏 hooks 稳定性；
+//  - 「更多」菜单（getTabMoreMetaAtom）与「更多」悬浮卡（getAgentBlocksAtom）都是这个模式。
+
+export type TabCardAgentEntry = { blockId: string; provider: string; block: Block | null };
+
+export type TabCardData = {
+    tab: Tab | null;
+    workspace: Workspace | null;
+    /** 展开后的 block 全集（顶层 + subblockids），顺序与展开函数一致。 */
+    blocks: (Block | null)[];
+    counts: ReturnType<typeof countTabBlocks>;
+    agentEntries: TabCardAgentEntry[];
+};
+
+const TabCardDataAtomCache = new Map<string, Atom<TabCardData>>();
+
+/**
+ * 测试专用：清掉派生 atom 缓存。
+ * 生产代码不应调用 —— 同一 tabId|workspaceId 在组件 mount/unmount 全周期内必须返回同一 atom
+ * 引用（否则 useAtomValue 的 dep 抖动 → 重渲染风暴，同 TabAgentStatusDotAtomCache 的注释）。
+ */
+export function __resetTabCardDataAtomCacheForTests(): void {
+    TabCardDataAtomCache.clear();
+}
+
+/**
+ * 按 `tabId|workspaceId` 缓存的派生 atom。
+ *
+ * 缓存是硬要求：不缓存时每次 render 都 new atom → `useAtomValue` 内部 effect 的 dep 变化
+ * → cleanup + 立刻 rerender → 再 new atom → "Maximum update depth exceeded"
+ * （同一坑见 agent-status-tab-aggregate 的 TabAgentStatusDotAtomCache、tab-more-menu 的 TabMoreMetaAtomCache）。
+ */
+export function getTabCardDataAtom(tabId: string, workspaceId?: string): Atom<TabCardData> {
+    const key = `${tabId}|${workspaceId ?? ""}`;
+    const cached = TabCardDataAtomCache.get(key);
+    if (cached != null) {
+        return cached;
+    }
+    const tabAtom = getWaveObjectAtom<Tab>(makeORef("tab", tabId));
+    const workspaceAtom = workspaceId != null ? getWaveObjectAtom<Workspace>(makeORef("workspace", workspaceId)) : null;
+    const derived = atom<TabCardData>((get) => {
+        const tab = (get(tabAtom) ?? null) as Tab | null;
+        const workspace = workspaceAtom != null ? ((get(workspaceAtom) ?? null) as Workspace | null) : null;
+        const readBlock = (blockId: string) =>
+            (get(getWaveObjectAtom<Block>(makeORef("block", blockId))) ?? null) as Block | null;
+        // 订阅顶层块 → 读 subblockids → 订阅子块：任一 id 集合变化都会重 derive。
+        const expandedIds = expandBlockIdsWithSubblocks(tab?.blockids ?? [], readBlock);
+        const blocks = expandedIds.map(readBlock);
+        const counts = countTabBlocks(blocks);
+        const agentEntries: TabCardAgentEntry[] = [];
+        for (let idx = 0; idx < expandedIds.length; idx++) {
+            const block = blocks[idx];
+            if (classifyTabBlock(block) !== "agent") {
+                continue;
+            }
+            agentEntries.push({ blockId: expandedIds[idx], provider: readAgentProvider(block), block });
+        }
+        return { tab, workspace, blocks, counts, agentEntries };
+    });
+    TabCardDataAtomCache.set(key, derived);
+    return derived;
+}
+
 // ── Agent 状态行（每个 agent block 一个子组件，独立订阅状态） ──
 
-function TabAgentRow({ blockId, hideProvider }: { blockId: string; hideProvider: boolean }) {
+function TabAgentRow({ entry, hideProvider }: { entry: TabCardAgentEntry; hideProvider: boolean }) {
     const { t } = useTranslation("tab");
+    const blockId = entry.blockId;
     const store = AgentStatusStore.getInstance();
     const [statusAtom, setStatusAtom] = React.useState<ReturnType<AgentStatusStore["acquire"]> | null>(null);
     React.useEffect(() => {
@@ -70,7 +145,8 @@ function TabAgentRow({ blockId, hideProvider }: { blockId: string; hideProvider:
     const status = useAtomValueSafe(statusAtom);
     const statusView = useAgentStatusView(blockId, status);
 
-    const block = React.useMemo(() => getObjectValue<Block>(makeORef("block", blockId)), [blockId]);
+    // block 由派生 atom 下传（已订阅）：meta 变化 / 迟到加载都会让本行拿到新值。
+    const block = entry.block;
     const meta = (block?.meta ?? {}) as Record<string, unknown>;
     const rawProvider = normalizeAgentProvider(meta.provider ?? meta["agent:provider"]);
     const provider = rawProvider === "" ? t("tab:infoCard.agentFallback") : rawProvider;
@@ -138,38 +214,20 @@ function TabAgentRow({ blockId, hideProvider }: { blockId: string; hideProvider:
  */
 export function TabInfoCard({ tabId, workspaceId }: { tabId: string; workspaceId?: string }) {
     const { t } = useTranslation("tab");
-    const tab = React.useMemo(() => getObjectValue<Tab>(makeORef("tab", tabId)), [tabId]);
-    const workspace = React.useMemo(
-        () => (workspaceId != null ? getObjectValue<Workspace>(makeORef("workspace", workspaceId)) : null),
-        [workspaceId]
-    );
+    const dataAtom = React.useMemo(() => getTabCardDataAtom(tabId, workspaceId), [tabId, workspaceId]);
+    const { tab, workspace, counts, agentEntries } = useAtomValue(dataAtom);
 
     const tabName = tab?.name ?? "";
     const flagColor = tab?.meta?.["tab:flagcolor"] as string | undefined;
 
-    const blockIds = tab?.blockids ?? [];
-    const blocks = React.useMemo(() => blockIds.map((id) => getObjectValue<Block>(makeORef("block", id))), [blockIds]);
-    const counts = React.useMemo(() => countTabBlocks(blocks), [blocks]);
     const chips = React.useMemo(() => nonAgentChips(counts), [counts]);
-
-    const agentEntries = React.useMemo(
-        () =>
-            blockIds
-                .map((blockId, idx) => ({
-                    blockId,
-                    kind: classifyTabBlock(blocks[idx] ?? null),
-                    provider: readAgentProvider(blocks[idx] ?? null),
-                }))
-                .filter((entry) => entry.kind === "agent")
-                .map(({ blockId, provider }) => ({ blockId, provider })),
-        [blockIds, blocks]
-    );
 
     const providers = React.useMemo(() => agentEntries.map((entry) => entry.provider), [agentEntries]);
     const groupLabel = agentGroupLabel(providers);
     const hideProvider = agentGroupHidesProvider(providers);
 
-    const agentCount = counts.agent;
+    // 与行数同源：agent 行现在包含 inline 子块，header 计数不能再用 counts.agent 另算一遍。
+    const agentCount = agentEntries.length;
 
     return (
         <InfoCard className="tab-card">
@@ -212,7 +270,7 @@ export function TabInfoCard({ tabId, workspaceId }: { tabId: string; workspaceId
                     <div className="tab-card-sub">{groupLabel}</div>
                     <div className="tab-card-agent-list">
                         {agentEntries.map((entry) => (
-                            <TabAgentRow key={entry.blockId} blockId={entry.blockId} hideProvider={hideProvider} />
+                            <TabAgentRow key={entry.blockId} entry={entry} hideProvider={hideProvider} />
                         ))}
                     </div>
                 </InfoCardSection>

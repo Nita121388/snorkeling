@@ -119,3 +119,4 @@ node scripts/verify/vcs-panel-buttons/verify.mjs --port 9232
 | `newtab-empty`       | `verify.mjs` | 新建 Tab 不自动建 Terminal：点 Add Tab → 空 Tab「暂无 Block」引导 + 全页 0 个 block；点「新建 Terminal」→ 出块可出门 | ✅       |
 | `tab-collapse-cross-renderer` | `verify.mjs` | 「收起到更多」跨 renderer 一致性：播种 5 Tab → IPC 收起 → 每个 Tab renderer 主栏都不渲染它 → 更多下拉 data-hidden/data-dimmed=true → 点开主栏复现 → 再收起并切 Tab 仍一致（独立 profile + 端口 9246/51840） | — 未跑 |
 | `tab-startup-restore` | `verify.mjs` | 重启恢复：同 profile 杀掉再起后，主栏应恢复上次打开的全部 Tab（数量/顺序/激活一致 + 无 `unopened-this-launch` 灰化），而不是只显示激活那一个（独立 profile + 端口 9236/51830） | ✅       |
+| `tab-info-card-freshness` | `verify.mjs` | Tab 悬浮卡数据新鲜度：播种 2 Tab → 非激活 Tab hover 基线 0 agent 行 → **鼠标不动**走 renderer RPC 写 agent meta → 卡片就地出现 agent 行且 provider=pi（快照读版本会停在旧值，必须移开再 hover）；inline 子块由 dom test 覆盖（独立 profile + 端口 9247/51841） | — 见台账 |

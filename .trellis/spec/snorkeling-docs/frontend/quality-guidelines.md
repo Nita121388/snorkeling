@@ -941,3 +941,35 @@ Windows/Electron 下「焦点逃逸（blur）」不是可靠的关闭信号：
   回归）。写「带兜底」的函数先想空串。
 - 回归判据（单测）：`session-persona-store.test.ts`（迁移后 key 仍在 + bootstrap 全量灌入 +
   RPC 失败保层）与 `agent-logo.test.ts`（`sessionId: ""` 回落 meta）。
+
+## 渲染期读 WaveObj 必须订阅 atom：`getObjectValue` 是一次性快照（2026-11-20, task 11-20-tab-info-card-freshness）
+
+`WOS.getObjectValue(oref)` 只做一次 `globalStore.get`，**不建立任何订阅**。渲染周期内会持续
+存在的组件（悬浮卡、列表行、面板）用它读数据，等于把「打开那一刻的快照」当成数据源：
+
+- 首次访问该 oref 时 atom 值常是 `null`（fetch 才刚发出）→ 该块被分类成 `other`/`terminal`，
+  数据毫秒后到位但没人触发重渲染 —— 用户必须关掉重开才看到正确信息（Tab 悬浮卡
+  「非激活 Tab agent 信息不准确」事故的根因，design/plans/tab-info-card-stale-20261120.md）。
+- 打开期间的 `waveobj:update`（meta 变化、块增删）同样被忽略。
+
+硬约束：
+
+- **渲染期组件读 tab/block/workspace 一律走订阅**：`env.wos.useWaveObjectValue(oref)`，或
+  「按 key 缓存的派生 atom + `useAtomValue`」（块数量可变时必须用后者，逐块 hook 会破坏
+  hooks 稳定性；缓存见 `getTabCardDataAtom`/`getTabMoreMetaAtom`/`TabAgentStatusDotAtomCache`
+  的同型实现，**缓存 key 必须稳定**，否则 useAtomValue dep 抖动 → 重渲染风暴）。
+- `getObjectValue` 只许用于一次性场景（事件 handler、非渲染的即时判断、jotai atom 内部
+  的同步读）。
+- 「一个 Tab 有哪些 block」= `tab.blockids` + 各块 `subblockids`，用共享纯函数
+  `frontend/app/tab/tab-block-collect.ts#expandBlockIdsWithSubblocks`，不要在任何消费面
+  自写展开（顶部状态点 / 「更多」菜单 / Tab 悬浮卡三面曾各写一套，漂移成「状态点亮着、
+  悬浮卡说没有 agent」）。
+
+### dom 测试 mock 单例时的坑（本次新增两条）
+
+- mock `getInstance()` 类单例**必须返回稳定引用**（模块级常量对象）。每次调用返回新对象，
+  会让组件里 `useEffect([store, blockId])` 的 dep 每渲染都变 → effect 重跑 → setState →
+  再渲染，形成**同步死循环**（vitest 无输出直接 hang，连 timeout 都触发不了 —— 事件循环
+  被占死）。症状记法：`RUN` 后无任何输出、`--testTimeout` 无效。
+- `vi.mock` 工厂会被提升到模块顶部，**不能引用模块级变量**（`fakeT`、`fakeStatusStore`
+  都要在工厂内部定义，或放到 `vi.hoisted`）。
