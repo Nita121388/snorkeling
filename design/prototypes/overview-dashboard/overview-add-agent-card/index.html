@@ -114,7 +114,8 @@
     backdrop-filter: blur(24px); animation: modal-in .16s ease; color: var(--text);
   }
   @keyframes modal-in { from { opacity: 0; transform: translateY(6px) scale(.98); } }
-  .modal-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; font-size: 13px; font-weight: 500; border-bottom: 1px solid var(--border); }
+  .modal-header { display: flex; align-items: center; gap: 8px; padding: 8px 12px; font-size: 13px; font-weight: 500; border-bottom: 1px solid var(--border); }
+  .modal-header-tab { margin-left: auto; font-size: 10px; font-weight: 400; color: var(--text-dim); }
   .modal-close { display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; background: none; border: none; border-radius: 4px; color: var(--text-dim); cursor: pointer; font-size: 12px; }
   .modal-close:hover { background: var(--card-hover); color: var(--text); }
   .agent-launch-section { padding: 8px 12px 6px; border-bottom: 1px solid var(--border); }
@@ -223,10 +224,10 @@
 const TABS = [
   { tabId: "t1", name: "snorkel-dev", context: { connection: null, cwd: "E:/code/snorkeling" }, tone: "blue",
     paths: [
-      { detail: "E:/code/snorkeling", sub: "当前 Tab · 随 Tab", icon: "terminal" },
-      { detail: "E:/code/snorkeling/frontend", sub: "该 Tab 内块", icon: "terminal" },
-      { detail: "E:/code/snorkeling/pkg", sub: "该 Tab 内块", icon: "terminal" },
-      { detail: "~/Primary/projects/loop", sub: "手选", icon: "folder" },
+      { detail: "E:/code/snorkeling", sub: "随 Tab", icon: "terminal" },
+      { detail: "E:/code/snorkeling/frontend", icon: "terminal" },
+      { detail: "E:/code/snorkeling/pkg", icon: "terminal" },
+      { detail: "~/Primary/projects/loop", icon: "folder" },
     ],
     cards: [
     { id: "b1", title: "修 tab 切换卡顿", agent: "🤖", provider: "pi", state: "working", age: "刚刚", preview: "reinitWave 5 次串行 RPC 拆 2 批…" },
@@ -235,9 +236,9 @@ const TABS = [
   ]},
   { tabId: "t2", name: "remote-mac", context: { connection: "ssh://mac", cwd: "/Users/nita/work" }, tone: "green",
     paths: [
-      { detail: "/Users/nita/work", sub: "ssh://mac · 当前 Tab", icon: "terminal" },
+      { detail: "/Users/nita/work", sub: "ssh://mac · 随 Tab", icon: "terminal" },
       { detail: "/Users/nita/work/snorkeling", sub: "ssh://mac", icon: "terminal" },
-      { detail: "/Users/nita", sub: "ssh://mac · home", icon: "home" },
+      { detail: "/Users/nita", sub: "ssh://mac", icon: "home" },
     ],
     cards: [
     { id: "b4", title: "远端构建验证", agent: "🤖", provider: "claude", state: "done", age: "2小时前", preview: null },
@@ -387,6 +388,7 @@ function openPicker(tabId) {
     <div class="modal" role="dialog" aria-modal="true" aria-labelledby="add-agent-modal-title">
       <div class="modal-header">
         <span id="add-agent-modal-title">新建 Agent</span>
+        <span class="modal-header-tab">${tab.name}</span>
         <button type="button" class="modal-close" aria-label="关闭" title="关闭 (esc)" onclick="closePicker()">✕</button>
       </div>
       ${pickerHTML(tab)}
@@ -403,7 +405,7 @@ function openPicker(tabId) {
 function pickerHTML(tab) {
   return `
     <div class="agent-launch-section">
-      <div class="agent-launch-label">选择 agent 类型 · 当前 Tab：${tab.name}</div>
+      <div class="agent-launch-label">选择 agent 类型</div>
       <div class="agent-chip-row">
         ${AGENTS.map((a) => `
           <div class="session-overview-add-agent" data-agent="${a.id}" role="button" tabindex="0" title="${a.desc}">
@@ -414,15 +416,15 @@ function pickerHTML(tab) {
              placeholder="自动（可能按项目偏好）" aria-label="模型" />
     </div>
     <div class="agent-launch-section">
-      <div class="agent-launch-label">选择一个路径。（继承自该 Tab，可换）</div>
+      <div class="agent-launch-label">选择一个路径。</div>
       <div class="agent-path-list" id="add-path-list" role="listbox" aria-label="路径候选">
-        ${tab.paths.map((p, i) => `
+        ${tab.paths.map((p) => `
           <button type="button" class="session-overview-add-path-item ${p.detail === tab.context.cwd ? "is-selected" : ""}" role="option"
                   aria-selected="${p.detail === tab.context.cwd}" data-path="${p.detail}" title="${p.detail}">
             <span class="agent-path-icon">${p.icon === "home" ? "⌂" : p.icon === "folder" ? "▤" : "▸_"}</span>
             <span class="agent-path-body">
               <div class="agent-path-detail">${p.detail}</div>
-              <div class="agent-path-sub">${p.sub}</div>
+              ${p.sub ? `<div class="agent-path-sub">${p.sub}</div>` : ""}
             </span>
           </button>`).join("")}
       </div>
