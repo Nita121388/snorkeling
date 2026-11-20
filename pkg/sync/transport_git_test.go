@@ -202,3 +202,26 @@ func TestGitTransportMissingRemoteFailsClearly(t *testing.T) {
 		t.Fatal("cloning a nonexistent remote must fail")
 	}
 }
+
+// Every internal git invocation must carry -c core.fsmonitor=false: a
+// system-wide core.fsmonitor=true spawns one resident daemon per repository
+// that never exits (2026-11-19 commit-memory OOM root cause).
+func TestGitGlobalConfigArgsDisableFsmonitor(t *testing.T) {
+	args := gitGlobalConfigArgs()
+	hasFsmonitorOff := false
+	hasQuotePathOff := false
+	for i, a := range args {
+		if a == "core.fsmonitor=false" && i > 0 && args[i-1] == "-c" {
+			hasFsmonitorOff = true
+		}
+		if a == "core.quotePath=false" {
+			hasQuotePathOff = true
+		}
+	}
+	if !hasFsmonitorOff {
+		t.Fatalf("expected global git args to disable fsmonitor, got %v", args)
+	}
+	if !hasQuotePathOff {
+		t.Fatalf("expected quotePath disable to be preserved, got %v", args)
+	}
+}

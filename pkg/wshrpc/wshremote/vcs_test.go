@@ -17,7 +17,13 @@ func TestNewVcsCommandDisablesGitPathQuoting(t *testing.T) {
 	if len(gitCmd.Args) < 4 || gitCmd.Args[1] != "-c" || gitCmd.Args[2] != "core.quotePath=false" {
 		t.Fatalf("expected git args to disable quotePath, got %v", gitCmd.Args)
 	}
-	if gitCmd.Args[3] != "status" {
+	// Global "-c key=value" options all precede the subcommand: skip the -c
+	// pairs (quotePath + fsmonitor) and expect "status" right after them.
+	subIdx := 1
+	for subIdx < len(gitCmd.Args)-1 && gitCmd.Args[subIdx] == "-c" {
+		subIdx += 2
+	}
+	if gitCmd.Args[subIdx] != "status" {
 		t.Fatalf("expected subcommand after git options, got %v", gitCmd.Args)
 	}
 
@@ -929,5 +935,22 @@ func TestLoadGitCommitFilesAttachesNumstat(t *testing.T) {
 	}
 	if added.Code != "A" || added.Added != 1 {
 		t.Fatalf("unexpected added stats %+v", added)
+	}
+}
+
+// Internal git invocations must keep fsmonitor off: a system-wide
+// core.fsmonitor=true spawns one resident daemon per repository that never
+// exits (2026-11-19 commit-memory OOM root cause).
+func TestNewVcsCommandDisablesFsmonitor(t *testing.T) {
+	cmd, _, cancel := newVcsCommand(context.Background(), "", "git", "status", "--porcelain=1")
+	defer cancel()
+	found := false
+	for i, a := range cmd.Args {
+		if a == "core.fsmonitor=false" && i > 0 && cmd.Args[i-1] == "-c" && i+1 < len(cmd.Args) && cmd.Args[i+1] == "status" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("expected git args to disable fsmonitor before the subcommand, got %v", cmd.Args)
 	}
 }

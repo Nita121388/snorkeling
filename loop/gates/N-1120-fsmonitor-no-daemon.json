@@ -1,0 +1,6 @@
+{
+  "g2": {
+    "redProof": "修前实测（loop/red/N-1120-fsmonitor-no-daemon.txt）：三处新断言全红——vcs 断言 FAIL（got [git -c core.quotePath=false status --porcelain=1]，缺 fsmonitor）；sync 编译红 undefined: gitGlobalConfigArgs；hero 编译红 undefined: gitArgs。改后同三命令全绿，go build ./... 0 错，三包全量 ok（wshremote 22.0s / sync 28.9s / hero 21.7s）。",
+    "at": "2026-11-20T01:50:09Z"
+  }
+}

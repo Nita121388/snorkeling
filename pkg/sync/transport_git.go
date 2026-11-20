@@ -80,6 +80,14 @@ func (t *GitTransport) Caps() Caps {
 // The token (when present) is passed as a per-command header rather than a credential helper or an
 // authenticated URL: a helper would persist it in the repo config, and an authenticated URL would
 // leak it into logs and the remote list.
+
+// gitGlobalConfigArgs returns the "-c" global options every internal git
+// invocation carries: raw UTF-8 paths (see vcs.go) and fsmonitor off — a
+// system-wide core.fsmonitor=true spawns one resident fsmonitor--daemon per
+// repository that never exits (2026-11-19 commit-memory OOM root cause).
+func gitGlobalConfigArgs() []string {
+	return []string{"-c", "core.quotePath=false", "-c", "core.fsmonitor=false"}
+}
 func (t *GitTransport) runGit(ctx context.Context, args ...string) (string, error) {
 	timeout := t.Timeout
 	if timeout <= 0 {
@@ -88,8 +96,8 @@ func (t *GitTransport) runGit(ctx context.Context, args ...string) (string, erro
 	cmdCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	fullArgs := make([]string, 0, len(args)+6)
-	fullArgs = append(fullArgs, "-c", "core.quotePath=false")
+	fullArgs := make([]string, 0, len(args)+8)
+	fullArgs = append(fullArgs, gitGlobalConfigArgs()...)
 	if t.Token != "" && strings.HasPrefix(t.RemoteURL, "https://") {
 		basic := base64.StdEncoding.EncodeToString([]byte("x-access-token:" + t.Token))
 		fullArgs = append(fullArgs, "-c", "http.extraheader=Authorization: Basic "+basic)

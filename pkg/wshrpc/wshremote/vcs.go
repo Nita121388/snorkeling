@@ -147,11 +147,14 @@ func newVcsCommand(ctx context.Context, dir string, command string, args ...stri
 	cmdCtx, cancelFn := context.WithTimeout(ctx, DefaultVcsCommandTimeout)
 	if command == "git" {
 		// Disable git's C-style path quoting so non-ASCII (e.g. Chinese) paths
-		// are emitted as raw UTF-8. "-c" is a git global option and must be
+		// are emitted as raw UTF-8, and keep fsmonitor off: with a system-wide
+		// core.fsmonitor=true every repo-scanning git command spawns one resident
+		// fsmonitor--daemon per repository that never exits (2026-11-19 commit-
+		// memory OOM root cause). "-c" is a git global option and must be
 		// placed before the subcommand, so it has to happen here: this is the
 		// single entry point for every git/svn invocation.
 		// Note: build a fresh slice so the caller's backing array is not reused.
-		args = append([]string{"-c", "core.quotePath=false"}, args...)
+		args = append([]string{"-c", "core.quotePath=false", "-c", "core.fsmonitor=false"}, args...)
 	}
 	cmd := exec.CommandContext(cmdCtx, command, args...)
 	cmd.Env = vcsCommandEnv()

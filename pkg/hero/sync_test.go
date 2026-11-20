@@ -324,3 +324,25 @@ func runGitForTest(dir string, args ...string) (string, error) {
 	out, err := cmd.CombinedOutput()
 	return string(out), err
 }
+
+// Every internal git invocation must carry -c core.fsmonitor=false: a
+// system-wide core.fsmonitor=true spawns one resident daemon per repository
+// that never exits (2026-11-19 commit-memory OOM root cause).
+func TestGitArgsDisableFsmonitor(t *testing.T) {
+	args := gitArgs("some-root", "status", "--porcelain")
+	if len(args) < 6 || args[0] != "-C" || args[1] != "some-root" {
+		t.Fatalf("expected -C <root> prefix, got %v", args)
+	}
+	found := false
+	for i, a := range args {
+		if a == "core.fsmonitor=false" && i > 0 && args[i-1] == "-c" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("expected git args to disable fsmonitor, got %v", args)
+	}
+	if args[len(args)-2] != "status" || args[len(args)-1] != "--porcelain" {
+		t.Fatalf("expected subcommand to stay last, got %v", args)
+	}
+}

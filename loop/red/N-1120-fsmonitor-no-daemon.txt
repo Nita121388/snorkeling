@@ -1,0 +1,4 @@
+✗ go test ./pkg/wshrpc/wshremote/ -run TestNewVcsCommandDisablesFsmonitor -count=1 → 期望 ok · 实际 FAIL | --- FAIL: TestNewVcsCommandDisablesFsmonitor (0.00s) | vcs_test.go:948: expected git args to disable fsmonitor before the subcommand, got [git -c core.quotePath=false status --porcelain=1]
+✗ go test ./pkg/sync/ -run TestGitGlobalConfigArgsDisableFsmonitor -count=1 → 期望 ok · 实际 build failed | pkg\sync\transport_git_test.go:210:10: undefined: gitGlobalConfigArgs | FAIL github.com/wavetermdev/waveterm/pkg/sync [build failed]
+✗ go test ./pkg/hero/ -run TestGitArgsDisableFsmonitor -count=1 → 期望 ok · 实际 build failed | pkg\hero\sync_test.go:332:10: undefined: gitArgs | FAIL github.com/wavetermdev/waveterm/pkg/hero [build failed]
+prove fail ✗（三处红：vcs 断言红、sync/hero 编译红，均先于源码改动）

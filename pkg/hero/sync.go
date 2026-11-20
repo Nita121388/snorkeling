@@ -56,11 +56,20 @@ var generatedPaths = []string{
 // degrading silently (design §8: sync is an explicit action, never a guess).
 var ErrGitMissing = errors.New("git not found on PATH")
 
+// gitArgs builds the argv for every internal git invocation under a hero home
+// base: -C pins the repo root, and fsmonitor stays off because a system-wide
+// core.fsmonitor=true spawns one resident fsmonitor--daemon per repository
+// that never exits (2026-11-19 commit-memory OOM root cause). Global options
+// must precede the subcommand.
+func gitArgs(root string, args ...string) []string {
+	return append([]string{"-C", root, "-c", "core.fsmonitor=false"}, args...)
+}
+
 func runGit(root string, args ...string) (string, error) {
 	if _, err := exec.LookPath("git"); err != nil {
 		return "", ErrGitMissing
 	}
-	fullArgs := append([]string{"-C", root}, args...)
+	fullArgs := gitArgs(root, args...)
 	out, err := exec.Command("git", fullArgs...).CombinedOutput()
 	if err != nil {
 		return string(out), fmt.Errorf("git %s: %w: %s", strings.Join(args, " "), err, strings.TrimSpace(string(out)))
