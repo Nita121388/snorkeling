@@ -97,34 +97,48 @@
   }
   .session-overview-tab-add:hover { border-color: var(--accent); color: var(--accent); }
 
-  /* ═══ 新增点 3：新建 Agent 弹窗（居中 Modal，镜像 frontend/app/modals/modal.tsx DOM） ═══
-     实现时直接复用全局 <Modal>：title="新建 Agent 会话" + subtitle="目标 Tab: xxx"，
-     footer 走 onCancel/onOk（取消/创建），不再自造弹层容器。 */
+  /* ═══ 新增点 3：新建 Agent 弹窗（居中，chrome 复刻 hero-launch-window.tsx 的 New Agent 弹窗） ═══
+     样式来源（真实类串，实现时直接复制）：
+     容器   rounded-xl border border-border/70 bg-modalbg/80 shadow-2xl backdrop-blur-2xl w-[min(92vw,400px)]
+     header border-b border-border/60 px-3 py-2 text-sm font-medium + 右侧 ✕（h-6 w-6 rounded-sm）
+     段标签  text-xxs text-muted mb-1.5（「选择 agent 类型」「选择一个路径。」）
+     chip 行 flex flex-wrap gap-0.5，chip h-[30px] rounded-md；选中 bg-accent/12 + 左侧 w-[2px] rounded-full bg-accent
+     模型框  h-[28px] w-full rounded border border-border/70 bg-surface px-2 text-xs focus:border-accent
+     footer border-t border-border/60 px-3 py-2.5 + 右对齐 [取消][创建]（bg-accent / bg-accent-40 disabled）
+     文案与 i18n 同源：workspace:agentLaunch.*（新建 Agent / 选择 agent 类型 / 创建 / 取消） */
   .modal-wrapper { position: fixed; inset: 0; z-index: 100; display: flex; align-items: center; justify-content: center; }
   .modal-backdrop { position: absolute; inset: 0; background: #00000099; }
   .modal {
-    position: relative; background: var(--panel); border: 1px solid #4a5470; border-radius: 10px;
-    box-shadow: 0 12px 40px #000000cc; width: min(460px, calc(100vw - 32px)); padding: 14px;
-    animation: modal-in .16s ease;
+    position: relative; background: #20222fdd; border: 1px solid #3a3f52; border-radius: 12px;
+    box-shadow: 0 12px 40px #000000cc; width: min(92vw, 400px); overflow: hidden;
+    backdrop-filter: blur(24px); animation: modal-in .16s ease; color: var(--text);
   }
   @keyframes modal-in { from { opacity: 0; transform: translateY(6px) scale(.98); } }
-  .modal-header { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 10px; }
-  .modal-header__text { min-width: 0; }
-  .modal-header__title { font-size: 13px; font-weight: 600; }
-  .modal-header__subtitle { font-size: 11px; color: var(--text-dim); margin-top: 2px; }
-  .modal-close { background: none; border: none; color: var(--text-dim); cursor: pointer; font-size: 13px; margin-left: auto; padding: 2px 4px; }
-  .modal-close:hover { color: var(--text); }
-  .modal-footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
-  .session-overview-add-label { font-size: 11px; color: var(--text-dim); margin: 8px 0 4px; }
-  .session-overview-add-agent-list { display: flex; flex-direction: column; gap: 3px; }
-  .session-overview-add-agent { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 6px; cursor: pointer; font-size: 12px; border: 1px solid transparent; }
-  .session-overview-add-agent:hover { background: var(--card-hover); }
-  .session-overview-add-agent.is-selected { background: var(--card-hover); border-color: var(--accent); }
-  .session-overview-add-agent .desc { color: var(--text-dim); font-size: 10.5px; margin-left: auto; white-space: nowrap; }
-  .modal select {
-    width: 100%; background: var(--card); color: var(--text); border: 1px solid var(--border);
-    border-radius: 6px; padding: 5px 8px; font: inherit; font-size: 12px;
+  .modal-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; font-size: 13px; font-weight: 500; border-bottom: 1px solid var(--border); }
+  .modal-close { display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; background: none; border: none; border-radius: 4px; color: var(--text-dim); cursor: pointer; font-size: 12px; }
+  .modal-close:hover { background: var(--card-hover); color: var(--text); }
+  .agent-launch-section { padding: 8px 12px 6px; border-bottom: 1px solid var(--border); }
+  .agent-launch-section:last-of-type { border-bottom: none; }
+  .agent-launch-label { font-size: 10px; color: var(--text-dim); margin-bottom: 6px; }
+  /* chip 行：与 New Agent 弹窗同款 —— 选中态 bg-accent/12 + 左侧 2px accent 条 */
+  .agent-chip-row { display: flex; flex-wrap: wrap; gap: 2px; }
+  .session-overview-add-agent {
+    position: relative; display: inline-flex; align-items: center; gap: 6px; height: 30px;
+    padding: 0 10px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 500;
+    transition: background .12s;
   }
+  .session-overview-add-agent:hover { background: var(--card-hover); }
+  .session-overview-add-agent.is-selected { background: #4f7cff1f; }
+  .session-overview-add-agent.is-selected::before {
+    content: ""; position: absolute; left: 0; top: 4px; bottom: 4px; width: 2px;
+    border-radius: 9999px; background: var(--accent);
+  }
+  .agent-model-input {
+    margin-top: 8px; width: 100%; height: 28px; border: 1px solid var(--border); border-radius: 4px;
+    background: var(--card); padding: 0 8px; font: inherit; font-size: 12px; color: var(--text); outline: none;
+  }
+  .agent-model-input::placeholder { color: var(--text-dim); }
+  .agent-model-input:focus { border-color: var(--accent); }
   .session-overview-add-path-row {
     display: flex; align-items: center; gap: 6px; background: var(--card);
     border: 1px solid var(--border); border-radius: 6px; padding: 5px 8px; font-size: 11px;
@@ -137,10 +151,11 @@
   .session-overview-add-path-opts.is-open { display: flex; }
   .session-overview-add-path-opt { font-size: 10px; font-family: var(--mono); background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 2px 7px; cursor: pointer; color: var(--text-dim); }
   .session-overview-add-path-opt.is-selected { color: var(--accent); border-color: var(--accent); }
-  .btn-cancel { background: none; border: 1px solid var(--border); color: var(--text-dim); font: inherit; font-size: 12px; border-radius: 6px; padding: 5px 12px; cursor: pointer; }
+  .modal-footer { display: flex; justify-content: flex-end; gap: 8px; padding: 10px 12px; border-top: 1px solid var(--border); }
+  .btn-cancel { background: var(--card); border: 1px solid var(--border); color: var(--text-dim); font: inherit; font-size: 12px; border-radius: 4px; padding: 4px 12px; cursor: pointer; }
   .btn-cancel:hover { color: var(--text); border-color: #4a5470; }
-  .btn-create { background: var(--accent); border: none; color: #fff; font: inherit; font-weight: 600; font-size: 12px; border-radius: 6px; padding: 5px 12px; cursor: pointer; }
-  .btn-create:disabled { opacity: .4; cursor: not-allowed; }
+  .btn-create { background: var(--accent); border: none; color: #fff; font: inherit; font-weight: 500; font-size: 12px; border-radius: 4px; padding: 4px 12px; cursor: pointer; }
+  .btn-create:disabled { background: #4f7cff66; cursor: not-allowed; }
 
   /* ── 原型辅助（非镜像）：事件日志 / 说明 ── */
   .proto-log { margin-top: 16px; background: #14161f; border: 1px solid var(--border); border-radius: 6px; padding: 10px 14px; font-family: var(--mono); font-size: 11px; color: var(--text-dim); max-height: 140px; overflow: auto; }
@@ -189,7 +204,8 @@
   <h3>实现落点（原型 → 代码）</h3>
   <ul>
     <li>＋ 占位卡 <code>.session-overview-board-add</code>：挂在 <code>overview-board.tsx</code> 列渲染分支末尾，仅 <code>group === "tab"</code> 时渲染；列表视图对应 <code>session-overview.tsx</code> <code>TabGroupSection</code> 末尾的 <code>.session-overview-tab-add</code></li>
-    <li>Agent 选择界面：<b>居中弹窗</b>，容器直接复用全局 <code>&lt;Modal&gt;</code>（<code>frontend/app/modals/modal.tsx</code>，结构化 header：<code>modal-header__title</code> + <code>modal-header__subtitle</code> 写目标 Tab）），内容结构参照 <code>commontext-send-button.tsx</code>（profile 列表 + 模型覆盖 + 目录候选随 Tab：复用 <code>collectFolderCandidatesForTab</code> / <code>collectAgentLaunchTargetsInTab</code>）</li>
+    <li>新建界面：<b>居中弹窗</b>，chrome 与样式复刻 New Agent 弹窗（<code>frontend/app/workspace/hero-launch-window.tsx</code>：rounded-xl + bg-modalbg/80 + backdrop-blur、chip 行选中态 bg-accent/12 + 左 2px accent 条、h-[28px] 模型输入框、border-t footer）
+      实现：全局 <code>&lt;Modal&gt;</code> 容器（<code>frontend/app/modals/modal.tsx</code>，居中 + backdrop）+ 内容段结构与文案照搬 <code>workspace:agentLaunch.*</code>（新建 Agent / 选择 agent 类型 / 自动（可能按项目偏好）/ 选择一个路径。/ 取消 / 创建）；目录候选复用 <code>collectFolderCandidatesForTab</code> / <code>collectAgentLaunchTargetsInTab</code></li>
     <li>建块：<code>agent-launch.ts:createAgentBlockDefForProfile</code> + <code>createBlock</code>，context 传该 Tab 的 cwd/connection 且 <code>inheritWorkspaceContext:false</code>（<code>agent-launch.ts:1117</code> 已注释此坑）</li>
     <li>块落进该 Tab：复用 <code>inlinetab-addmenu.tsx</code> 的 <code>layoutModel.addBlockToInlineTab</code> 链路；enter 动画走 <code>overview-board-motion.ts</code> 既有 enter(180ms)</li>
     <li>状态/Provider/标签 分组不显示 ＋（派生列）；远端 Tab 新卡继承同一 connection</li>
@@ -336,56 +352,57 @@ function renderList() {
   </section>`).join("");
 }
 
-/* ── 新建 agent 弹窗：居中 Modal（镜像 frontend/app/modals/modal.tsx 的 DOM 形状） ── */
+/* ── 新建 agent 弹窗：居中 Modal，chrome 与样式复刻 New Agent 弹窗（hero-launch-window.tsx） ── */
 let picker = null;
 function openPicker(tabId) {
   closePicker();
   const tab = TABS.find((t) => t.tabId === tabId);
-  picker = { tabId, agent: null, model: null, path: tab.context.cwd, pathOpen: false };
+  picker = { tabId, agent: null, model: null, path: tab.context.cwd };
   const wrapper = document.createElement("div");
   wrapper.className = "modal-wrapper";
   wrapper.innerHTML = `
     <div class="modal-backdrop" onclick="closePicker()"></div>
     <div class="modal" role="dialog" aria-modal="true" aria-labelledby="add-agent-modal-title">
       <div class="modal-header">
-        <div class="modal-header__text">
-          <div class="modal-header__title" id="add-agent-modal-title">新建 Agent 会话</div>
-          <div class="modal-header__subtitle">目标 Tab：${tab.name} · 路径继承自该 Tab</div>
-        </div>
-        <button type="button" class="modal-close" aria-label="关闭" title="关闭（Esc）" onclick="closePicker()">✕</button>
+        <span id="add-agent-modal-title">新建 Agent</span>
+        <button type="button" class="modal-close" aria-label="关闭" title="关闭 (esc)" onclick="closePicker()">✕</button>
       </div>
-      <div class="content-wrapper"><div class="modal-content">${pickerHTML(tab)}</div></div>
-      <footer class="modal-footer">
+      ${pickerHTML(tab)}
+      <div class="modal-footer">
         <button type="button" class="btn-cancel" onclick="closePicker()">取消</button>
-        <button type="button" class="btn-create" id="add-create-btn" disabled onclick="createAgent()">创建会话 ↵</button>
-      </footer>
+        <button type="button" class="btn-create" id="add-create-btn" disabled onclick="createAgent()">创建</button>
+      </div>
     </div>`;
   document.body.appendChild(wrapper);
   picker.el = wrapper;
   log(`Tab「${tab.name}」打开新建弹窗（路径预填 = ${tab.context.connection ? tab.context.connection + ":" : ""}${tab.context.cwd}）`);
 }
+/* 结构与 New Agent 弹窗逐段对齐：段标签 + chip 行（左 accent 条）+ 模型输入框 + 路径段 */
 function pickerHTML(tab) {
   return `
-    <div class="session-overview-add-label">选择 Agent</div>
-    <div class="session-overview-add-agent-list">
-      ${AGENTS.map((a) => `
-        <div class="session-overview-add-agent" data-agent="${a.id}" role="button" tabindex="0">
-          <span class="session-overview-board-card-avatar">${a.emoji}</span><span>${a.name}</span>
-          <span class="desc">${a.desc}</span>
-        </div>`).join("")}
+    <div class="agent-launch-section">
+      <div class="agent-launch-label">选择 agent 类型 · 当前 Tab：${tab.name}</div>
+      <div class="agent-chip-row">
+        ${AGENTS.map((a) => `
+          <div class="session-overview-add-agent" data-agent="${a.id}" role="button" tabindex="0" title="${a.desc}">
+            <span class="session-overview-board-card-avatar">${a.emoji}</span><span>${a.name}</span>
+          </div>`).join("")}
+      </div>
+      <input type="text" class="agent-model-input" id="add-model-input"
+             placeholder="自动（可能按项目偏好）" aria-label="模型" />
     </div>
-    <div class="session-overview-add-label">模型（默认 = profile 模型，可覆盖）</div>
-    <select id="add-model-select"><option value="">默认</option></select>
-    <div class="session-overview-add-label">工作路径（继承自该 Tab）</div>
-    <div class="session-overview-add-path-row">
-      <span>📁</span>
-      ${tab.context.connection ? `<span class="badge-remote">⇄</span>` : ""}
-      <span class="path">${tab.context.cwd}</span>
-      <button type="button" class="lock-btn" title="切换路径候选" onclick="togglePathOpts(event)">▾</button>
-    </div>
-    <div class="session-overview-add-path-opts" id="add-path-opts">
-      <span class="session-overview-add-path-opt is-selected">${tab.context.cwd} · 随 Tab</span>
-      <span class="session-overview-add-path-opt" onclick="log('切目录候选（真实实现复用 collectFolderCandidatesForTab）')">E:/code/other</span>
+    <div class="agent-launch-section">
+      <div class="agent-launch-label">选择一个路径。（继承自该 Tab）</div>
+      <div class="session-overview-add-path-row">
+        <span>📁</span>
+        ${tab.context.connection ? `<span class="badge-remote">⇄</span>` : ""}
+        <span class="path">${tab.context.cwd}</span>
+        <button type="button" class="lock-btn" title="切换路径候选" onclick="togglePathOpts(event)">▾</button>
+      </div>
+      <div class="session-overview-add-path-opts is-open" id="add-path-opts">
+        <span class="session-overview-add-path-opt is-selected">${tab.context.cwd} · 随 Tab</span>
+        <span class="session-overview-add-path-opt" onclick="log('切目录候选（真实实现复用 collectFolderCandidatesForTab）')">E:/code/other</span>
+      </div>
     </div>`;
 }
 function togglePathOpts(e) {
@@ -395,14 +412,14 @@ function togglePathOpts(e) {
 function selectAgent(id) {
   picker.agent = id;
   picker.el.querySelectorAll(".session-overview-add-agent").forEach((n) => n.classList.toggle("is-selected", n.dataset.agent === id));
-  const sel = picker.el.querySelector("#add-model-select");
-  sel.innerHTML = `<option value="">默认</option>` + MODELS[id].map((m) => `<option>${m}</option>`).join("");
+  const modelInput = picker.el.querySelector("#add-model-input");
+  modelInput.placeholder = `自动（${MODELS[id][0]}）`;
   picker.el.querySelector("#add-create-btn").disabled = false;
 }
 function createAgent() {
   const tab = TABS.find((t) => t.tabId === picker.tabId);
   const agent = AGENTS.find((a) => a.id === picker.agent);
-  const model = picker.el.querySelector("#add-model-select").value || MODELS[picker.agent][0];
+  const model = picker.el.querySelector("#add-model-input").value.trim() || MODELS[picker.agent][0];
   const id = "b" + seq++;
   const card = {
     id, title: `${agent.name} · ${tab.name}`, agent: agent.emoji, provider: agent.name,

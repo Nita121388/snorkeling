@@ -1,7 +1,7 @@
 # Overview 看板 · Tab 下新建 Agent 卡
 
 > 同步状态：▲ 设计活跃（未实现）
-> 镜像源：frontend/app/session-overview/overview-board.tsx, frontend/app/session-overview/session-overview.tsx, frontend/app/session-overview/session-overview.scss, frontend/app/modals/modal.tsx, frontend/app/commontext/commontext-send-button.tsx
+> 镜像源：frontend/app/session-overview/overview-board.tsx, frontend/app/session-overview/session-overview.tsx, frontend/app/session-overview/session-overview.scss, frontend/app/workspace/hero-launch-window.tsx, frontend/app/modals/modal.tsx, frontend/app/commontext/commontext-send-button.tsx
 > 最后同步：2026-11-20
 
 ## 一句话
@@ -20,7 +20,7 @@ Overview 看板从纯只读投影变「可写入口」：按 Tab 分组时，每
 
 ## 设计决策（已与用户确认）
 
-1. 新建入口是**居中弹窗**（全局 `Modal`），不是锚定在被点 `＋` 上的 popover —— 2026-11-20 用户反馈改定。
+1. 新建入口是**居中弹窗**，且 **chrome/样式与 New Agent 弹窗一致**（`hero-launch-window.tsx`：rounded-xl + bg-modalbg/80 + backdrop-blur 容器、chip 行选中态 bg-accent/12 + 左 2px accent 条、h-[28px] 模型输入框、border-t footer）—— 2026-11-20 用户两次反馈改定（先定居中，再定同款样式）。文案复用 `workspace:agentLaunch.*` 词表：新建 Agent / 选择 agent 类型 / 自动（可能按项目偏好）/ 选择一个路径。/ 取消 / 创建。
 2. 只在**容器型分组**（Tab）显示 `＋`；status/provider/tags 是派生列，不显示（避免「把卡塞进 working 列 = 让它变 working」的假交互）。
 3. 新建的是 **agent 会话卡**（走 `createAgentBlockDefForProfile`），不是笔记卡，不做卡内层级。
 4. 路径继承**该 Tab 的 context**，不是当前焦点块的：`inheritWorkspaceContext: false`（`agent-launch.ts:1117` 已有该坑注释）。
@@ -31,7 +31,7 @@ Overview 看板从纯只读投影变「可写入口」：按 Tab 分组时，每
 | 原型元素 | 代码落点 |
 |---|---|
 | `＋` 占位卡 `.session-overview-board-add` | `overview-board.tsx` BoardColumn 渲染分支末尾（仅 `group === "tab"` 时挂） |
-| 居中弹窗容器 | 直接复用 `<Modal>`（`frontend/app/modals/modal.tsx`），title + subtitle 写目标 Tab，footer 走 onCancel/onOk |
+| 居中弹窗容器 | 复用 `<Modal>`（`frontend/app/modals/modal.tsx`）居中 + backdrop；内部 chrome 复制 `hero-launch-window.tsx` 的类串（与 New Agent 弹窗同观感） |
 | 弹窗内容 | 新组件（结构参照 `commontext-send-button.tsx` 的 SendTargetPanel 紧凑档） |
 | 路径候选随 Tab | 复用 `commontext-send-target.ts` 的 `collectFolderCandidatesForTab` / `collectAgentLaunchTargetsInTab` |
 | 建块 | `agent-launch.ts:createAgentBlockDefForProfile` + `store/global.ts:createBlock`，context 带 `inheritWorkspaceContext:false` |
