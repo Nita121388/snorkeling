@@ -41,15 +41,20 @@ Overview 看板（看板视图，按 Tab 分组）与列表视图的每个 Tab �
 
 - [ ] `npx vitest run frontend/app/session-overview/overview-add-agent.test.ts` → `passed`
 - [ ] `npx vitest run frontend/app/session-overview/overview-add-agent-modal.dom.test.tsx` → `passed`
-- [ ] `npx vitest run frontend/app/session-overview` → `passed`
-- [ ] `npx tsc --noEmit -p tsconfig.json` → `0`
+- [ ] `npx vitest run frontend/app/session-overview/overview-board-add.test.tsx` → `passed`
+- [ ] `npx tsc --noEmit -p tsconfig.json 2>&1 | grep -c "overview-add-agent"` → `0`
+- [ ] `npx eslint frontend/app/session-overview/overview-add-agent.ts frontend/app/session-overview/overview-add-agent-modal.tsx frontend/app/session-overview/overview-board.tsx frontend/app/session-overview/session-overview.tsx` → `0`
+
+> 注：仓库 tsc 基线非零（其他在途包 58 条），`session-overview/` 整目录还有 3 个老夹具因
+> `propRows` 新字段未补而红（11-17-overview-card-props 在途）。本包只对**自己新增/改动的
+> 文件**取 0 错误基线，不替别人的包背债。
 
 判定细节（由上述测试锁住）：
 
 - `shouldShowAddAgent("tab") === true`；`status/provider/project/tags` 均为 `false`。
 - 看板 `group="tab"` 时每列渲染 1 个 `.session-overview-board-add`；`group="status"` 时 0 个。
 - 弹窗：标题 = 新建 Agent；Tab 名在头部出现一次；段标签 exact 为 `选择 agent 类型` / `选择一个路径。`；
-  未选 agent 时「创建」disabled；选中后可用。
+  默认预选第一个探测到的 profile（与 New Agent 弹窗一致），「创建」立即可用；点其它 chip 即切换选中。
 - 路径列表：`role=listbox`，行数 = 候选数，默认选中「随 Tab」项；普通本地候选无第二行，远端项有 connection 行。
 - 创建时回调携带：`tabId`（列/组所属 Tab）、`profileName`、`path`（选中项，默认 Tab cwd）、
   `modelOverride`（仅输入框非空时）、`connection`（远端 Tab 保留）。

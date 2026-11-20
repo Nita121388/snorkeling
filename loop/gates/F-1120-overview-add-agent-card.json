@@ -1,0 +1,11 @@
+{
+  "g2": {
+    "redProof": "ERR_MODULE_NOT_FOUND: Failed to load url ./overview-add-agent in overview-add-agent.test.ts（模块尚未实现，已知坏样本实测转红）→ loop/red/F-1120-overview-add-agent-card.txt",
+    "at": "2026-11-20T03:18:32Z"
+  },
+  "g5": {
+    "ok": true,
+    "executedAt": "2026-11-20T04:42:12Z",
+    "by": "compliance"
+  }
+}

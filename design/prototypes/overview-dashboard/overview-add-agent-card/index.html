@@ -380,7 +380,8 @@ let picker = null;
 function openPicker(tabId) {
   closePicker();
   const tab = TABS.find((t) => t.tabId === tabId);
-  picker = { tabId, agent: null, model: null, path: tab.context.cwd };
+  // 与真实实现一致：默认预选第一个探测到的 agent（New Agent 弹窗同款），创建立即可用
+  picker = { tabId, agent: AGENTS[0].id, model: null, path: tab.context.cwd };
   const wrapper = document.createElement("div");
   wrapper.className = "modal-wrapper";
   wrapper.innerHTML = `
@@ -394,7 +395,7 @@ function openPicker(tabId) {
       ${pickerHTML(tab)}
       <div class="modal-footer">
         <button type="button" class="btn-cancel" onclick="closePicker()">取消</button>
-        <button type="button" class="btn-create" id="add-create-btn" disabled onclick="createAgent()">创建</button>
+        <button type="button" class="btn-create" id="add-create-btn" onclick="createAgent()">创建</button>
       </div>
     </div>`;
   document.body.appendChild(wrapper);
@@ -408,7 +409,7 @@ function pickerHTML(tab) {
       <div class="agent-launch-label">选择 agent 类型</div>
       <div class="agent-chip-row">
         ${AGENTS.map((a) => `
-          <div class="session-overview-add-agent" data-agent="${a.id}" role="button" tabindex="0" title="${a.desc}">
+          <div class="session-overview-add-agent ${a.id === AGENTS[0].id ? "is-selected" : ""}" data-agent="${a.id}" role="button" tabindex="0" title="${a.desc}">
             <span class="session-overview-board-card-avatar">${a.emoji}</span><span>${a.name}</span>
           </div>`).join("")}
       </div>

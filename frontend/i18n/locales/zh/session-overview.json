@@ -23,7 +23,8 @@
         "statusStale": "陈旧",
         "providerFallback": "非 Agent",
         "projectFallback": "无项目",
-        "tagFallback": "无标签"
+        "tagFallback": "无标签",
+        "addAgentAria": "在 Tab {{name}} 新建 agent"
     },
     "timeline": {
         "empty": "最近 {{range}} 内没有 agent 会话。",
@@ -130,7 +131,9 @@
         "deleteSessionMessage": "删除会话文件 \"{{title}}\"？\n\n移到回收站可从 deleted storage 恢复；彻底删除无法恢复。",
         "cancel": "取消",
         "moveToTrash": "移到回收站",
-        "deletePermanently": "彻底删除"
+        "deletePermanently": "彻底删除",
+        "addAgentInTab": "在 Tab {{name}} 新建 agent",
+        "addAgentInTabShort": "在此 Tab 新建 agent"
     },
     "note": {
         "loading": "正在加载备注…",

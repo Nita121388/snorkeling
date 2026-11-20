@@ -1,0 +1,113 @@
+// Copyright 2026, Command Line Inc.
+// SPDX-License-Identifier: Apache-2.0
+
+// Overview「＋ 新建 Agent」纯逻辑：分组守卫 + Tab 列 key 解析 + 路径候选行 + 建块上下文组装。
+// UI 层在 overview-add-agent-modal.tsx；看板入口在 overview-board.tsx / session-overview.tsx。
+//
+// 保持纯函数（不 import React / jotai），与 overview-board-model.ts 同一约定，规则直接单测。
+
+import type { AgentLaunchContext, AgentLaunchTarget } from "@/app/workspace/agent-launch";
+import type { OverviewBoardGroup } from "./overview-board-model";
+
+/**
+ * 分组守卫：只有容器型分组（tab）提供「＋ 新建」入口。
+ * status/provider/project/tags 都是派生列 —— 「把卡片塞进 working 列 ≠ 让它变 working」，
+ * 那是假交互，不提供。
+ */
+export function shouldShowAddAgent(group: OverviewBoardGroup): boolean {
+    return group === "tab";
+}
+
+/** 看板 tab 列的稳定 key 前缀（`tab:<tabId>`，见 overview-board-model.groupOverviewCardsByTab）。 */
+export const AddAgentTabColumnKeyPrefix = "tab:";
+
+/** `tab:<tabId>` → tabId；其它分组列 key → null。 */
+export function parseBoardTabColumnKey(key: string): string | null {
+    if (typeof key !== "string" || !key.startsWith(AddAgentTabColumnKeyPrefix)) {
+        return null;
+    }
+    const tabId = key.slice(AddAgentTabColumnKeyPrefix.length).trim();
+    return tabId === "" ? null : tabId;
+}
+
+/** 路径候选行（弹窗「选择一个路径。」列表的模型）。第二行 `sub` 仅在远端时非空。 */
+export type AddAgentPathRow = {
+    /** 去重键 = 归一化 cwd。 */
+    key: string;
+    detail: string;
+    /** 远端 connection（如 `ssh://mac`）；本地行为空串，不渲染。 */
+    sub: string;
+    /** 默认项（随 Tab 解析出的 cwd）。 */
+    isDefault: boolean;
+    isLocal: boolean;
+    source: AgentLaunchTarget["source"] | "fallback";
+};
+
+function cleanPath(value: string | null | undefined): string | null {
+    const path = value?.trim();
+    return path === "" || path == null ? null : path;
+}
+
+/**
+ * 路径候选行：去重 + 默认项置顶。
+ *
+ * 默认项（随 Tab）插到最前；候选里的重复项按首次出现去重。默认项出现在候选里时
+ * 复用该行（不重复插入）。
+ */
+export function collectAddAgentPathRows(
+    targets: readonly AgentLaunchTarget[] | null | undefined,
+    defaultPath: string | null | undefined
+): AddAgentPathRow[] {
+    // 候选先按 cwd 去重（保留首次出现的行 —— 这样远端行的 connection 不会丢）
+    const byKey = new Map<string, AddAgentPathRow>();
+    for (const target of targets ?? []) {
+        const key = cleanPath(target?.cwd);
+        if (key == null || byKey.has(key)) continue;
+        byKey.set(key, {
+            key,
+            detail: key,
+            sub: target.isLocal ? "" : (target.connection ?? "").trim(),
+            isDefault: false,
+            isLocal: target.isLocal,
+            source: target.source,
+        });
+    }
+    const def = cleanPath(defaultPath);
+    let rows = Array.from(byKey.values());
+    if (def != null) {
+        const hit = byKey.get(def);
+        if (hit != null) {
+            hit.isDefault = true;
+        } else {
+            rows = [
+                { key: def, detail: def, sub: "", isDefault: true, isLocal: true, source: "fallback" },
+                ...rows,
+            ];
+        }
+        // 默认项（随 Tab）置顶；Array#sort 稳定，其余顺序不变。
+        rows = rows.slice().sort((a, b) => Number(b.isDefault) - Number(a.isDefault));
+    }
+    return rows;
+}
+
+export type AddAgentTabContextInput = {
+    connection: string | null | undefined;
+    cwd: string | null | undefined;
+};
+
+/**
+ * 建块上下文：显式传该 Tab 的 connection/cwd，**绝不**继承当前焦点块。
+ *
+ * `inheritWorkspaceContext: false` 是关键 —— agent-launch.ts 的 GUI 对话块路径
+ * （createAgentBlockDef*，`agent-launch.ts` 中 resolveContextMeta）默认会用当前聚焦
+ * 工作区 context 兜底，用户在 Overview 里选好的目录会被静默换掉（该坑已在该文件注释）。
+ */
+export function buildAddAgentLaunchContext(tab: AddAgentTabContextInput): AgentLaunchContext {
+    const connection = typeof tab.connection === "string" && tab.connection.trim() !== "" ? tab.connection.trim() : null;
+    const cwd = cleanPath(tab.cwd);
+    const context: AgentLaunchContext = { connection, inheritWorkspaceContext: false };
+    if (cwd != null) {
+        context.cwd = cwd;
+    }
+    return context;
+}

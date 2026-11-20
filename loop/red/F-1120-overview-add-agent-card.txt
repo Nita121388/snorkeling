@@ -1,0 +1,15 @@
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[22m[39m
+[31m[1mSerialized Error:[22m[39m [90m{ code: 'ERR_MODULE_NOT_FOUND' }[39m
+[31m[1mCaused by: Error[22m: Failed to load url ./overview-add-agent (resolved id: ./overview-add-agent) in E:/code/snorkeling/frontend/app/session-overview/overview-add-agent.test.ts. Does the file exist?[39m
+[90m [2m❯[22m loadAndTransform node_modules/vite/dist/node/chunks/dep-Dq2t6Dq0.js:[2m35730:17[22m[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯[22m[39m
+
+
+[2m Test Files [22m [1m[31m1 failed[39m[22m[90m (1)[39m
+[2m      Tests [22m [2mno tests[22m
+[2m   Start at [22m 11:17:24
+[2m   Duration [22m 4.35s[2m (transform 115ms, setup 39ms, collect 0ms, tests 0ms, environment 0ms, prepare 373ms)[22m
+
+JUNIT report written to E:/code/snorkeling/test-results.xml

@@ -8,6 +8,7 @@ import { cn, makeIconClass } from "@/util/util";
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { AgentStatusChip } from "./agent-status-chip";
+import { parseBoardTabColumnKey, shouldShowAddAgent } from "./overview-add-agent";
 import {
     formatBoardAge,
     formatBoardAgeTitle,
@@ -112,6 +113,11 @@ export type OverviewBoardProps = {
     onDeleteSession?: (card: OverviewBoardCard) => void;
     deletingSessionId?: string;
     onAckStatus?: (blockId: string, status: AgentStatus) => void;
+    /**
+     * 「＋ 新建」入口：仅在容器型分组（tab）渲染。传 tabId + tabName。
+     * 不传 = 看板不提供新建入口（测试/嵌入场景）。
+     */
+    onAddAgent?: (tabId: string, tabName: string) => void;
 };
 
 function BoardAvatar({ avatar }: { avatar: OverviewBoardAvatar }) {
@@ -416,6 +422,35 @@ function BoardCardImpl({
  */
 export const BoardCard = memo(BoardCardImpl);
 
+/**
+ * 「＋ 新建」占位卡（仅 tab 分组渲染）。
+ * tabId 从列 key（`tab:<tabId>`）解析 —— 看板的列是纯数据产物，不在卡片模型里多存一份 tabId。
+ */
+function AddAgentButton({
+    columnKey,
+    columnTitle,
+    onAddAgent,
+}: {
+    columnKey: string;
+    columnTitle: string;
+    onAddAgent: (tabId: string, tabName: string) => void;
+}) {
+    const tabId = parseBoardTabColumnKey(columnKey);
+    if (tabId == null) return null;
+    return (
+        <button
+            type="button"
+            className="session-overview-board-add"
+            data-board-add-tab={tabId}
+            onClick={() => onAddAgent(tabId, columnTitle)}
+            aria-label={i18n.t("session-overview:board.addAgentAria", { name: columnTitle })}
+        >
+            <i className={makeIconClass("plus", false)} />
+            <span>{i18n.t("workspace:agentLaunch.newAction")}</span>
+        </button>
+    );
+}
+
 export function OverviewBoard({
     cards,
     presentedStatuses,
@@ -430,6 +465,7 @@ export function OverviewBoard({
     onDeleteSession,
     deletingSessionId,
     onAckStatus,
+    onAddAgent,
 }: OverviewBoardProps) {
     const { t } = useTranslation("session-overview");
     // 状态分组常显 5 列（空列给占位）；tab / provider 分组只显示有卡的列。
@@ -642,6 +678,14 @@ export function OverviewBoard({
                                 />
                             ))
                         )}
+                        {/* ＋ 新建：仅容器型分组（tab）提供；派生列（status/provider/…）不可加卡 */}
+                        {shouldShowAddAgent(group) && onAddAgent != null ? (
+                            <AddAgentButton
+                                columnKey={column.key}
+                                columnTitle={column.title}
+                                onAddAgent={onAddAgent}
+                            />
+                        ) : null}
                     </div>
                 </section>
             ))}

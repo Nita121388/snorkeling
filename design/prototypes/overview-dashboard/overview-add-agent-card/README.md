@@ -1,6 +1,6 @@
 # Overview 看板 · Tab 下新建 Agent 卡
 
-> 同步状态：▲ 设计活跃（未实现）
+> 同步状态：● 已落地（2026-11-20，frontend/app/session-overview/overview-add-agent{,-modal}.ts(x) + overview-board.tsx + session-overview.tsx）
 > 镜像源：frontend/app/session-overview/overview-board.tsx, frontend/app/session-overview/session-overview.tsx, frontend/app/session-overview/session-overview.scss, frontend/app/workspace/hero-launch-window.tsx, frontend/app/modals/modal.tsx, frontend/app/commontext/commontext-send-button.tsx
 > 最后同步：2026-11-20
 
@@ -20,7 +20,7 @@ Overview 看板从纯只读投影变「可写入口」：按 Tab 分组时，每
 
 ## 设计决策（已与用户确认）
 
-1. 新建入口是**居中弹窗**，且 **chrome/样式与 New Agent 弹窗一致**（`hero-launch-window.tsx`：rounded-xl + bg-modalbg/80 + backdrop-blur 容器、chip 行选中态 bg-accent/12 + 左 2px accent 条、h-[28px] 模型输入框、border-t footer）—— 2026-11-20 用户两次反馈改定（先定居中，再定同款样式）。文案复用 `workspace:agentLaunch.*` 词表：新建 Agent / 选择 agent 类型 / 自动（可能按项目偏好）/ 选择一个路径。/ 取消 / 创建。
+1. 新建入口是**居中弹窗**，且 **chrome/样式与 New Agent 弹窗一致**（实现细节：默认预选第一个探测到的 profile，创建立即可用）（`hero-launch-window.tsx`：rounded-xl + bg-modalbg/80 + backdrop-blur 容器、chip 行选中态 bg-accent/12 + 左 2px accent 条、h-[28px] 模型输入框、border-t footer）—— 2026-11-20 用户两次反馈改定（先定居中，再定同款样式）。文案复用 `workspace:agentLaunch.*` 词表：新建 Agent / 选择 agent 类型 / 自动（可能按项目偏好）/ 选择一个路径。/ 取消 / 创建。
 2. 只在**容器型分组**（Tab）显示 `＋`；status/provider/tags 是派生列，不显示（避免「把卡塞进 working 列 = 让它变 working」的假交互）。
 3. 新建的是 **agent 会话卡**（走 `createAgentBlockDefForProfile`），不是笔记卡，不做卡内层级。
 4. 路径继承**该 Tab 的 context**，不是当前焦点块的：`inheritWorkspaceContext: false`（`agent-launch.ts:1117` 已有该坑注释）。
@@ -44,5 +44,5 @@ Overview 看板从纯只读投影变「可写入口」：按 Tab 分组时，每
 
 - [x] ASCII 原型（会话内已确认）
 - [x] HTML 原型（本目录）
-- [ ] Trellis 任务 + PRD/design/implement
-- [ ] 真实组件实现
+- [x] Trellis 任务 + PRD（.trellis/tasks/11-20-f-1120-overview-add-agent-card，loop 包 F-1120）
+- [x] 真实组件实现（2026-11-20，判据 28/28 绿）

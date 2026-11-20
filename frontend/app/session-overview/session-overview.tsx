@@ -35,6 +35,11 @@ import { OriginMetaKey, parseOriginMeta } from "@/app/view/aisessions/origin-sta
 import { extractSessionTagsFromNote, mergeSessionTags, sessionTagsEqual } from "@/app/view/aisessions/session-tags";
 import { getAgentIcon } from "@/app/view/term/agent-logo";
 import { resolveAgentSessionIdFromMeta } from "@/app/view/term/agent-session";
+import {
+    collectAgentLaunchTargetsInTab,
+    createAgentBlockDefForProfile,
+    resolveWorkspaceAgentContextMeta,
+} from "@/app/workspace/agent-launch";
 import { i18n } from "@/i18n/config";
 import { localeTextAtom, useActiveLocale } from "@/i18n/i18nmodel";
 import { getHiddenBlockIdsFromTab, getLayoutModelForTabById } from "@/layout/index";
@@ -45,6 +50,8 @@ import React, { useEffect, useMemo, useRef, useState, useSyncExternalStore } fro
 import { useTranslation } from "react-i18next";
 import { AgentStatusChip, shouldShowAgentStatusChip } from "./agent-status-chip";
 import { planBlockRemoval } from "./block-removal";
+import { buildAddAgentLaunchContext } from "./overview-add-agent";
+import { OverviewAddAgentModal, type AddAgentSubmitRequest } from "./overview-add-agent-modal";
 import { OverviewBoard } from "./overview-board";
 import {
     normalizeBoardTags,
@@ -2025,6 +2032,7 @@ function TabGroupSection({
     onOpenMessage,
     onAckAgentStatus,
     onAckTabAgentStatuses,
+    onAddAgent,
 }: {
     group: TabGroup;
     collapsed: boolean;
@@ -2050,6 +2058,7 @@ function TabGroupSection({
     onOpenMessage: (block: OverviewBlock, message: Message) => void;
     onAckAgentStatus: (blockId: string, status: AgentStatus) => void;
     onAckTabAgentStatuses: () => void;
+    onAddAgent: (tabId: string, tabName: string) => void;
 }) {
     const { t } = useTranslation("session-overview");
     const tabBadges = jotai.useAtomValue(getTabBadgeAtom(group.tabId));
@@ -2152,6 +2161,17 @@ function TabGroupSection({
                             )
                         )
                     )}
+                    {/* ＋ 新建：Tab 组末尾（与看板 ＋ 占位卡同一入口） */}
+                    <button
+                        type="button"
+                        className="session-overview-tab-add"
+                        data-add-agent-tab={group.tabId}
+                        onClick={() => onAddAgent(group.tabId, group.tabName)}
+                        aria-label={i18n.t("session-overview:dialog.addAgentInTab", { name: group.tabName })}
+                    >
+                        <i className={makeIconClass("plus", false)} />
+                        <span>{t("session-overview:dialog.addAgentInTabShort")}</span>
+                    </button>
                 </div>
             ) : null}
         </section>
@@ -2700,6 +2720,43 @@ function SessionOverviewPanel({ blockId, model }: ViewComponentProps<SessionOver
         globalStore.set(overviewViewModeAtom, mode);
     }, []);
 
+    // ── 「＋ 新建 Agent」：仅 Tab 分组可用（入口看板/列表两处）──
+    // 弹窗数据按需现算：Tab object → 该 Tab 的 context（不取焦点块）+ 路径候选。
+    const [addAgentTab, setAddAgentTab] = useState<{ tabId: string; tabName: string } | null>(null);
+    const openAddAgent = React.useCallback((tabId: string, tabName: string) => {
+        setAddAgentTab({ tabId, tabName });
+    }, []);
+    const addAgentData = React.useMemo(() => {
+        if (addAgentTab == null) return null;
+        const tab = globalStore.get(WOS.getWaveObjectAtom<Tab>(WOS.makeORef("tab", addAgentTab.tabId)));
+        if (tab == null) return null;
+        const getBlockById = (blockId: string) =>
+            globalStore.get(WOS.getWaveObjectAtom<Block>(WOS.makeORef("block", blockId)));
+        // focusedBlock 不传：这里要的是「这个 Tab 自己的上下文」，不是当前焦点块的上下文。
+        const contextMeta = resolveWorkspaceAgentContextMeta({ tab, getBlockById });
+        const tabCwd = typeof contextMeta["cmd:cwd"] === "string" ? contextMeta["cmd:cwd"].trim() : "";
+        return {
+            targets: collectAgentLaunchTargetsInTab(tab, getBlockById, null, {}),
+            defaultPath: tabCwd === "" ? null : tabCwd,
+        };
+    }, [addAgentTab]);
+    const submitAddAgent = React.useCallback(async (request: AddAgentSubmitRequest) => {
+        const settings = globalStore.get(atoms.settingsAtom);
+        const blockDef = createAgentBlockDefForProfile(
+            request.profileName,
+            settings,
+            buildAddAgentLaunchContext({ connection: request.connection, cwd: request.cwd }),
+            undefined,
+            undefined,
+            undefined,
+            request.modelOverride ?? undefined
+        );
+        const runtimeOpts: RuntimeOpts = { termsize: { rows: 25, cols: 80 } };
+        // activateTargetTab=false：建块后不抢焦点，用户留在 Overview 看到新卡入列。
+        await ObjectService.CreateBlockInTab(request.tabId, blockDef, runtimeOpts, false, false);
+        setAddAgentTab(null);
+    }, []);
+
     return (
         <>
             <div className="session-overview-panel" aria-label={t("session-overview:panel.label")}>
@@ -2898,6 +2955,7 @@ function SessionOverviewPanel({ blockId, model }: ViewComponentProps<SessionOver
                                 onCloseCard={handleCloseBoardCard}
                                 onDeleteSession={handleDeleteBoardSession}
                                 deletingSessionId={sessionAction.deletingSessionId}
+                                onAddAgent={openAddAgent}
                             />
                         )
                     ) : displayedTabGroups.length === 0 ? (
@@ -3019,6 +3077,7 @@ function SessionOverviewPanel({ blockId, model }: ViewComponentProps<SessionOver
                                 agentStatusDoneAckedAt={agentStatusDoneAckedAt}
                                 onAckAgentStatus={ackAgentStatus}
                                 onAckTabAgentStatuses={() => ackTabAgentStatuses(group.blocks)}
+                                onAddAgent={openAddAgent}
                             />
                         ))
                     )}
@@ -3056,6 +3115,16 @@ function SessionOverviewPanel({ blockId, model }: ViewComponentProps<SessionOver
                         });
                 }}
             />
+            {addAgentTab != null && addAgentData != null ? (
+                <OverviewAddAgentModal
+                    tabId={addAgentTab.tabId}
+                    tabName={addAgentTab.tabName}
+                    targets={addAgentData.targets}
+                    defaultPath={addAgentData.defaultPath}
+                    onClose={() => setAddAgentTab(null)}
+                    onSubmit={submitAddAgent}
+                />
+            ) : null}
         </>
     );
 }

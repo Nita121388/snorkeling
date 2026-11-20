@@ -23,7 +23,8 @@
         "statusStale": "Stale",
         "providerFallback": "Non-agent",
         "projectFallback": "No project",
-        "tagFallback": "No tags"
+        "tagFallback": "No tags",
+        "addAgentAria": "Create an agent in tab {{name}}"
     },
     "timeline": {
         "empty": "No agent sessions in the last {{range}}.",
@@ -130,7 +131,9 @@
         "deleteSessionMessage": "Delete session file for \"{{title}}\"?\n\nMoving to the trash can be recovered from deleted storage; deleting permanently cannot be undone.",
         "cancel": "Cancel",
         "moveToTrash": "Move to trash",
-        "deletePermanently": "Delete permanently"
+        "deletePermanently": "Delete permanently",
+        "addAgentInTab": "Create an agent in tab {{name}}",
+        "addAgentInTabShort": "New agent in this tab"
     },
     "note": {
         "loading": "Loading note...",

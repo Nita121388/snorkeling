@@ -2456,3 +2456,237 @@
         }
     }
 }
+
+/* ─── 「＋ 新建 Agent」入口与弹窗（F-1120-overview-add-agent-card） ───────────────
+   chrome 与 New Agent 弹窗（workspace/hero-launch-window.tsx）同款：
+   chip 行（选中 bg-accent/12 + 左 2px accent 条）、h-28 模型输入框、可滚动路径列表。
+   容器用全局 <Modal>（居中），这里只补内容段样式。 */
+
+.session-overview-board-add,
+.session-overview-tab-add {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    width: 100%;
+    padding: 8px 0;
+    border: 1px dashed var(--border-color);
+    border-radius: 8px;
+    background: transparent;
+    box-sizing: border-box;
+    color: var(--secondary-text-color);
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 12px;
+    transition:
+        border-color 120ms ease,
+        color 120ms ease,
+        background-color 120ms ease;
+
+    &:hover,
+    &:focus-visible {
+        border-color: rgb(from var(--accent-color) r g b / 0.6);
+        background: rgb(from var(--accent-color) r g b / 0.08);
+        color: var(--accent-color);
+    }
+
+    &:focus-visible {
+        outline: 2px solid var(--accent-color);
+        outline-offset: 1px;
+    }
+}
+
+.session-overview-tab-add {
+    justify-content: flex-start;
+    margin-top: 2px;
+    padding: 6px 10px;
+}
+
+/* 弹窗：标题右侧的 Tab 名（只在头部出现一次，别再往段标签里塞） */
+.session-overview-add-agent-tabname {
+    font-size: 10px;
+    font-weight: 400;
+    color: var(--secondary-text-color);
+}
+
+.session-overview-add-agent-section {
+    display: flex;
+    flex-direction: column;
+    padding: 8px 12px 6px;
+
+    & + & {
+        border-top: 1px solid var(--border-color);
+    }
+}
+
+.session-overview-add-agent-label {
+    margin-bottom: 6px;
+    color: var(--secondary-text-color);
+    font-size: 10px;
+}
+
+.session-overview-add-agent-empty {
+    padding: 6px 2px;
+    color: var(--secondary-text-color);
+    font-size: 12px;
+}
+
+/* agent chip 行：与 New Agent 弹窗同款（选中态 + 左侧 accent 条） */
+.session-overview-add-agent-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px;
+}
+
+.session-overview-add-agent-chip {
+    position: relative;
+    display: inline-flex;
+    border-radius: 6px;
+    transition: background-color 120ms ease;
+
+    &:hover {
+        background: var(--hover-bg-color-strong);
+    }
+
+    &.is-selected {
+        background: rgb(from var(--accent-color) r g b / 0.12);
+
+        &::before {
+            content: "";
+            position: absolute;
+            top: 4px;
+            bottom: 4px;
+            left: 0;
+            width: 2px;
+            border-radius: 9999px;
+            background: var(--accent-color);
+        }
+    }
+}
+
+.session-overview-add-agent-chip-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 30px;
+    padding: 0 10px;
+    border: none;
+    background: transparent;
+    color: var(--main-text-color);
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.session-overview-add-agent-chip-logo {
+    display: inline-flex;
+    align-items: center;
+    color: var(--secondary-text-color);
+}
+
+/* 模型输入框：h-28（与 New Agent 弹窗一致） */
+.session-overview-add-agent-model {
+    height: 28px;
+    margin-top: 8px;
+    padding: 0 8px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    background: var(--panel-bg-color, var(--main-bg-color));
+    box-sizing: border-box;
+    color: var(--main-text-color);
+    font-family: inherit;
+    font-size: 12px;
+    outline: none;
+
+    &:focus {
+        border-color: var(--accent-color);
+    }
+
+    &::placeholder {
+        color: var(--secondary-text-color);
+    }
+}
+
+/* 路径候选：可滚动列表（不是下拉/手风琴） */
+.session-overview-add-agent-paths {
+    display: flex;
+    max-height: min(320px, 40vh);
+    flex-direction: column;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+
+.session-overview-add-agent-path {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    margin-bottom: 1px;
+    padding: 8px 8px 8px 12px;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    box-sizing: border-box;
+    color: var(--main-text-color);
+    cursor: pointer;
+    font-family: inherit;
+    text-align: left;
+    transition: background-color 120ms ease;
+
+    &:hover {
+        background: var(--hover-bg-color-strong);
+    }
+
+    &.is-selected {
+        background: rgb(from var(--accent-color) r g b / 0.12);
+
+        &::before {
+            content: "";
+            position: absolute;
+            top: 6px;
+            bottom: 6px;
+            left: 0;
+            width: 2px;
+            border-radius: 9999px;
+            background: var(--accent-color);
+        }
+    }
+
+    &:focus-visible {
+        outline: 2px solid var(--accent-color);
+        outline-offset: 1px;
+    }
+}
+
+.session-overview-add-agent-path-icon {
+    width: 16px;
+    flex: 0 0 auto;
+    color: var(--secondary-text-color);
+    font-size: 11px;
+    text-align: center;
+}
+
+.session-overview-add-agent-path-body {
+    display: flex;
+    min-width: 0;
+    flex: 1;
+    flex-direction: column;
+}
+
+.session-overview-add-agent-path-detail {
+    overflow: hidden;
+    font-size: 12px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.session-overview-add-agent-path-sub {
+    margin-top: 2px;
+    overflow: hidden;
+    color: rgb(from var(--secondary-text-color) r g b / 0.7);
+    font-size: 10px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
