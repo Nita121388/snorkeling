@@ -1,0 +1,6 @@
+✗ powershell -NoProfile -ExecutionPolicy Bypass -Command ". .\scripts\use-local-env.ps1 -Quiet; go test ./cmd/wsh/cmd/ -run TestSessionCmdSubcommandsRegistered -count=1" → 期望 ok · 实际 FAIL | FAIL	github.com/wavetermdev/waveterm/cmd/wsh/cmd	8.533s | FAIL
+✓ powershell -NoProfile -ExecutionPolicy Bypass -Command ". .\scripts\use-local-env.ps1 -Quiet; go test ./cmd/wsh/cmd/ -run TestSessionEmojiCmdSubcommandsRegistered -count=1" → 期望 ok
+✗ powershell -NoProfile -ExecutionPolicy Bypass -Command ". .\scripts\use-local-env.ps1 -Quiet; go test ./cmd/wsh/cmd/ -count=1" → 期望 ok · 实际 FAIL | FAIL	github.com/wavetermdev/waveterm/cmd/wsh/cmd	6.837s | FAIL
+✓ powershell -NoProfile -ExecutionPolicy Bypass -Command ". .\scripts\use-local-env.ps1 -Quiet; go build ./cmd/wsh; if ($LASTEXITCODE -eq 0) { echo WSH_BUILD_OK }" → 期望 WSH_BUILD_OK
+✗ powershell -NoProfile -ExecutionPolicy Bypass -Command ". .\scripts\use-local-env.ps1 -Quiet; go run ./cmd/wsh session emoji --help" → 期望 recommendations · 实际       --token-file string   external agent token file (see: wsh auth grant) |  | Use "wsh session [command] --help" for more information about a command.
+prove fail ✗（有判据未达期望）

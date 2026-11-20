@@ -144,7 +144,7 @@ func init() {
 	sessionCmd.PersistentFlags().BoolVar(&sessionJSON, "json", false, "output as JSON")
 	sessionCmd.PersistentFlags().Int64Var(&sessionTimeoutMs, "timeout", 8000, "RPC timeout in milliseconds")
 	sessionCmd.AddCommand(sessionLiveCmd, sessionGetCmd, sessionListCmd, sessionForBlockCmd,
-		sessionInfoCmd, sessionUsersCmd, sessionTurnsCmd, sessionTurnCmd, sessionAnnotateCmd)
+		sessionInfoCmd, sessionUsersCmd, sessionTurnsCmd, sessionTurnCmd, sessionAnnotateCmd, sessionEmojiCmd)
 
 	sessionLiveCmd.Flags().BoolVar(&sessionIncludeIdle, "include-idle", false, "include idle sessions")
 	sessionLiveCmd.Flags().IntVar(&sessionMaxRows, "max-rows", 200, "maximum rows to return")

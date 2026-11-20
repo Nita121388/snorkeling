@@ -1,0 +1,11 @@
+{
+  "g2": {
+    "redProof": "修前实测（loop/red/N-1120-wsh-session-emoji-unwired.txt）：TestSessionCmdSubcommandsRegistered FAIL（sessionCmd missing subcommand emoji）；go test ./cmd/wsh/cmd/ 全包 FAIL；go run ./cmd/wsh session emoji --help 不含 recommendations（列出 session 帮助无 emoji）。TestSessionEmojiCmdSubcommandsRegistered 单独跑 PASS（5 子命令挂上了 sessionEmojiCmd 但整组不可达）；go build PASS。",
+    "at": "2026-11-20T00:50:04Z"
+  },
+  "g5": {
+    "ok": true,
+    "executedAt": "2026-11-20T00:50:10Z",
+    "by": "compliance"
+  }
+}
