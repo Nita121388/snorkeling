@@ -152,8 +152,9 @@ export function computeTabBarWindow(input: TabBarWindowInput): TabBarWindow;
 ### 手动隐藏状态契约
 
 - 将 `collapsedTabIdsAtom` 的语义收窄并明确为用户主动隐藏状态；单个隐藏与「收起未使用的 Tab」批量动作都写入同一持久化集合。
-- 存储使用 renderer 可共享的 `localStorage` 持久化 atom，跨 renderer 通过 `storage` 事件同步；启动时读回集合。持久化值必须是 JSON 可逆的数据（如 `string[]`），不能直接 JSON 序列化 `Set`；需要 Set 视图时由派生 atom 转换。
-- Tab ID 是持久化键值；任何 Tab 关闭/删除成功的既有路径必须调用 `removeTab`，移除对应隐藏记录。发现需要多个关闭路径时，在实现前梳理实际调用点并逐一接入，不做定时清理或按 workspace 不完整列表误删仍存活 Tab 的启发式清扫。
+- **持久化实现（2026-11-20 修订，事实变更）**：原方案写「renderer 共享 localStorage + storage 事件同步」，但该设计成立的前提是「收起状态还在 renderer 内存 atom」——实现后来已把真源搬到主进程（`emain/emain-window.ts` 的 `collapsedTabIds`，跨 renderer 走 IPC + 广播，已有真机验证台 `scripts/verify/tab-collapse-cross-renderer`）。因此持久化改为**主进程落盘**：新增 `emain/tab-collapse-store.ts` 读写 `userData/tab-collapse.json`（`string[]`，临时文件 + rename，损坏退化为空集合），`initCollapsedTabIdsStore` 在 `whenReady()` 后、任何窗口创建前读回，收起/展开/清空/关闭 Tab 变更时写穿。好处：保留已验证的跨 renderer 同步机制不动，改动面最小。
+- **解除收起的唯一入口**：renderer `tab-open-state.ts` 的 `markTabOpenedThisLaunch` → `expandCollapsedTabId`。主进程的 `markTabOpenedThisLaunch` 不再动收起集合——启动还原 `markRestoredWorkspaceTabsOpened` 会对 `workspace.tabids` 全部调用它，若仍在此清除，落盘的收起选择一启动就被抹掉。
+- Tab ID 是持久化键值；Tab 关闭成功（`emain-window.ts` `case "closetab"`，`WorkspaceService.CloseTab` 返回后）即从集合移除并写盘，不做定时清理或按 workspace 不完整列表误删仍存活 Tab 的启发式清扫。
 - 打开被手动隐藏的 Tab 沿用 `tab-open-state.ts` 当前 `expandCollapsedTabId` 行为；菜单中的恢复动作直接移除单个 ID，不激活 Tab。
 - 自动窗口溢出只由物理顺序与容量计算得出，不写入持久化集合；容量变化只会改变自动溢出，不会影响手动隐藏集合。
 

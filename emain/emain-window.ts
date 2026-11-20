@@ -19,6 +19,7 @@ import {
 import { tmew } from "./emain-i18n";
 import { log } from "./emain-log";
 import { getElectronAppBasePath, isDev, unamePlatform } from "./emain-platform";
+import { createTabCollapseFileStore, TabCollapseStore } from "./tab-collapse-store";
 import { getOrCreateWebViewForTab, getWaveTabViewByWebContentsId, WaveTabView } from "./emain-tabview";
 import { delay, ensureBoundsAreVisible, waveKeyToElectronKey } from "./emain-util";
 import { ElectronWshClient } from "./emain-wsh";
@@ -47,9 +48,31 @@ export function getOpenedThisLaunchTabIds(): string[] {
  * renderer 各渲染一份，renderer 本地的集合互不相通 —— 结果就是「在当前 Tab 收起，切到别的
  * Tab 又冒出来」。这里比照 openedThisLaunchTabIds 走 IPC + 广播，所有 Tab 栏视图口径一致。
  *
- * 语义: 仅本次启动有效（重启即清），与 openedThisLaunchTabIds 相同。
+ * 语义: **跨重启保留**（用户主动收起是一个持久偏好），与 openedThisLaunchTabIds 不同。
+ * 落盘由 `initCollapsedTabIdsStore` 注入的文件 store 负责，任何变更都写穿一次；
+ * 启动时先读回，再在首个 Tab renderer 初始化前即可被同步 IPC 读到。
  */
 const collapsedTabIds = new Set<string>();
+
+let collapsedTabStore: TabCollapseStore | null = null;
+
+/**
+ * 启动时注入落盘路径并读回已有收起集合（必须在创建任何窗口之前调用）。
+ *
+ * 文件缺失/损坏时退化为空集合（见 tab-collapse-store.ts），不影响启动。
+ * 重复调用会先清空内存集合再重新读取 —— 便于测试与热重载。
+ */
+export function initCollapsedTabIdsStore(filePath: string): void {
+    collapsedTabStore = createTabCollapseFileStore(filePath);
+    collapsedTabIds.clear();
+    for (const tabId of collapsedTabStore.read()) {
+        collapsedTabIds.add(tabId);
+    }
+}
+
+function persistCollapsedTabIds(): void {
+    collapsedTabStore?.write(getCollapsedTabIds());
+}
 
 export function getCollapsedTabIds(): string[] {
     return Array.from(collapsedTabIds);
@@ -109,6 +132,7 @@ export function collapseTabIdsMain(tabIds: readonly string[] | null | undefined)
     }
     if (changed) {
         broadcastCollapsedTabIds();
+        persistCollapsedTabIds();
     }
 }
 
@@ -119,6 +143,7 @@ export function expandCollapsedTabIdMain(tabId: string): void {
     }
     collapsedTabIds.delete(tabId);
     broadcastCollapsedTabIds();
+    persistCollapsedTabIds();
 }
 
 /** 清空全部收起状态。 */
@@ -128,8 +153,17 @@ export function clearCollapsedTabIdsMain(): void {
     }
     collapsedTabIds.clear();
     broadcastCollapsedTabIds();
+    persistCollapsedTabIds();
 }
 
+/**
+ * 标记「本次启动已打开过」。
+ *
+ * **不再**在此解除收起状态：启动还原路径（markRestoredWorkspaceTabsOpened）会对 workspace
+ * 里全部 Tab 调到这里，如果仍在这里清收起集合，落盘的收起选择一启动就被抹掉。
+ * 「真正被打开即解除收起」由 renderer 侧 tab-open-state.ts 的 markTabOpenedThisLaunch
+ * 显式调用 expandCollapsedTabId 完成（点 Tab / 从「更多」点开都会走到）。
+ */
 function markTabOpenedThisLaunch(tabId: string): boolean {
     if (!tabId) {
         return false;
@@ -139,12 +173,6 @@ function markTabOpenedThisLaunch(tabId: string): boolean {
         openedThisLaunchTabIds.add(tabId);
         broadcastOpenedThisLaunchTabIds();
         changed = true;
-    }
-    // 真正被打开即解除「收起」状态（从「更多」下拉点开它, 主栏应重新露出）。
-    // 放在主进程: renderer 侧的 markTabOpenedThisLaunch 只需触发这里, 广播会把各视图同步。
-    if (collapsedTabIds.has(tabId)) {
-        collapsedTabIds.delete(tabId);
-        broadcastCollapsedTabIds();
     }
     return changed;
 }
@@ -716,6 +744,8 @@ export class WaveBrowserWindow extends BaseWindow {
                             return;
                         }
                         this.removeTabViewLater(tabId, 1000);
+                        // Tab 已真正关闭：把它从持久化的收起集合里移除，避免堆积悬空 id。
+                        expandCollapsedTabIdMain(tabId);
                         if (rtn.closewindow) {
                             this.close();
                             return;

@@ -269,3 +269,4 @@
 | 2026-11-20 03:56 | property-editor | ❌ fatal（未跑） | launch+reset | `20261120T03540-property-editor` | 1dd2d612e |
 | 2026-11-20 12:20 | property-editor（真机 skipped：用户明确本机性能不够，暂不做；verify.mjs 已备「修改类型」浮层 case + R7 误关闭回归） | ✅ 154/154（含新增 7 条） | vitest + sqlite/settings 迁移抽样 | live 库 status 行 0 / settings 副本 status→select | working-tree |
 | 2026-11-20 13:50 | session-emoji-bootstrap（真机 skipped：app 正在使用且现网 0.0.132 不含修复；见 implement.md 执行记录） | ✅ 56/56 + Go Emoji 全绿 | vitest + go test（孤儿/双键/只推不撕/空串回落） | `.trellis/tasks/11-20-aisessions-emoji-bootstrap/implement.md` | working-tree |
+| 2026-11-20 13:33 | tab-startup-restore（收起跨重启落盘） | ⛔ 真机 skipped：用户明确本机性能不够、不需要真机验证（前一条 ✅1/1 仅为 `--dry` 依赖解析，20261120T13290 为启动器 exit=201 环境错误）；行为判据由 vitest 兜住 | vitest（`emain/tab-collapse-store.test.ts` 9 例 + `emain/emain-window.test.ts` 收起持久化 4 例 + `frontend/app/tab/` 119 例；verify.mjs 已扩 5 条真机判据待有环境再跑） | `emain/**` | working-tree |

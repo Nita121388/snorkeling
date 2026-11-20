@@ -44,6 +44,8 @@ export function markTabOpenedThisLaunch(tabId: string) {
     }
     getApi()?.markTabOpenedThisLaunch?.(tabId);
     // 真正被打开即解除 "收起" 状态 (用户在「更多」下拉里点开它, 主栏应该重新露出).
+    // 这是唯一的解除入口 —— 主进程的 markTabOpenedThisLaunch 故意不动收起集合，
+    // 否则启动还原通对全部 Tab 打标记时会抹掉落盘的收起选择。
     expandCollapsedTabId(tabId);
     // 双写持久化时序: 跨重启保留 "上次打开过的顺序" (按 lastOpenedAt 降序排前).
     // openedThisLaunch 仅本启动有效, 重启即失; recencyStore 走 localStorage 跨重启续命.

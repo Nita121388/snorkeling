@@ -1,3 +1,6 @@
+import fs from "fs";
+import os from "os";
+import path from "path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/app/store/services", () => ({
@@ -43,7 +46,16 @@ vi.mock("./emain-util", () => ({
 vi.mock("./emain-wsh", () => ({ ElectronWshClient: {} }));
 vi.mock("./updater", () => ({ updater: { status: "idle" } }));
 
-import { getOpenedThisLaunchTabIds, markRestoredWorkspaceTabsOpened, WaveBrowserWindow } from "./emain-window";
+import {
+    clearCollapsedTabIdsMain,
+    collapseTabIdsMain,
+    expandCollapsedTabIdMain,
+    getCollapsedTabIds,
+    getOpenedThisLaunchTabIds,
+    initCollapsedTabIdsStore,
+    markRestoredWorkspaceTabsOpened,
+    WaveBrowserWindow,
+} from "./emain-window";
 
 describe("markRestoredWorkspaceTabsOpened (startup restore)", () => {
     it("marks every restored workspace tab id as opened this launch", () => {
@@ -62,6 +74,64 @@ describe("markRestoredWorkspaceTabsOpened (startup restore)", () => {
         markRestoredWorkspaceTabsOpened(undefined);
         const countAfter = getOpenedThisLaunchTabIds().filter((id) => id.startsWith("restore-")).length;
         expect(countAfter).toBe(countBefore);
+    });
+});
+
+describe("collapsed tab ids persistence (收起到更多 跨重启)", () => {
+    let tempDir: string | null = null;
+
+    function useTempStore(seed?: string[]): string {
+        if (tempDir == null) {
+            tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "emain-window-collapse-"));
+        }
+        const filePath = path.join(tempDir, `tab-collapse-${Math.random().toString(36).slice(2)}.json`);
+        if (seed != null) {
+            fs.writeFileSync(filePath, JSON.stringify(seed), "utf-8");
+        }
+        initCollapsedTabIdsStore(filePath);
+        return filePath;
+    }
+
+    afterEach(() => {
+        clearCollapsedTabIdsMain();
+        if (tempDir != null) {
+            fs.rmSync(tempDir, { recursive: true, force: true });
+            tempDir = null;
+        }
+    });
+
+    it("loads persisted ids on startup", () => {
+        useTempStore(["persist-t1", "persist-t2"]);
+        expect(getCollapsedTabIds()).toEqual(["persist-t1", "persist-t2"]);
+    });
+
+    it("does not clear collapsed ids on the startup restore path", () => {
+        useTempStore(["persist-t1", "persist-t2"]);
+        markRestoredWorkspaceTabsOpened(["persist-t1", "persist-t2", "persist-t3"]);
+        expect(getCollapsedTabIds()).toContain("persist-t1");
+        expect(getCollapsedTabIds()).toContain("persist-t2");
+    });
+
+    it("writes through on collapse / expand / clear", () => {
+        const filePath = useTempStore([]);
+        const readDisk = () => JSON.parse(fs.readFileSync(filePath, "utf-8"));
+
+        collapseTabIdsMain(["disk-t1", "disk-t2"]);
+        expect(readDisk()).toEqual(["disk-t1", "disk-t2"]);
+
+        expandCollapsedTabIdMain("disk-t1");
+        expect(readDisk()).toEqual(["disk-t2"]);
+
+        clearCollapsedTabIdsMain();
+        expect(readDisk()).toEqual([]);
+    });
+
+    it("survives a restart: collapse then re-init from the same file keeps the ids", () => {
+        const filePath = useTempStore([]);
+        collapseTabIdsMain(["restart-t1"]);
+
+        initCollapsedTabIdsStore(filePath);
+        expect(getCollapsedTabIds()).toEqual(["restart-t1"]);
     });
 });
 

@@ -2,9 +2,10 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-// 重启恢复：主栏应恢复上次打开的全部 Tab（顺序 + 激活 + 不灰化），而不是只显示激活那一个。
+// 重启恢复：主栏应恢复上次打开的全部 Tab（顺序 + 激活 + 不灰化），而不是只显示激活那一个，
+// 且用户手动「收起到更多」的选择要跨重启保留（2026-11-20 修复 D：主进程落盘 userData/tab-collapse.json）。
 //
-//   node scripts/verify/tab-startup-restore/verify.mjs              # 干净实例 → 播种 5 Tab → 同 profile 重启 → 断言 → 自动关
+//   node scripts/verify/tab-startup-restore/verify.mjs              # 干净实例 → 播种 5 Tab → 同 profile 重启 → 收起 → 再重启 → 断言 → 自动关
 //   node scripts/verify/tab-startup-restore/verify.mjs --keep-open  # 结束后留着手工看
 //   node scripts/verify/tab-startup-restore/verify.mjs --dry        # 只解析依赖，不起 GUI
 //
@@ -13,6 +14,11 @@
 //   2. restart-order     : 主栏 data-tab-id 序列 = 重启前捕获的序列
 //   3. restart-active    : .tab.active = 重启前激活的那个 Tab
 //   4. restart-notch     : 没有 Tab 带 .unopened-this-launch（不灰化）
+//   5. collapse-hidden-before-restart : 收起 2 个 Tab 后主栏不再渲染它们
+//   6. collapse-persist-after-restart : 第二次重启后这 2 个仍不在主栏、其余 3 个顺序不变、不灰化
+//   7. collapse-truth-after-restart   : window.api.getCollapsedTabIds() 含这 2 个 id（落盘被读回，而非内存残留）
+//   8. collapse-more-rows            : 「更多」下拉里这 2 行存在且 data-hidden=true
+//   9. collapse-expand-on-open       : 展开其中一个 → 主栏重新露出（4 个）、主进程集合只减不增
 // 退出码：0 全绿 / 1 断言失败 / 2 环境错误。
 //
 // 不支持 --attach：本台必须走完整「结束 electron → 同 profile 重启」路径，复用实例没有意义。
@@ -39,6 +45,12 @@ const ACTIVE_TAB_ID = `(() => {
     return el ? el.getAttribute("data-tab-id") : null;
 })()`;
 const UNOPENED_COUNT = `document.querySelectorAll(".tab-bar .tab.unopened-this-launch").length`;
+const MAIN_TRUTH = `(window.api && typeof window.api.getCollapsedTabIds === "function") ? window.api.getCollapsedTabIds() : null`;
+const MORE_TRIGGER = `document.querySelector('[aria-haspopup="menu"]')`;
+const MORE_ROWS = `[...document.querySelectorAll('[role="menuitem"][data-tabid]')].map((e) => ({
+    id: e.getAttribute("data-tabid"),
+    hidden: e.getAttribute("data-hidden"),
+}))`;
 
 /** 可见元素中心点（用于 CDP 点击）。 */
 const CENTER_OF = (selector) => `(() => {
@@ -208,10 +220,83 @@ try {
 
     await reporter.shot(client, "01-after-restart");
 
+    // ── 第三段：手动「收起到更多」→ 第二次重启 → 收起状态应还在 ────────────────
+    const collapseTargets = [idsAfter[0], idsAfter[3]]; // 两个非激活 Tab
+    await client.evaluate(`window.api.collapseTabIds(${JSON.stringify(collapseTargets)})`);
+    const barAfterCollapse = await waitForProbe(
+        client,
+        TAB_IDS,
+        (ids) => Array.isArray(ids) && collapseTargets.every((id) => !ids.includes(id)),
+        { timeoutMs: 20000 }
+    );
+    reporter.check(
+        "collapse-hidden-before-restart",
+        Array.isArray(barAfterCollapse) && barAfterCollapse.length === SEED_TABS - collapseTargets.length,
+        `bar=${(barAfterCollapse ?? []).join(",")} expected hidden=${collapseTargets.join(",")}`
+    );
+
+    await hardRestart(instance, reporter);
+    instance = null;
+
+    instance = await ensureInstance({ attach: false, resetProfile: false, profile: PROFILE, cdpPort: CDP_PORT, vitePort: VITE_PORT });
+    client = instance.client;
+    const pages3 = await listPageTargets(endpoint);
+    if (pages3.length > 1) {
+        client = (await pickLiveRenderer(pages3, connectToTarget, endpoint)).client;
+    }
+    await client.send("Emulation.setFocusEmulationEnabled", { enabled: true }).catch(() => {});
+    await waitForProbe(client, TAB_COUNT, (n) => n >= 1, { timeoutMs: 60000 });
+    reporter.log("second restart ready (same profile)");
+
+    const idsAfterSecond = await client.evaluate(TAB_IDS);
+    const truthAfterSecond = await client.evaluate(MAIN_TRUTH);
+    const unopenedSecond = await client.evaluate(UNOPENED_COUNT);
+    const expectedVisible = idsAfter.filter((id) => !collapseTargets.includes(id));
+
+    reporter.check(
+        "collapse-persist-after-restart",
+        JSON.stringify(idsAfterSecond) === JSON.stringify(expectedVisible) && unopenedSecond === 0,
+        `bar=${idsAfterSecond.join(",")} expected=${expectedVisible.join(",")} notch=${unopenedSecond}`
+    );
+    reporter.check(
+        "collapse-truth-after-restart",
+        Array.isArray(truthAfterSecond) && collapseTargets.every((id) => truthAfterSecond.includes(id)),
+        `truth=${JSON.stringify(truthAfterSecond)} expected to contain=${collapseTargets.join(",")}`
+    );
+    await reporter.shot(client, "02-after-second-restart");
+
+    const triggerPoint = await waitForProbe(client, CENTER_OF(MORE_TRIGGER), (p) => p != null, { timeoutMs: 15000 });
+    if (triggerPoint != null) {
+        await clickPoint(client, triggerPoint);
+    }
+    const moreRows = triggerPoint == null ? [] : await client.evaluate(MORE_ROWS);
+    reporter.check(
+        "collapse-more-rows",
+        triggerPoint != null && collapseTargets.every((id) => moreRows.some((r) => r.id === id && r.hidden === "true")),
+        `rows=${JSON.stringify(moreRows)}`
+    );
+    await client.send("Input.dispatchKeyEvent", { type: "keyDown", key: "Escape", code: "Escape", windowsVirtualKeyCode: 27 });
+    await client.send("Input.dispatchKeyEvent", { type: "keyUp", key: "Escape", code: "Escape", windowsVirtualKeyCode: 27 });
+    await sleep(300);
+
+    const expandTarget = collapseTargets[0];
+    await client.evaluate(`window.api.expandCollapsedTabId(${JSON.stringify(expandTarget)})`);
+    const barAfterExpand = await waitForProbe(client, TAB_IDS, (ids) => Array.isArray(ids) && ids.includes(expandTarget), {
+        timeoutMs: 20000,
+    });
+    const truthAfterExpand = await client.evaluate(MAIN_TRUTH);
+    reporter.check(
+        "collapse-expand-on-open",
+        Array.isArray(barAfterExpand) && barAfterExpand.length === SEED_TABS - collapseTargets.length + 1 && !(truthAfterExpand ?? []).includes(expandTarget),
+        `bar=${(barAfterExpand ?? []).join(",")} truth=${JSON.stringify(truthAfterExpand)}`
+    );
+
     reporter.finish({
         skipped: [
             "垂直栏（app:tabbar=left）变体未在本台覆盖：两栏共用同一可见性模型（selectBarVisibleTabIds），由 tab/emain 单测锁定；垂直栏需人工回归",
             "「更多」触发器计数=0 未单独断言：主栏渲染数=workspace 全部 Tab 数已隐含该结论",
+            "右键菜单「从 Tab 栏隐藏」不可 CDP 点击（Electron 原生菜单）；本台用 window.api.collapseTabIds 走同一条 IPC 写路径",
+            "关闭已收起 Tab 的落盘清理由 emain/emain-window.test.ts 覆盖，本台未跑「收起后关闭再重启」链路",
         ],
         cleanup: () => {
             client.close?.();

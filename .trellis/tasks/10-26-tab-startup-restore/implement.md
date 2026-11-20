@@ -106,7 +106,12 @@ git status --short
 
 **改动面**：`tab-more-model.ts`、`tabbar.tsx`、`vtabbar.tsx`、`tab-collapse-state.ts`、`tabcontextmenu.ts`、`tab-more-menu.tsx`、Tab 关闭路径、相关单测。
 
-- [ ] 3.1 `tab-collapse-state.ts` 将手动隐藏集合改为可跨 renderer / 重启持久化的 store；单隐藏、批量收起、单项恢复及 Tab 删除清理共用该 store。
+- [x] 3.1 **（本次交付 2026-11-20，主进程落盘 A 方案）** 手动隐藏集合跨重启保留：收起状态真源仍在主进程（`emain/emain-window.ts` 的 `collapsedTabIds`，跨 renderer 走既有 IPC + 广播），新增 `emain/tab-collapse-store.ts` 负责 `userData/tab-collapse.json` 的读/写（临时文件 + rename，损坏退化为空集合）；`initCollapsedTabIdsStore` 在 `emain/emain.ts` 的 `whenReady()` 后、创建任何窗口前读回。单隐藏 / 批量收起 / 单项恢复 / 清空共用该 store，Tab 关闭成功路径（`emain-window.ts` `case "closetab"`）顺手指除悬空 id。
+      - 关键语义拆分：主进程 `markTabOpenedThisLaunch` **不再**解除收起状态（启动还原 `markRestoredWorkspaceTabsOpened` 会对全部 Tab 调它，否则落盘选择一启动就被抹掉）；「真正打开 → 解除收起」唯一入口为 renderer `tab-open-state.ts` 的 `expandCollapsedTabId`。
+      - 判据：`npx vitest run emain/tab-collapse-store.test.ts emain/emain-window.test.ts` → 18 passed（含「启动还原不清收起」「收起→重建读回」）；`npx tsc --noEmit` 无新增错误（基线错误 `emain-window.ts` TabReturnWorkspaceIdMetaKey / `os-notify.test.ts` 预先存在，已 stash 对比确认）。
+      - 设计取舍：`design.md` 原写的「renderer localStorage + storage 事件」在事实层面已过时（收起状态实现早已搬到主进程），改用主进程落盘复用已验证的 IPC/广播机制、改动面最小；`design.md` §手动隐藏状态契约 已同步修订。
+- [ ] 3.1b 真机判据（**skipped：用户明确本机性能不够，不需要真机验证**，2026-11-20）：播种 4 Tab → 收起其中 2 个 → 退出重开 → 这 2 个仍在「更多」里、主栏不显示；从「更多」点开其中 1 个 → 它回到主栏且落盘集合少一个；关闭 1 个已收起 Tab → 重开后「更多」计数减一。`scripts/verify/tab-startup-restore/verify.mjs` 已扩好对应 5 条判据（collapse-hidden-before-restart / collapse-persist-after-restart / collapse-truth-after-restart / collapse-more-rows / collapse-expand-on-open，`--dry` 可解析），只在有环境时 `node scripts/verify/tab-startup-restore/verify.mjs` 即可跑。
+- [ ] 3.1c 3.1 与原设计 `tab-collapse-state.ts` 改造的差异：renderer 侧 `tab-collapse-state.ts` 仍为「本地乐观更新 + IPC 写穿 + 广播回写」的投影，无需改为 localStorage atom；`tab-collapse-state.test.ts` 现有同步用例保持不变。
 - [ ] 3.2 `tabcontextmenu.ts` 为单个 Tab 增加「从 Tab 栏隐藏」；不关闭、不激活、不重排。
 - [ ] 3.3 `tab-more-menu.tsx` 为手动隐藏行增加「显示在 Tab 栏」动作，恢复时不激活 Tab；直接打开该行仍沿用自动解除隐藏行为。
 - [ ] 3.4 `tab-more-model.ts` 新增 `computeTabBarWindow`（按 `design.md` §3 的算法，手动隐藏先从候选中排除，自动溢出按当前窗口重算）。
@@ -116,7 +121,7 @@ git status --short
       - 放不下 → `1 <= fit <= N-1`，`visible` 是前缀
       - `capacity` 单调增 → `hiddenCount` 单调不增
       - `manuallyHiddenTabIds` 被提前摘出并与自动溢出合并；自动窗口切分不覆盖持久化手动集合
-      - store 测试覆盖刷新/重建后读回、跨 renderer storage 同步、单项恢复、打开时自动展开、删除时清理
+      - store 测试覆盖刷新/重建后读回（`emain/tab-collapse-store.test.ts`）、单项恢复、打开时自动展开、删除时清理；跨 renderer 同步沿用既有广播用例
 - [ ] 3.6 `tabbar.tsx`：
       - `visibleTabIds = win.visibleTabIds`，`idealTabWidth = win.itemSize`（不再按 pinned 分组算基数）
       - 删除 `OverlayScrollbars` 创建/销毁与 `scrollableRef` 相关分支

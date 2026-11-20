@@ -3,6 +3,7 @@
 
 import { RpcApi } from "@/app/store/wshclientapi";
 import * as electron from "electron";
+import * as path from "node:path";
 import { focusedBuilderWindow, getAllBuilderWindows } from "emain/emain-builder";
 import { globalEvents } from "emain/emain-events";
 import { sprintf } from "sprintf-js";
@@ -56,6 +57,7 @@ import {
     getQuakeWindow,
     getWaveWindowById,
     getWaveWindowByWorkspaceId,
+    initCollapsedTabIdsStore,
     initGlobalHotkeyEventSubscription,
     registerGlobalHotkey,
     relaunchBrowserWindows,
@@ -446,6 +448,9 @@ async function appMain() {
     await electronApp.whenReady();
     configureAuthKeyRequestInjection(electron.session.defaultSession);
     initIpcHandlers();
+    // 「收起到更多」跨重启保留：必须在任何窗口/Tab renderer 创建之前读回落盘集合，
+    // 否则首个 Tab 栏通过同步 IPC `get-collapsed-tab-ids` 读到空集合，收起状态白丢。
+    initCollapsedTabIdsStore(path.join(electronApp.getPath("userData"), "tab-collapse.json"));
 
     await sleep(10); // wait a bit for wavesrv to be ready
     try {

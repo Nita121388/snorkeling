@@ -14,7 +14,11 @@ import { atom } from "jotai";
  *
  * 写路径：本地乐观更新（即时视觉反馈）→ IPC 写穿到主进程 → 主进程广播回写各视图。
  *
- * 清除时机: 任何 tab 被真正打开（markTabOpenedThisLaunch）时主进程会把它从集合移除并广播。
+ * 持久化: 集合跨重启保留（主进程落盘 userData/tab-collapse.json，见 emain/tab-collapse-store.ts）——
+ * 用户主动收起是一个持久偏好，重启后这些 Tab 仍应待在「更多」里。
+ *
+ * 清除时机: 任何 tab 被真正打开时由本侧 markTabOpenedThisLaunch（tab-open-state.ts）显式调
+ * expandCollapsedTabId；主进程的「本次启动已打开」标记不再动收起集合（否则启动还原会抹掉落盘选择）。
  */
 function getApi(): ElectronApi | null {
     return typeof window === "undefined" ? null : ((window as any).api ?? null);
