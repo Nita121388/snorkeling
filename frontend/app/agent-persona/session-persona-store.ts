@@ -234,13 +234,76 @@ export function clearSessionEmoji(sessionId: unknown): void {
 }
 
 /**
- * One-off legacy migration (design.md §2.4, prd.md R1): replays every
- * localStorage session emoji into the backend (source=user) through the
- * SessionEmojiMigrate RPC and deletes the localStorage key on success
- * (skipped entries count as success — if-absent makes repeats no-ops). On an
- * RPC failure the key stays for the next launch. Idempotent across windows:
- * once the key is gone, later windows see nothing to migrate.
- * @returns true when the key was (or already is) cleared
+ * Pure helper: turn backend emoji prop entries into a frontend map. Each entry
+ * is keyed by BOTH its session id and its session key, because block meta may
+ * carry either form (`agent:sessionid` is normally the id, but resume/hero
+ * paths and remote origins have been observed with the full key). Empty keys
+ * and empty emoji are skipped; the first (most recently updated, since the
+ * RPC orders by updated_at DESC) value for a key wins.
+ */
+export function emojiMapFromEntries(
+    entries: Array<{ id?: string; sessionKey?: string; emoji?: string }> | null | undefined
+): SessionEmojiMap {
+    const result: SessionEmojiMap = {};
+    if (!Array.isArray(entries)) {
+        return result;
+    }
+    for (const entry of entries) {
+        if (entry == null) {
+            continue;
+        }
+        const emoji = typeof entry.emoji === "string" ? entry.emoji.trim() : "";
+        if (emoji === "") {
+            continue;
+        }
+        for (const rawKey of [entry.id, entry.sessionKey]) {
+            const key = normalizeSessionEmojiKey(rawKey);
+            if (key === "" || result[key] != null) {
+                continue;
+            }
+            result[key] = emoji;
+        }
+    }
+    return result;
+}
+
+/**
+ * Startup bootstrap for EVERY window (design: session-emoji bootstrap, D2):
+ *   1. push any legacy localStorage values to the backend (if-absent, idempotent);
+ *   2. read the FULL backend emoji set and install it as the backend layer.
+ * Step 1 is deliberately non-destructive — localStorage is the only cross-window
+ * real-time channel, so deleting it (as the old migration did) wiped the local
+ * layer of every other window and made open agent blocks fall back to brand logos.
+ * Best-effort: an RPC failure keeps the current layers and retries on the next
+ * window start.
+ * @returns true when the backend layer was refreshed from the backend
+ */
+export async function bootstrapSessionEmojis(): Promise<boolean> {
+    await migrateLegacySessionEmojis().catch(() => false);
+    try {
+        const { RpcApi } = await import("@/app/store/wshclientapi");
+        const { TabRpcClient } = await import("@/app/store/wshrpcutil");
+        const result = await RpcApi.SessionEmojiPropsListCommand(TabRpcClient, {});
+        if (result == null) {
+            return false;
+        }
+        // Full set for the local machine → replace the backend layer wholesale
+        // (unlike list pages, nothing can be missing here).
+        setBackendSessionEmojis(emojiMapFromEntries(result.entries));
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+/**
+ * Legacy migration (design.md §2.4, prd.md R1): replays every localStorage
+ * session emoji into the backend (source=user) through the SessionEmojiMigrate
+ * RPC. It is PUSH-ONLY: the localStorage key is intentionally kept (it is the
+ * shared cross-window channel, and the backend layer takes precedence anyway),
+ * so a later window's startup can never clear emojis that the user is looking at.
+ * Idempotent — the backend write is if-absent.
+ * @returns true when every entry was pushed (or there was nothing to push)
  */
 export async function migrateLegacySessionEmojis(): Promise<boolean> {
     const local = readSessionEmojiMap();
@@ -255,16 +318,6 @@ export async function migrateLegacySessionEmojis(): Promise<boolean> {
     if (result == null) {
         return false;
     }
-    // The backend applied (or validly skipped) every entry; drop the legacy key.
-    const store = safeStorage();
-    try {
-        store?.removeItem(SessionEmojiStorageKey);
-    } catch {
-        /* ignore */
-    }
-    localEmojis = {};
-    snapshot = mergeEmojiMaps();
-    emit();
     return true;
 }
 

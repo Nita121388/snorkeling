@@ -74,6 +74,20 @@ describe("getAgentIcon priority", () => {
         expect(spec).toEqual({ kind: "emoji", emoji: "🧠" });
     });
 
+    it("resolves the session id from block meta when the caller passes an empty string", () => {
+        // Regression: `opts.sessionId ?? meta[...]` treated "" as a real value, so
+        // callers passing `commandResolution.sessionId || agentStatus?.sessionId || ""`
+        // silently disabled the meta fallback and open blocks lost their emoji.
+        const meta = { "agent:sessionid": "sess-3", "agent:provider": "codex" } as MetaType;
+        const spec = getAgentIcon("codex", {
+            sessionId: "",
+            meta,
+            sessionEmojis: { "sess-3": "🧠" },
+            personas: { codex: "🐙" },
+        });
+        expect(spec).toEqual({ kind: "emoji", emoji: "🧠" });
+    });
+
     it("provider persona beats the brand logo", () => {
         const spec = getAgentIcon("pi", { sessionEmojis: {}, personas: { pi: "🤖" } });
         expect(spec).toEqual({ kind: "emoji", emoji: "🤖" });

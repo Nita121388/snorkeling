@@ -109,6 +109,8 @@ type WshRpcInterface interface {
 	SessionAnnotateCommand(ctx context.Context, data SessionAnnotateRequest) (*SessionAnnotateResult, error)
 	// agent control surface (session emoji read/write + recommendation injection)
 	SessionEmojiGetCommand(ctx context.Context, data SessionEmojiGetRequest) (*SessionEmojiGetResult, error)
+	// agent control surface (startup bootstrap: every backend emoji prop, read-only)
+	SessionEmojiPropsListCommand(ctx context.Context, data SessionEmojiPropsListRequest) (*SessionEmojiPropsListResult, error)
 	// agent control surface (UI hand-pick record: props source=user + preference counters)
 	SessionEmojiRecordPickCommand(ctx context.Context, data SessionEmojiRecordPickRequest) (*SessionEmojiRecordPickResult, error)
 	// agent control surface (one-off localStorage migration: source=user, if-absent, idempotent)
@@ -1052,6 +1054,25 @@ type SessionEmojiMigrationSkip struct {
 type SessionEmojiMigrateResult struct {
 	Migrated []SessionEmojiMigrationResult `json:"migrated,omitempty"`
 	Skipped  []SessionEmojiMigrationSkip   `json:"skipped,omitempty"`
+}
+
+// SessionEmojiPropsListRequest is the no-arg read of every backend emoji
+// prop (startup bootstrap of the frontend backend-emoji layer). The empty
+// struct is kept explicit for future filters.
+type SessionEmojiPropsListRequest struct{}
+
+// SessionEmojiPropEntry is one emoji prop joined to its session. ID is empty
+// when the ai_sessions row is gone; SessionKey always identifies the slot.
+type SessionEmojiPropEntry struct {
+	SessionKey string `json:"sessionKey"`
+	ID         string `json:"id"`
+	Emoji      string `json:"emoji"`
+	Source     string `json:"source"`
+	UpdatedAt  int64  `json:"updatedAt"`
+}
+
+type SessionEmojiPropsListResult struct {
+	Entries []SessionEmojiPropEntry `json:"entries"`
 }
 
 // SessionEmojiGetRequest reads the backend emoji prop (ai_session_props

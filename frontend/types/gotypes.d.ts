@@ -2881,17 +2881,17 @@ declare global {
         "waveai:maxoutputtokens"?: number;
     };
 
-    // syncproto.Origin
-    type Origin = {
-        deviceid?: string;
-        devicename?: string;
-        platform?: string;
-    };
-
     // hero.Origin
     type Origin = {
         deviceId?: string;
         deviceName?: string;
+        platform?: string;
+    };
+
+    // syncproto.Origin
+    type Origin = {
+        deviceid?: string;
+        devicename?: string;
         platform?: string;
     };
 
@@ -3473,6 +3473,23 @@ declare global {
         injectedAt?: number;
         expiresAt?: number;
         candidates?: SessionEmojiRecommendation[];
+    };
+
+    // wshrpc.SessionEmojiPropEntry
+    type SessionEmojiPropEntry = {
+        sessionKey: string;
+        id: string;
+        emoji: string;
+        source: string;
+        updatedAt: number;
+    };
+
+    // wshrpc.SessionEmojiPropsListRequest
+    type SessionEmojiPropsListRequest = Record<string, never>;
+
+    // wshrpc.SessionEmojiPropsListResult
+    type SessionEmojiPropsListResult = {
+        entries: SessionEmojiPropEntry[];
     };
 
     // wshrpc.SessionEmojiRecordPickRequest

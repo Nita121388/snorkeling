@@ -1164,6 +1164,12 @@ export class RpcApiType {
         return client.wshRpcCall("sessionemojiprefs", data, opts);
     }
 
+    // command "sessionemojipropslist" [call]
+    SessionEmojiPropsListCommand(client: WshClient, data: SessionEmojiPropsListRequest, opts?: RpcOpts): Promise<SessionEmojiPropsListResult> {
+        if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "sessionemojipropslist", data, opts);
+        return client.wshRpcCall("sessionemojipropslist", data, opts);
+    }
+
     // command "sessionemojirecommendations" [call]
     SessionEmojiRecommendationsCommand(client: WshClient, data: SessionEmojiRecommendationsRequest, opts?: RpcOpts): Promise<SessionEmojiRecommendationsResult> {
         if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "sessionemojirecommendations", data, opts);

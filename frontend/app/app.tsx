@@ -70,11 +70,14 @@ const App = ({ onFirstRender }: { onFirstRender: () => void }) => {
                 ? window.requestIdleCallback(() => void loadEmojiCatalog(), { timeout: 8000 })
                 : null;
         const fallback = idle == null ? window.setTimeout(() => void loadEmojiCatalog(), 4000) : null;
-        // Legacy localStorage → backend emoji migration (source=user, if-absent,
-        // idempotent): best-effort, never blocks first paint, key survives on failure.
+        // Session emoji bootstrap (design: session-emoji bootstrap, D2): push any
+        // legacy local values to the backend (if-absent, non-destructive), then
+        // hydrate the backend emoji layer from the full backend set — every window
+        // does this at startup, so agent blocks show their emoji without opening
+        // the AI Sessions list. Best-effort, never blocks first paint.
         void import("@/app/agent-persona/session-persona-store").then((store) =>
-            store.migrateLegacySessionEmojis().catch(() => {
-                /* keep the legacy key for the next launch */
+            store.bootstrapSessionEmojis().catch(() => {
+                /* keep current layers; the next window start retries */
             })
         );
         return () => {

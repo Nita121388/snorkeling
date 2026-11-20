@@ -114,9 +114,12 @@ export function getAgentIcon(provider: string, opts?: AgentIconOpts): AgentIconS
     const normalizedProvider = normalizeAgentProvider(provider);
     const meta = opts?.meta as Record<string, unknown> | null | undefined;
 
-    const sessionId = normalizeSessionEmojiKey(
-        opts?.sessionId ?? (typeof meta?.["agent:sessionid"] === "string" ? (meta["agent:sessionid"] as string) : "")
-    );
+    // Prefer the caller's session id, but fall back to the persisted block meta
+    // when it is missing OR empty: `opts.sessionId ?? meta[...]` silently dropped
+    // the meta fallback for `""` (non-nullish), so a hook-less block lost its emoji.
+    const optionSessionId = typeof opts?.sessionId === "string" ? opts.sessionId.trim() : "";
+    const metaSessionId = typeof meta?.["agent:sessionid"] === "string" ? (meta["agent:sessionid"] as string) : "";
+    const sessionId = normalizeSessionEmojiKey(optionSessionId !== "" ? optionSessionId : metaSessionId);
     if (sessionId !== "") {
         const sessionEmojis = opts?.sessionEmojis ?? getSessionEmojiSnapshot();
         const sessionEmoji = normalizeAgentEmoji(sessionEmojis[sessionId]);

@@ -899,3 +899,25 @@ Windows/Electron 下「焦点逃逸（blur）」不是可靠的关闭信号：
 - 回归判据（DOM）：打开后派发 `blur`/`focusout` 浮层仍挂载；点浮层空白 `onClose` 0 次且
   `mousedown.defaultPrevented === true`；Esc 仍关。真机台（性能允许时）：
   `scripts/verify/property-editor/verify.mjs` 的 `agent-retype-menu-*` —— 1200ms 后仍在 + 指针移入不收。
+
+---
+
+## localStorage 是跨窗口共享通道：启动逻辑不得删共享 key（2026-11-20, task 11-20-aisessions-emoji-bootstrap）
+
+所有 Electron 窗口同 origin，共享同一份 localStorage，且 `storage` 事件会把**别的窗口**的删除同步
+成本窗口的内存清空。这带来一条硬约束：
+
+- **任何窗口的启动（mount）逻辑都不得删除共享 localStorage key**。例：session emoji 的旧迁移
+  「抄到后端后删 key」实际效果 = 每开一个新窗口，所有窗口的本地层同时被清，正在看的 agent Block
+  头像当场掉回默认 logo（不重启也丢）。
+- 「后端为唯一真相」的正确落地：**后端值在合并时优先**（`{...local, ...backend}`），本地层留作
+  兜底；要删本地层必须先让**每个窗口**都拿到后端全量（见 `bootstrapSessionEmojis()`：
+  启动时 push-only 迁移 + 全量 RPC 灌入，两步都非破坏）。
+- 后端层的**唯一生产者**曾是带筛选的 AI Sessions 列表响应（`limit: 200` + 项目/日期过滤）——
+  「列表响应顺带喂 store」只能算增量来源，任何需要全量语义的层必须有独立的全量读 RPC
+  （`sessionemojipropslist`）。
+- 空串陷阱：`opts.x ?? fallback` 在 `x === ""` 时不回落（`""` 非 nullish）。调用方习惯传
+  `a || b || ""` 时，可选链合并会让 meta 兜底静默失效（`getAgentIcon` 的 `agent:sessionid`
+  回归）。写「带兜底」的函数先想空串。
+- 回归判据（单测）：`session-persona-store.test.ts`（迁移后 key 仍在 + bootstrap 全量灌入 +
+  RPC 失败保层）与 `agent-logo.test.ts`（`sessionId: ""` 回落 meta）。

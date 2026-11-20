@@ -1161,6 +1161,12 @@ func SessionEmojiPrefsCommand(w *wshutil.WshRpc, data wshrpc.SessionEmojiPrefsRe
 	return resp, err
 }
 
+// command "sessionemojipropslist", wshserver.SessionEmojiPropsListCommand
+func SessionEmojiPropsListCommand(w *wshutil.WshRpc, data wshrpc.SessionEmojiPropsListRequest, opts *wshrpc.RpcOpts) (*wshrpc.SessionEmojiPropsListResult, error) {
+	resp, err := sendRpcRequestCallHelper[*wshrpc.SessionEmojiPropsListResult](w, "sessionemojipropslist", data, opts)
+	return resp, err
+}
+
 // command "sessionemojirecommendations", wshserver.SessionEmojiRecommendationsCommand
 func SessionEmojiRecommendationsCommand(w *wshutil.WshRpc, data wshrpc.SessionEmojiRecommendationsRequest, opts *wshrpc.RpcOpts) (*wshrpc.SessionEmojiRecommendationsResult, error) {
 	resp, err := sendRpcRequestCallHelper[*wshrpc.SessionEmojiRecommendationsResult](w, "sessionemojirecommendations", data, opts)

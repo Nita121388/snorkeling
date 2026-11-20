@@ -1011,6 +1011,69 @@ func (idx *SQLiteIndex) batchMetaForKeys(ctx context.Context, keys []string) (ba
 	return result, nil
 }
 
+// EmojiPropRow is one backend emoji prop joined to its session id. ID is
+// empty when the ai_sessions row is gone (e.g. the file moved) — SessionKey
+// still identifies the slot so callers can key by either form.
+type EmojiPropRow struct {
+	SessionKey string
+	ID         string
+	Emoji      string
+	Source     string
+	UpdatedAt  int64
+}
+
+// emojiPropsAllLimit is the explicit row budget for EmojiPropsAll. Real-world
+// emoji rows are ~10^2; the cap keeps the bootstrap response bounded even if
+// the prop table grows unexpectedly.
+const emojiPropsAllLimit = 2000
+
+// EmojiPropsAll returns every backend emoji prop (prop_key='emoji') joined to
+// its session id, most recently updated first. Read-only. Rows whose value is
+// not a non-empty string are skipped (a corrupt cell must not poison the
+// bootstrap). It exists so each app window can hydrate its backend emoji layer
+// at startup without loading the AI Sessions list (design: session-emoji
+// bootstrap, D1).
+func (idx *SQLiteIndex) EmojiPropsAll(ctx context.Context) ([]EmojiPropRow, error) {
+	rows := []struct {
+		SessionKey string `db:"session_key"`
+		ID         string `db:"id"`
+		ValueJSON  string `db:"value_json"`
+		Source     string `db:"source"`
+		UpdatedAt  int64  `db:"updated_at"`
+	}{}
+	query := `SELECT p.session_key, COALESCE(s.id, '') AS id, p.value_json, p.source, p.updated_at
+		FROM ai_session_props p
+		LEFT JOIN ai_sessions s ON s.key = p.session_key
+		WHERE p.prop_key = 'emoji'
+		ORDER BY p.updated_at DESC
+		LIMIT ?`
+	if err := idx.db.SelectContext(ctx, &rows, query, emojiPropsAllLimit); err != nil {
+		return nil, err
+	}
+	out := make([]EmojiPropRow, 0, len(rows))
+	for _, row := range rows {
+		if row.ValueJSON == "" || row.ValueJSON == "null" {
+			continue
+		}
+		var value any
+		if err := json.Unmarshal([]byte(row.ValueJSON), &value); err != nil {
+			return nil, fmt.Errorf("decode emoji prop for %q: %w", row.SessionKey, err)
+		}
+		emoji, isString := value.(string)
+		if !isString || strings.TrimSpace(emoji) == "" {
+			continue
+		}
+		out = append(out, EmojiPropRow{
+			SessionKey: row.SessionKey,
+			ID:         strings.TrimSpace(row.ID),
+			Emoji:      emoji,
+			Source:      row.Source,
+			UpdatedAt:   row.UpdatedAt,
+		})
+	}
+	return out, nil
+}
+
 // applyBatchMeta applies preloaded metadata to a summary, mirroring ApplyMeta semantics
 // (title only set when non-empty; TitleSource promoted to user-edit).
 func (idx *SQLiteIndex) applyBatchMeta(summary *SessionSummary, meta batchMetaMaps) {

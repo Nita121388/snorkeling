@@ -307,6 +307,34 @@ func RecordEmojiPick(ctx context.Context, req wshrpc.SessionEmojiRecordPickReque
 	}, nil
 }
 
+// SessionEmojiPropsList returns every backend emoji prop (read-only) so an
+// app window can hydrate its frontend backend-emoji layer at startup without
+// loading the filtered AI Sessions list (design: session-emoji bootstrap, D1).
+// ID is empty when the session row is gone; callers key by either form.
+func SessionEmojiPropsList(ctx context.Context) (*wshrpc.SessionEmojiPropsListResult, error) {
+	manager := aisessions.NewManager("", nil)
+	idx, err := manager.OpenSQLiteIndex()
+	if err != nil {
+		return nil, newError(CodeInternal, "open ai session index: %s", err.Error())
+	}
+	defer idx.Close()
+	rows, err := idx.EmojiPropsAll(ctx)
+	if err != nil {
+		return nil, newError(CodeInternal, "list emoji props: %s", err.Error())
+	}
+	result := &wshrpc.SessionEmojiPropsListResult{Entries: make([]wshrpc.SessionEmojiPropEntry, 0, len(rows))}
+	for _, row := range rows {
+		result.Entries = append(result.Entries, wshrpc.SessionEmojiPropEntry{
+			SessionKey: row.SessionKey,
+			ID:         row.ID,
+			Emoji:      row.Emoji,
+			Source:     row.Source,
+			UpdatedAt:  row.UpdatedAt,
+		})
+	}
+	return result, nil
+}
+
 // MigrateSessionEmojis replays legacy localStorage values into the backend
 // (design.md §2.4, prd.md R1): each entry is written as source=user through the
 // same pick pipeline — but ONLY when the session's emoji slot is empty

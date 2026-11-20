@@ -70,6 +70,12 @@ func (ws *WshServer) SessionEmojiGetCommand(ctx context.Context, data wshrpc.Ses
 	return agentcontrol.SessionEmojiGet(ctx, data)
 }
 
+// SessionEmojiPropsListCommand returns every backend emoji prop (read-only)
+// for the frontend's startup bootstrap of its backend-emoji layer.
+func (ws *WshServer) SessionEmojiPropsListCommand(ctx context.Context, data wshrpc.SessionEmojiPropsListRequest) (*wshrpc.SessionEmojiPropsListResult, error) {
+	return agentcontrol.SessionEmojiPropsList(ctx)
+}
+
 // SessionEmojiSetCommand writes one session's emoji with agent-channel
 // semantics (source=ai, user slots skipped, --if-absent idempotent). Not
 // read-only: dry-run unless Yes is set.
