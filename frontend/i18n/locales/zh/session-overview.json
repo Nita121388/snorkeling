@@ -133,7 +133,8 @@
         "moveToTrash": "移到回收站",
         "deletePermanently": "彻底删除",
         "addAgentInTab": "在 Tab {{name}} 新建 agent",
-        "addAgentInTabShort": "在此 Tab 新建 agent"
+        "addAgentInTabShort": "在此 Tab 新建 agent",
+        "addAgentModelPlaceholder": "自动"
     },
     "note": {
         "loading": "正在加载备注…",

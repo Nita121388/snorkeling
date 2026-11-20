@@ -15,7 +15,7 @@ Overview 面板两个视图都能在 Tab 组里直接新建 agent 会话：
 点开后是**居中弹窗**（样式与 New Agent 弹窗同款：chip 行 + 32px 内左 accent 条、h-28 模型输入框、border-t footer）：
 
 1. **选择 agent 类型** —— 只列**探测到**的 profile（`FindCommand` 真探测），默认预选第一个；
-2. **模型** —— 留空 = 不传 `--model`，用 profile/CLI 默认；填写即本次启动覆盖（不回写 profile）；
+2. **模型** —— placeholder 只写「自动」；留空 = 不传 `--model`，用 profile/CLI 默认；填写即本次启动覆盖（不回写 profile）；
 3. **选择一个路径。** —— 该 Tab 的路径候选**可滚动列表**，默认选中「随 Tab」项，远端候选第二行显示 connection；
 4. **取消 / 创建** —— 创建后**不切 Tab、不抢焦点**，新卡以入列动画出现在该 Tab 列。
 

@@ -2503,7 +2503,13 @@
 }
 
 /* 弹窗：标题右侧的 Tab 名（只在头部出现一次，别再往段标签里塞） */
+.session-overview-add-agent-modal {
+    /* 显式宽度：不由 chip 行的内容宽决定（贴边观感的另一半根因） */
+    width: min(480px, calc(100vw - 32px));
+}
+
 .session-overview-add-agent-tabname {
+    margin-left: 8px;
     font-size: 10px;
     font-weight: 400;
     color: var(--secondary-text-color);
@@ -2512,9 +2518,12 @@
 .session-overview-add-agent-section {
     display: flex;
     flex-direction: column;
-    padding: 8px 12px 6px;
 
+    /* 左右内边距由 .modal 的 .content-wrapper（--modal-padding: 16px）提供，
+       段落自带 padding 会叠成 28px+ 的不对称边距 */
     & + & {
+        margin-top: 2px;
+        padding-top: 10px;
         border-top: 1px solid var(--border-color);
     }
 }
@@ -2535,7 +2544,7 @@
 .session-overview-add-agent-chips {
     display: flex;
     flex-wrap: wrap;
-    gap: 2px;
+    gap: 4px;
 }
 
 .session-overview-add-agent-chip {
@@ -2611,8 +2620,10 @@
 /* 路径候选：可滚动列表（不是下拉/手风琴） */
 .session-overview-add-agent-paths {
     display: flex;
-    max-height: min(320px, 40vh);
+    max-height: min(280px, 36vh);
     flex-direction: column;
+    margin-top: 2px;
+    padding-bottom: 2px;
     overflow-y: auto;
     overscroll-behavior: contain;
 }
@@ -2623,8 +2634,8 @@
     align-items: center;
     gap: 10px;
     width: 100%;
-    margin-bottom: 1px;
-    padding: 8px 8px 8px 12px;
+    margin-bottom: 2px;
+    padding: 7px 8px 7px 10px;
     border: none;
     border-radius: 6px;
     background: transparent;

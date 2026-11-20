@@ -100,8 +100,6 @@ export function OverviewAddAgentModal({
             onOk={submit}
             okLabel={i18n.t("workspace:agentLaunch.create")}
             okDisabled={selectedProfile == null || effectivePath == null || submitting}
-            padding={false}
-            scrollBody={false}
             title={i18n.t("workspace:agentLaunch.newAgent")}
             headerExtra={<span className="session-overview-add-agent-tabname">{tabName}</span>}
         >
@@ -142,7 +140,7 @@ export function OverviewAddAgentModal({
                     className="session-overview-add-agent-model"
                     value={modelInput}
                     onChange={(event) => setModelInput(event.target.value)}
-                    placeholder={i18n.t("workspace:agentLaunch.modelPlaceholder")}
+                    placeholder={i18n.t("session-overview:dialog.addAgentModelPlaceholder")}
                     spellCheck={false}
                     aria-label={i18n.t("workspace:agentLaunch.modelLabel")}
                 />
