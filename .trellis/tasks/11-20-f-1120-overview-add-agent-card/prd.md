@@ -18,14 +18,15 @@ Overview 看板（看板视图，按 Tab 分组）与列表视图的每个 Tab �
    - 容器：全局 `<Modal>`（`frontend/app/modals/modal.tsx`）→ 居中 + backdrop；
    - chrome 复刻 New Agent 弹窗（`hero-launch-window.tsx`）：标题行 + 右侧 ✕、段标签 `text-xxs muted`、
      agent **chip 行**（选中 `bg-accent/12` + 左 2px accent 条）、`h-[28px]` 模型输入框、`border-t` footer；
-   - 内容三段：选择 agent 类型（profile chips + 模型输入框）、选择一个路径。（**可滚动候选列表**）、footer 取消/创建；
+   - 内容两段：选择 agent 类型（profile chips）、选择一个路径。（**可滚动候选列表**）；footer 取消/创建；
+     **本版不提供模型覆盖输入框**（`modelOverride` 恒 null，用 profile 默认模型）—— 2026-11-20 用户反馈「暂时不要」；
    - 文案全部复用 `workspace:agentLaunch.*` 词表，Tab 名只在头部出现一次。
 5. **路径候选随 Tab**：候选来自该 Tab（`collectAgentLaunchTargetsInTab`），经 `collectFolderCandidatesForTab`
    去重排序；默认选中「随 Tab」项；远端 Tab 每行第二行显示 connection（如 `ssh://mac`）。
 6. **建块**：`createAgentBlockDefForProfile(profile, settings, context)`，其中
    `context = { connection, cwd, inheritWorkspaceContext: false }`（不继承当前焦点块上下文），
    再用 `ObjectService.CreateBlockInTab(tabId, blockDef, DefaultRuntimeOpts, false, false)` 建到目标 Tab，
-   **activateTargetTab=false**（不抢焦点）；模型输入框有值时才作为 `modelOverride` 传入。
+   **activateTargetTab=false**（不抢焦点）。
 7. **i18n**：仅新增 aria-label 等辅助串到 `session-overview` 命名空间（中英各一份）；可见文案一律复用既有 key。
 
 ## 不做什么
@@ -54,10 +55,11 @@ Overview 看板（看板视图，按 Tab 分组）与列表视图的每个 Tab �
 - `shouldShowAddAgent("tab") === true`；`status/provider/project/tags` 均为 `false`。
 - 看板 `group="tab"` 时每列渲染 1 个 `.session-overview-board-add`；`group="status"` 时 0 个。
 - 弹窗：标题 = 新建 Agent；Tab 名在头部出现一次；段标签 exact 为 `选择 agent 类型` / `选择一个路径。`；
-  默认预选第一个探测到的 profile（与 New Agent 弹窗一致），「创建」立即可用；点其它 chip 即切换选中。
+  默认预选第一个探测到的 profile（与 New Agent 弹窗一致），「创建」立即可用；点其它 chip 即切换选中；
+  不渲染模型输入框（`.session-overview-add-agent-model` 0 个）。
 - 路径列表：`role=listbox`，行数 = 候选数，默认选中「随 Tab」项；普通本地候选无第二行，远端项有 connection 行。
 - 创建时回调携带：`tabId`（列/组所属 Tab）、`profileName`、`path`（选中项，默认 Tab cwd）、
-  `modelOverride`（仅输入框非空时）、`connection`（远端 Tab 保留）。
+  `modelOverride`（本版恒 null）、`connection`（远端 Tab 保留）。
 - 创建后请求体断言：`activateTargetTab === false`、`context.inheritWorkspaceContext === false`。
 
 ## 备注

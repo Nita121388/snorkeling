@@ -16,8 +16,8 @@
 
 | # | 条目 | 判据（可核验） | 证据位置 | 结论 |
 |---|---|---|---|---|
-| S1 | 弹窗 chrome 与 New Agent 弹窗一致 | 容器/头部/段标签/chip 行/模型输入框/footer 五处同款；不出现两套视觉语言 | `overview-add-agent-modal.tsx` 注释 + `session-overview.scss` `.session-overview-add-agent-*`；对照 `hero-launch-window.tsx` | ☐ |
-| S2 | 文案极简、零自造 | 可见文案取自 `workspace:agentLaunch.*` / `heroLaunch.*`；无「继承自该 Tab」「当前 Tab」「该 Tab 内块」「手选」等解释性副标题；模型框不带占位文案（仅 aria-label）；Tab 名只在头部出现一次 | `overview-add-agent-modal.tsx` 全文；新增 i18n = 3 个 aria 键（中英） | ☐ |
+| S1 | 弹窗 chrome 与 New Agent 弹窗一致 | 容器/头部/段标签/chip 行/footer 同款；本版无模型输入框；不出现两套视觉语言 | `overview-add-agent-modal.tsx` 注释 + `session-overview.scss` `.session-overview-add-agent-*`；对照 `hero-launch-window.tsx` | ☐ |
+| S2 | 文案极简、零自造 | 可见文案取自 `workspace:agentLaunch.*` / `heroLaunch.*`；无「继承自该 Tab」「当前 Tab」「该 Tab 内块」「手选」等解释性副标题；本版无模型输入框（模型覆盖暂不提供，modelOverride 恒 null）；Tab 名只在头部出现一次 | `overview-add-agent-modal.tsx` 全文；新增 i18n = 3 个 aria 键（中英） | ☐ |
 | S3 | 路径段是**可滚动候选列表** | `role=listbox` + `max-height: min(320px,40vh)` + `overflow-y:auto`；默认项（随 Tab）置顶且选中；普通本地行无第二行，远端行第二行是 connection | `session-overview.scss` `.session-overview-add-agent-paths`；`overview-add-agent.ts:collectAddAgentPathRows`；测试 `overview-add-agent-modal.dom.test.tsx`「路径列表」3 条 | ☐ |
 | S4 | 选中态表达统一 | chip 与 path 行选中都是 `bg-accent/12` + 左侧 2px accent 条（与 New Agent 弹窗同款） | `session-overview.scss` 两处 `&.is-selected::before` | ☐ |
 | S5 | 只用 token 色 / 既有字阶 | 无裸 hex；字号 10/12/13；颜色走 `--accent-color` / `--border-color` / `--secondary-text-color` 等变量 | `session-overview.scss` 新增段；`npx eslint` 0 problems | ☐ |

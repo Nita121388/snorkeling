@@ -413,7 +413,6 @@ function pickerHTML(tab) {
             <span class="session-overview-board-card-avatar">${a.emoji}</span><span>${a.name}</span>
           </div>`).join("")}
       </div>
-      <input type="text" class="agent-model-input" id="add-model-input" aria-label="模型" />
     </div>
     <div class="agent-launch-section">
       <div class="agent-launch-label">选择一个路径。</div>
@@ -447,7 +446,6 @@ function selectAgent(id) {
 function createAgent() {
   const tab = TABS.find((t) => t.tabId === picker.tabId);
   const agent = AGENTS.find((a) => a.id === picker.agent);
-  const model = picker.el.querySelector("#add-model-input").value.trim() || MODELS[picker.agent][0];
   const cwd = picker.path;
   const id = "b" + seq++;
   const card = {
@@ -456,7 +454,7 @@ function createAgent() {
   };
   tab.cards.push(card);
   closePicker();
-  log(`createAgentBlockDefForProfile("${agent.name}", model=${model}, cwd=${cwd}${tab.context.connection ? ", connection=" + tab.context.connection : ""}, inheritWorkspaceContext=false) → addBlockToInlineTab(${tab.tabId})`);
+  log(`createAgentBlockDefForProfile("${agent.name}", cwd=${cwd}${tab.context.connection ? ", connection=" + tab.context.connection : ""}, inheritWorkspaceContext=false) → addBlockToInlineTab(${tab.tabId})`);
   /* board 视图直接落卡（含 enter 动画 + 计数 bump，镜像 motion 层行为）；list 视图重渲染 */
   if (viewMode === "board" && groupMode === "tab") {
     const cards = document.getElementById("cards-" + tab.tabId);

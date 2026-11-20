@@ -155,7 +155,7 @@ describe("OverviewAddAgentModal 路径列表", () => {
         expect(rows[0].querySelector(".session-overview-add-agent-path-sub")).toBeNull();
     });
 
-    it("模型输入框不带占位文案（只保留 aria-label），本地 connection=local 行无第二行", () => {
+    it("本地 connection=local 行无第二行", () => {
         const { modalEl } = mountModal({
             targets: [
                 {
@@ -170,9 +170,6 @@ describe("OverviewAddAgentModal 路径列表", () => {
             ],
             defaultPath: "E:/code/snorkeling",
         });
-        const model = modalEl.querySelector(".session-overview-add-agent-model") as HTMLInputElement;
-        expect(model.getAttribute("placeholder")).toBeNull();
-        expect(model.getAttribute("aria-label")).not.toBeNull();
         expect(modalEl.querySelector(".session-overview-add-agent-path-sub")).toBeNull();
     });
 
@@ -214,19 +211,13 @@ describe("OverviewAddAgentModal 提交请求体", () => {
         });
     });
 
-    it("切路径 + 手填模型 → cwd/modelOverride 跟随", async () => {
+    it("切路径 → cwd 跟随；本版无模型输入框（modelOverride 恒 null）", async () => {
         const onSubmit = vi.fn();
         const { modalEl } = mountModal({ onSubmit });
+        expect(modalEl.querySelector(".session-overview-add-agent-model")).toBeNull();
         const rows = modalEl.querySelectorAll(".session-overview-add-agent-path");
         act(() => {
             (rows[1] as HTMLElement).dispatchEvent(new MouseEvent("click", { bubbles: true }));
-        });
-        const model = modalEl.querySelector(".session-overview-add-agent-model") as HTMLInputElement;
-        // React 受控输入：必须走原型 setter 才能触发 onChange（直接赋 value 不触发）
-        const valueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
-        act(() => {
-            valueSetter?.call(model, "deepseek-v4");
-            model.dispatchEvent(new Event("input", { bubbles: true }));
         });
         const { create } = modalButtons(modalEl);
         await act(async () => {
@@ -238,7 +229,7 @@ describe("OverviewAddAgentModal 提交请求体", () => {
             profileName: "pi",
             connection: null,
             cwd: "E:/code/other",
-            modelOverride: "deepseek-v4",
+            modelOverride: null,
         });
     });
 

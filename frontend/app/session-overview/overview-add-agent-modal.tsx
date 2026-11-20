@@ -60,7 +60,6 @@ export function OverviewAddAgentModal({
     // FindCommand 真实探测：没装的 agent 不出现在 chip 行（收口于 use-agent-profile-options）。
     const profileOptions = useDetectedAgentProfileOptions(settings);
     const [profileName, setProfileName] = useState<string | null>(null);
-    const [modelInput, setModelInput] = useState("");
     const [selectedPath, setSelectedPath] = useState<string | null>(null);
     const [submitting, setSubmitting] = useState(false);
 
@@ -77,14 +76,14 @@ export function OverviewAddAgentModal({
         if (selectedProfile == null || effectivePath == null) return;
         setSubmitting(true);
         try {
-            const modelOverride = modelInput.trim();
             await onSubmit({
                 tabId,
                 tabName,
                 profileName: selectedProfile.name,
                 connection: effectivePath.isLocal ? null : effectivePath.sub || null,
                 cwd: effectivePath.key,
-                modelOverride: modelOverride === "" ? null : modelOverride,
+                // 模型覆盖本期不提供输入框；字段保留给后续版本，恒 null（= 用 profile 默认）
+                modelOverride: null,
             });
         } finally {
             setSubmitting(false);
@@ -103,7 +102,7 @@ export function OverviewAddAgentModal({
             title={i18n.t("workspace:agentLaunch.newAgent")}
             headerExtra={<span className="session-overview-add-agent-tabname">{tabName}</span>}
         >
-            {/* ① 选 agent 类型 + 模型（与 New Agent 弹窗同款 chip 行 + h-[28px] 输入框） */}
+            {/* ① 选 agent 类型（与 New Agent 弹窗同款 chip 行）。模型覆盖本期不提供，modelOverride 恒 null */}
             <div className="session-overview-add-agent-section">
                 <div className="session-overview-add-agent-label">{i18n.t("workspace:agentLaunch.selectAgentType")}</div>
                 {profileOptions.length === 0 ? (
@@ -135,14 +134,6 @@ export function OverviewAddAgentModal({
                         })}
                     </div>
                 )}
-                <input
-                    type="text"
-                    className="session-overview-add-agent-model"
-                    value={modelInput}
-                    onChange={(event) => setModelInput(event.target.value)}
-                    spellCheck={false}
-                    aria-label={i18n.t("workspace:agentLaunch.modelLabel")}
-                />
             </div>
             {/* ② 选择一个路径。（可滚动候选列表，默认随 Tab；第二行仅远端显示 connection） */}
             <div className="session-overview-add-agent-section">

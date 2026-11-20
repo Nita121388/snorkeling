@@ -2594,29 +2594,6 @@
     color: var(--secondary-text-color);
 }
 
-/* 模型输入框：h-28（与 New Agent 弹窗一致） */
-.session-overview-add-agent-model {
-    height: 28px;
-    margin-top: 8px;
-    padding: 0 8px;
-    border: 1px solid var(--border-color);
-    border-radius: 4px;
-    background: var(--panel-bg-color, var(--main-bg-color));
-    box-sizing: border-box;
-    color: var(--main-text-color);
-    font-family: inherit;
-    font-size: 12px;
-    outline: none;
-
-    &:focus {
-        border-color: var(--accent-color);
-    }
-
-    &::placeholder {
-        color: var(--secondary-text-color);
-    }
-}
-
 /* 路径候选：可滚动列表（不是下拉/手风琴） */
 .session-overview-add-agent-paths {
     display: flex;
