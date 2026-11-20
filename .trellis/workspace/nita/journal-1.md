@@ -376,3 +376,35 @@ merge 后 go build ./... 通过、四包测试全绿、`task generate` 无 diff�
 4. 复用了 `canonicalizeModelArg`（经 `scheduler.CanonicalizeModelArg` 包级变量注入排 configure）：pi 裸 id 多 provider
    歧义问题在 scheduled headless 路径同样成立，已同一映射修正。
 5. 真机事实：`~/.snorkeling/scheduledtask-runs/` 现留有本功能验收日志（含 05e0e8a3 开头的他人/后跑痕迹），属功能正常产物。
+
+## 2026-11-20 下午：Overview 看板点 agent 卡「卡顿 / 点不开」诊断 + 建包（未改代码，晚上做）
+
+- **主因已复现**：`overview-board.tsx` `openCardFromTarget` 的 `event.target !== event.currentTarget`
+  卫语句（b35075532 / 11-08 引入）把卡片内部所有子 span 的点击全丢了 —— 只有卡片裸内边距能开弹窗。
+  jsdom 实测：点标题/预览/头像 → onOpenCard 0 次；点内边距 → 1 次。
+- **卡顿两个放大器（11-10 修复轮漏网，另拆包）**：① `columns`/`columnKeys` 未 memo → 每次渲染重跑
+  `captureBoardSnapshot`（querySelectorAll + 每卡 getAnimations + rect）+ ResizeObserver 重建，点击的
+  markBlockViewed 重渲正好压弹窗入场帧；② 15s summary 轮询 + 30s now tick 让 `boardCards`/`miniTimelines`
+  全量换引用 → 整板全量重渲。
+- **方案（nita 确认）**：整卡默认可点 + 热区白名单（button/a/input/[contenteditable]/[data-card-interactive]）；
+  emoji 头像改独立 button 接 `openAgentEmojiPicker`（需给 `OverviewBoardCard` 补 raw `provider`）；
+  顺带修 Enter 在内部按钮上冒泡双触发；选区非折叠时不开。
+- **产出**：新建任务 `11-20-overview-board-card-click-hotzones`（PRD-only，已 start），
+  记录 `.trellis/tasks/11-20-overview-board-card-click-hotzones/notes-20261120.md`；
+  可视化 `docs/answers/overview-board-card-click-diagnosis-20261120.html` + `...-plan-20261120.html`。
+- **晚上接手**：按 notes 末节「今晚开发步骤」1-4 走；性能两包单独立项。
+
+## 2026-11-20 傍晚 · Overview 新建 Agent 弹窗 v2 + CommonText 发送失败诊断（只记录，晚上开发）
+
+- **用户四条新反馈**：① 看板「＋ 新建」→「＋」；② 弹窗要有输入内容（语义 = 新建 agent **并发送**，不是只建空块）；
+  ③ 点选 agent 要展示对应模型且可切换；④ 弹窗再大点、宽松点。
+- **落档（未动代码）**：
+  - `.trellis/tasks/11-20-f-1120-overview-add-agent-card/prd.md` 追加 **v2 四条**（V2-1 入口图标化 / V2-2 message + `AgentSendCommand`
+    首发 / V2-3 弹窗内模型下拉（`loadAgentCatalog` + 照搬 scheduledtaskeditormodal 模式，值传 `createAgentBlockDefForProfile` 第 7 参）/
+    V2-4 宽度 480→560、段距 10→14），含 v2 验收判据与代码锚点地图。
+  - `.trellis/tasks/11-18-agent-block-send/PRD-ADDENDUM.md` 追加 **R10**：CommonText existing 发送路径收口到 `agentsend`
+    （远端/E_UNSUPPORTED 回退旧 paste 链，失败必须走 onStatus 可见），create 路径不动（挂着 verify area）。
+- **发送失败根因（前端链 5 入口）**：固定 150ms 回车竞态 / spinner 打穿 quiet 判定 / 60s TTL 兜底成剪贴板 / 隐藏挂载上限 2 /
+  未就绪直报失败且只在 console。结论：别猜，改调后端 `agentsend`。
+- **晚上接手顺序**：11-20 v2（前端四项，白名单 `frontend/app/session-overview/` + i18n）先做；11-18 R10 独立一包跟在后面，
+  先跑 `node scripts/verify/commontext-send-agent-block/verify.mjs --attach` 与 `commontext-send-background` 定位失败入口。

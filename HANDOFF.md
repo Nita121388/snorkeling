@@ -5,6 +5,24 @@
 > **夜间无人值守开发的逐段记录在 `docs/project/night-run.md`**（计划 / 约束 / 看板 / 已知红灯），
 > 接手先看那一页，再看本页。
 
+## 2026-11-20（下午）：Overview 看板点 agent 卡「点不开」根因查清 + 建包（未改代码，晚上做）
+
+- **主因已复现**：`overview-board.tsx` `openCardFromTarget` 的 `event.target !== event.currentTarget` 卫语句
+  （b35075532 / 11-08 引入，为挡动作按钮冒泡而加，但按钮已各自 stopPropagation）。卡片内部全是子 span，
+  点标题/头像/预览/Note/tags/属性/度量时 target ≠ currentTarget → 两层 onClick 全 return，**只有卡片裸内边距
+  能开弹窗**。jsdom 实测：标题/预览/头像 onOpenCard 0 次，内边距 1 次。
+- **卡顿两个放大器（11-10 修复轮漏网，另拆包）**：① `columns`/`columnKeys` 未 memo → 每次渲染重跑
+  `captureBoardSnapshot`（querySelectorAll + 每卡 getAnimations + getBoundingClientRect）+ ResizeObserver 重建，
+  点击必触发的那次面板重渲（markBlockViewed）正好压在弹窗入场帧；② 15s summary 轮询 + 30s now tick 让
+  `boardCards`/`miniTimelines` 全量换引用 → 整板全量重渲（BoardCard memo 挡不住）。
+- **方案（nita 已确认）**：整卡默认可点 + 热区白名单（button/a[href]/input/textarea/select/[contenteditable]/`[data-card-interactive]`）；
+  emoji 头像改独立 `<button>` 接 `openAgentEmojiPicker`（需给 `OverviewBoardCard` 补 raw `provider`，providerLabel 是显示名不能用）；
+  顺带修 Enter 在内部按钮上冒泡导致的双触发；文本选区未折叠时点击不开。
+- **任务**：`11-20-overview-board-card-click-hotzones`（PRD-only，已 create+start）。
+  记录：`.trellis/tasks/11-20-overview-board-card-click-hotzones/notes-20261120.md`（末节有今晚开发步骤）。
+  可视化：`docs/answers/overview-board-card-click-diagnosis-20261120.html` / `...-plan-20261120.html`（交互矩阵即验收判据）。
+- **未提交**：本次只落文档（任务目录 / journal / 两个 answer 页），工作区还有别的 agent 在途改动，晚上开发时一并提交。
+
 ## 2026-11-20：属性 status 类型彻底退役 + 改类型/值列表浮层点击即关修复（已完成，真机验证用户豁免）
 
 - **细节全文**：`.trellis/tasks/11-20-property-status-to-select/{prd,design,implement}.md`（implement 末节有全部绿证）。
