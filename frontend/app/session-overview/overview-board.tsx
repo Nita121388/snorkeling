@@ -1,6 +1,7 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+import { openAgentEmojiPicker } from "@/app/agent-persona/picker-host";
 import type { AgentStatus } from "@/app/agent-status/agent-status-types";
 import { useAgentReadContext } from "@/app/agent-status/use-agent-status-view";
 import { i18n } from "@/i18n/config";
@@ -44,6 +45,34 @@ const MotionTiming: Record<BoardMotionKind, { duration: number; easing: string }
 
 /** 落点列头光晕的高亮保持时长（CSS 动画 700ms）。 */
 const LandingResetMs = 780;
+
+/**
+ * 卡片内的「独立热区」白名单。
+ *
+ * 整卡默认可点开会话弹窗（PRD R1），但卡片里嵌着自带行为的控件：动作按钮
+ * （定位/删除/关闭）、状态 chip（ack）、emoji 头像（picker）。判定方式是
+ * 「target 向上找最近的独立热区」而不是「target 必须等于卡片根」——
+ * 后者会让卡片内部所有子 span（标题/预览/Note/tags/属性/度量）全部点不动。
+ * chips（tags/属性）目前是纯展示，不在此列：点它们走整卡开弹窗。
+ */
+const CardHotzoneSelector = [
+    "button",
+    "a[href]",
+    "input",
+    "textarea",
+    "select",
+    '[contenteditable="true"]',
+    "[data-card-interactive]",
+].join(",");
+
+/** target 是否落在卡片内的独立热区上（卡片根自身不算）。 */
+function isCardHotzone(target: EventTarget | null, root: HTMLElement): boolean {
+    if (target == null || !(target instanceof Element)) return false;
+    if (target === root) return false;
+    const hotzone = target.closest(CardHotzoneSelector);
+    // `closest` 会一路找到卡片外面（脏数据/测试包裹层），只认卡片内的命中。
+    return hotzone != null && hotzone !== root && root.contains(hotzone);
+}
 
 type BoardLanding = {
     columnKeys: readonly string[];
@@ -120,17 +149,49 @@ export type OverviewBoardProps = {
     onAddAgent?: (tabId: string, tabName: string) => void;
 };
 
-function BoardAvatar({ avatar }: { avatar: OverviewBoardAvatar }) {
+function BoardAvatar({
+    avatar,
+    emojiLabel,
+    onPickEmoji,
+}: {
+    avatar: OverviewBoardAvatar;
+    /** emoji 热区的 aria-label / title（复用 hover 卡的文案 key，不新增文本）。 */
+    emojiLabel?: string;
+    /**
+     * 传入 = 头像升级为独立热区按钮（点它开 picker，不冒泡到整卡弹窗）。
+     * 不传 = 纯展示 span，点它按整卡语义开弹窗（**不要**渲染 disabled 的死按钮）。
+     */
+    onPickEmoji?: (event: React.MouseEvent<HTMLButtonElement>) => void;
+}) {
+    const content =
+        avatar.kind === "emoji" ? (
+            <span className="agent-emoji-icon">{avatar.emoji}</span>
+        ) : avatar.kind === "logo" ? (
+            <span style={avatar.color ? { color: avatar.color } : undefined}>{avatar.icon}</span>
+        ) : (
+            <i className={avatar.iconClass} />
+        );
+    if (onPickEmoji == null) {
+        return (
+            <span className="session-overview-board-card-avatar" data-avatar-kind={avatar.kind} aria-hidden="true">
+                {content}
+            </span>
+        );
+    }
+    // 兼容类名 `.session-overview-board-card-avatar` + `data-avatar-kind` 是 verify 探针的
+    // 契约（agent-card-emoji-avatar 直接读它们），新按钮必须继续挂上。
     return (
-        <span className="session-overview-board-card-avatar" data-avatar-kind={avatar.kind} aria-hidden="true">
-            {avatar.kind === "emoji" ? (
-                <span className="agent-emoji-icon">{avatar.emoji}</span>
-            ) : avatar.kind === "logo" ? (
-                <span style={avatar.color ? { color: avatar.color } : undefined}>{avatar.icon}</span>
-            ) : (
-                <i className={avatar.iconClass} />
-            )}
-        </span>
+        <button
+            type="button"
+            className="session-overview-board-card-avatar session-overview-board-card-avatar-btn"
+            data-avatar-kind={avatar.kind}
+            data-card-interactive="true"
+            onClick={onPickEmoji}
+            aria-label={emojiLabel}
+            title={emojiLabel}
+        >
+            {content}
+        </button>
     );
 }
 
@@ -187,8 +248,31 @@ function BoardCardImpl({
         event.preventDefault();
         event.stopPropagation();
     };
-    const openCardFromTarget = (event: React.MouseEvent) => {
-        if (event.target !== event.currentTarget) return;
+    // emoji 头像独立热区：只对「agent 卡 + 有 raw provider」开放。
+    // 同 icon 再点一次由 picker-host 自己 toggle（不要在这里写状态）。
+    const provider = card.provider ?? "";
+    const pickEmoji = card.isAgentLike && provider !== "";
+    const openEmojiPicker = (event: React.MouseEvent<HTMLButtonElement>) => {
+        event.preventDefault();
+        event.stopPropagation();
+        openAgentEmojiPicker(
+            card.blockId,
+            provider,
+            event.currentTarget.getBoundingClientRect(),
+            "session",
+            card.sessionId || null
+        );
+    };
+    /**
+     * 整卡点击的唯一判定点（head 上不再挂重复 handler）。
+     *
+     * 热区（动作按钮 / 状态 chip / emoji 头像）命中 → 直接 return，交给它自己的
+     * handler；其余一律开弹窗。
+     */
+    const handleCardClick = (event: React.MouseEvent<HTMLDivElement>) => {
+        // 拖选预览/Note 文本后松开的那一下不算点击（否则选区一松手就弹窗）。
+        if (typeof window !== "undefined" && window.getSelection?.()?.isCollapsed === false) return;
+        if (isCardHotzone(event.target, event.currentTarget)) return;
         // 命中即开弹窗：拦掉冒泡，不让 block frame 的 setBlockClickedTrue 再追加一轮
         // 焦点搬运（setFocusTarget/focusNode —— focusNode 还会走一次 layout model 持久化 IPC）
         // 与随之而来的额外重渲 —— 那一轮发生在弹窗入场动画的同一帧里，是「点开弹窗顿一下」
@@ -211,8 +295,11 @@ function BoardCardImpl({
             data-agent-like={card.isAgentLike ? "true" : "false"}
             role="button"
             tabIndex={0}
-            onClick={openCardFromTarget}
+            onClick={handleCardClick}
             onKeyDown={(event) => {
+                // 热区自己的键盘行为（emoji 按钮 / 动作按钮上的 Enter）不能冒泡到这里
+                // 同时再开一次弹窗（双触发）。
+                if (event.target !== event.currentTarget) return;
                 if (event.key === "Enter" || event.key === " ") {
                     event.preventDefault();
                     openCard();
@@ -221,8 +308,12 @@ function BoardCardImpl({
             aria-label={i18n.t("session-overview:board.openSession", { title: card.title })}
             title={card.preview ? `${card.title}\n${card.preview}` : card.title}
         >
-            <span className="session-overview-board-card-head" onClick={openCardFromTarget}>
-                <BoardAvatar avatar={card.avatar} />
+            <span className="session-overview-board-card-head">
+                <BoardAvatar
+                    avatar={card.avatar}
+                    emojiLabel={pickEmoji ? i18n.t("term:hoverCard.setPersonaEmoji") : undefined}
+                    onPickEmoji={pickEmoji ? openEmojiPicker : undefined}
+                />
                 <span className="session-overview-board-card-title">{card.title}</span>
                 {age ? (
                     <span className="session-overview-board-card-age" title={ageTitle} aria-label={ageTitle}>

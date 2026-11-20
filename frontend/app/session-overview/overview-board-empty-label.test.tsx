@@ -43,6 +43,9 @@ function makeCard(overrides: Partial<OverviewBoardCard> = {}): OverviewBoardCard
         title: "pi agent",
         avatar: { kind: "emoji", emoji: "🤖" },
         providerLabel: "pi",
+        // raw provider key：emoji 头像热区判定用（卡片属性行 fixture 同步补齐 propRows）。
+        provider: "pi",
+        propRows: { visible: [], hiddenCount: 0 },
         projectName: "",
         tags: [],
         kindLabel: "",

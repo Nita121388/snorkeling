@@ -10,7 +10,9 @@
 //    本文件锁组件本身的 memo 结构不被退化。
 // 2. 点击卡片本体开弹窗时必须 stopPropagation：不再冒泡到 block frame 触发
 //    setBlockClickedTrue → setFocusTarget/focusNode 焦点搬运那一轮额外重渲。
-// 3. 点击子元素（标题等）保持既有语义：不开弹窗（target !== currentTarget 短路）。
+// 3. 点击卡片内容区（标题/预览/头像…）与点卡片本体同义：都开弹窗（PRD 11-20 R1，
+//    旧语义「子元素不开」正是 11-20 要修的 bug）。
+// 4. 独立热区（动作按钮 / 状态 chip / emoji 头像）不被整卡点击接管。
 
 // @vitest-environment jsdom
 
@@ -34,6 +36,9 @@ function makeCard(overrides: Partial<OverviewBoardCard> = {}): OverviewBoardCard
         title: "pi agent",
         avatar: { kind: "emoji", emoji: "🤖" },
         providerLabel: "pi",
+        // raw provider key：emoji 头像热区判定用（卡片属性行 fixture 同步补齐 propRows）。
+        provider: "pi",
+        propRows: { visible: [], hiddenCount: 0 },
         projectName: "",
         tags: [],
         kindLabel: "",
@@ -114,16 +119,18 @@ describe("BoardCard click semantics", () => {
         expect(onWrapperClick).not.toHaveBeenCalled();
     });
 
-    it("does not open when clicking a child element (target !== currentTarget)", () => {
+    it("opens the card when clicking a child element (whole card is clickable)", () => {
         const onOpenCard = vi.fn();
-        const { container } = mountCardInWrapper({ onOpenCard });
+        const onWrapperClick = vi.fn();
+        const { container } = mountCardInWrapper({ onOpenCard, onWrapperClick });
         const title = container.querySelector<HTMLElement>(".session-overview-board-card-title");
         expect(title).not.toBeNull();
         act(() => {
             (title as HTMLElement).dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
         });
-        // 子元素点击不开弹窗（既有语义：卡片只接自己本体上的点击）。
-        expect(onOpenCard).not.toHaveBeenCalled();
+        // 卡片内部全是子 span：点它们必须开弹窗（11-20 之前 target !== currentTarget 全丢弃）。
+        expect(onOpenCard).toHaveBeenCalledTimes(1);
+        expect(onWrapperClick).not.toHaveBeenCalled();
     });
 
     it("opens the card on Enter keydown (keyboard path unchanged)", () => {

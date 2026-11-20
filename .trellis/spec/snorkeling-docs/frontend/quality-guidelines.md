@@ -58,6 +58,26 @@ Questions to answer:
 - **看板永远单行多列**：`grid-auto-flow: column` + `minmax(220px,1fr)` + `scroll-snap-type: x`，
   空列 `includeEmpty: true` 常显。按面板宽度退回纵向堆叠 = 又变回列表（用户已经提过一次）。
 
+### 卡片点击 = 热区白名单，不是 `target === currentTarget`
+
+卡片根用 `div role="button"` 时，**不要**写 `if (event.target !== event.currentTarget) return`
+来挡内部控件：卡片内容全是子 span（标题/预览/Note/tags/属性/度量），这条卫语句会把
+**整张卡片**变成死区，只剩裸内边距能点（11-20 jsdom 复现：点标题 `onOpenCard` 0 次）。
+
+正确形态（`overview-board.tsx` 的 `isCardHotzone` + `handleCardClick`）：
+
+- 卡片根**唯一**一个 click handler；从 `event.target` 向上 `closest()` 找白名单
+  `button / a[href] / input / textarea / select / [contenteditable="true"] / [data-card-interactive]`，
+  命中且在卡片内 → return（交给热区自己的 handler），否则 `stopPropagation()` + 开卡。
+- 卡片内要“自己点开”的东西必须显式声明热区：原生控件自然命中；非控件容器（如 emoji 头像做成
+  `<button>`）要同时挂 `data-card-interactive="true"`，方便未来把 chip 升级成可点而不改判定。
+- 根 `onKeyDown` 同样要 `event.target !== event.currentTarget` 守卫，否则在热区按钮上按 Enter
+  会冒泡到根**同时**开卡（键盘双触发）。
+- 拖选文本后松手那一下不算点击：`window.getSelection()?.isCollapsed === false` 直接 return。
+- 热区升级（展示 span → `<button>`）**必须保留探针契约**：`.session-overview-board-card-avatar` 与
+  `data-avatar-kind` 是 verify 台 `agent-card-emoji-avatar` 的锚点，新按钮要把它们一起挂上；
+  不能用 `aria-hidden` + disabled 的“死按钮”代替展示态，不满足条件时仍渲染纯 span（点它走整卡）。
+
 ---
 
 ## 列表/看板型渲染：卡片必须 memo + 回调必须稳定引用 (2026-11-10, task 11-10-overview-board-click-perf)

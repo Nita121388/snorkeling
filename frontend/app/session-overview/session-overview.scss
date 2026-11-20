@@ -1705,6 +1705,26 @@
     }
 }
 
+/* emoji 头像热区（`<button>`）：视觉等价上面的展示 span —— 只去掉 UA 边框/内边距，
+   再加一个轻量 hover/focus 反馈，其余观感零变化。 */
+.session-overview-board-card-avatar-btn {
+    padding: 0;
+    border: 0;
+    color: inherit;
+    cursor: pointer;
+    font: inherit;
+    transition: background-color 120ms ease;
+
+    &:hover {
+        background: rgb(from var(--main-text-color) r g b / 0.14);
+    }
+
+    &:focus-visible {
+        outline: 2px solid var(--accent-color);
+        outline-offset: 1px;
+    }
+}
+
 .session-overview-board-card-title {
     min-width: 0;
     flex: 1;

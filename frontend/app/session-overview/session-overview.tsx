@@ -2646,6 +2646,9 @@ function SessionOverviewPanel({ blockId, model }: ViewComponentProps<SessionOver
                     }),
                     avatar: resolveBoardAvatar(nextBlock, personas, sessionEmojis),
                     providerLabel,
+                    // raw provider key（不是显示名）：看板 emoji 头像热区要用它开 picker。
+                    // 非 agent 卡没有 persona，给 "" —— 卡片侧据此保留纯展示头像。
+                    provider: nextBlock.isAgentLike ? nextBlock.agentProvider : "",
                     projectName,
                     // tags 去 `#` 前缀并去重：卡片 chip / 标签分组 / 属性面板共用同一份口径。
                     tags: normalizeBoardTags(summary?.tags ?? detailSummary?.tags),

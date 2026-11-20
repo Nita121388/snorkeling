@@ -348,6 +348,12 @@ export type OverviewBoardCard = {
     avatar: OverviewBoardAvatar;
     /** Display name ("Claude"/"Codex"); empty for non-agent blocks. */
     providerLabel: string;
+    /**
+     * Raw provider key ("pi"/"codex"/…), NOT the display label. The emoji avatar
+     * hotzone needs it (`openAgentEmojiPicker` keys off the raw provider); empty
+     * for non-agent blocks and for agent blocks without a resolvable provider.
+     */
+    provider?: string;
     /** Fallback context chip: project basename, or the tab name when there is no project. */
     projectName: string;
     /** Session tags (no `#` prefix). Empty for non-agent blocks and untagged sessions. */

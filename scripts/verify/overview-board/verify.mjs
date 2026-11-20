@@ -655,6 +655,98 @@ async function main() {
         }
         await new Promise((r) => setTimeout(r, 300));
 
+        // ── 阶段 1a：整卡可点 + emoji 独立热区（任务 11-20-overview-board-card-click-hotzones）──
+        //
+        // 11-20 之前卡片用 `target === currentTarget` 判定：卡片内部的标题/预览/头像点击全被丢弃，
+        // 只有卡片裸内边距能开弹窗。所以这里的点击**必须落在子元素上**，而且要用真实指针
+        // （Input.dispatchMouseEvent）—— 合成事件绕过了命中测试，测不出死区。
+        const hotzoneRects = await client.evaluate(`(async () => {
+            const modals = await import("/frontend/app/store/modalmodel.ts");
+            for (let i = 0; i < 10 && modals.modalsModel.hasOpenModals(); i++) modals.modalsModel.popModal();
+            await new Promise((r) => setTimeout(r, 150));
+            const rect = (el) => {
+                if (el == null) return null;
+                el.scrollIntoView({ block: "center", inline: "center" });
+                const r = el.getBoundingClientRect();
+                if (r.width < 4 || r.height < 4) return null;
+                return { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) };
+            };
+            const cards = [...document.querySelectorAll(".session-overview-board-card")];
+            const agentCards = cards.filter((c) => c.getAttribute("data-agent-like") === "true");
+            if (agentCards.length === 0) return { err: "no agent card on board" };
+            const withAvatar = agentCards.find(
+                (c) => c.querySelector(".session-overview-board-card-avatar-btn") != null
+            );
+            await new Promise((r) => setTimeout(r, 120));
+            return {
+                ok: true,
+                agentCards: agentCards.length,
+                avatarButtons: cards.filter((c) => c.querySelector(".session-overview-board-card-avatar-btn") != null).length,
+                targetBlockId: withAvatar?.getAttribute("data-block-id") ?? "",
+                title: rect(withAvatar?.querySelector(".session-overview-board-card-title") ?? agentCards[0]?.querySelector(".session-overview-board-card-title")),
+                avatarBtn: rect(withAvatar?.querySelector(".session-overview-board-card-avatar-btn")),
+            };
+        })()`);
+        const dialogVisible = () => client.evaluate(`document.querySelector(".agent-dialog") != null`);
+        const popAllModals = () =>
+            client.evaluate(`(async () => {
+                const modals = await import("/frontend/app/store/modalmodel.ts");
+                for (let i = 0; i < 10 && modals.modalsModel.hasOpenModals(); i++) modals.modalsModel.popModal();
+                return modals.modalsModel.hasOpenModals();
+            })()`).catch(() => false);
+
+        if (hotzoneRects?.ok === true && hotzoneRects.title != null) {
+            await client.click(hotzoneRects.title.x, hotzoneRects.title.y);
+            await new Promise((r) => setTimeout(r, 420));
+            const titleOpened = await dialogVisible().catch(() => false);
+            check(
+                "board-card-title-click-opens-dialog",
+                titleOpened === true,
+                `真实指针点标题 rect=(${hotzoneRects.title.x},${hotzoneRects.title.y}) agent-dialog=${titleOpened}`
+            );
+            await popAllModals();
+            await new Promise((r) => setTimeout(r, 200));
+        } else {
+            skip("board-card-title-click-opens-dialog", `采样失败: ${hotzoneRects?.err ?? "no title rect"}`);
+        }
+
+        const avatarButtons = hotzoneRects?.avatarButtons ?? 0;
+        check("board-card-emoji-avatar-button", avatarButtons > 0, `avatar-btn=${avatarButtons} agentCards=${hotzoneRects?.agentCards ?? 0}`);
+
+        if (hotzoneRects?.ok === true && hotzoneRects.avatarBtn != null) {
+            await client.click(hotzoneRects.avatarBtn.x, hotzoneRects.avatarBtn.y);
+            await new Promise((r) => setTimeout(r, 420));
+            const pickerProbe = await client.evaluate(`(async () => {
+                const host = await import("/frontend/app/agent-persona/picker-host.ts");
+                const snap = host.getAgentEmojiPickerSnapshot();
+                return {
+                    picker: snap == null ? null : { blockId: snap.blockId, provider: snap.provider, scope: snap.initialScope },
+                    dialog: document.querySelector(".agent-dialog") != null,
+                };
+            })()`).catch(() => null);
+            check(
+                "board-card-emoji-click-opens-picker",
+                pickerProbe?.picker?.blockId === (hotzoneRects.targetBlockId ?? "__missing__"),
+                `picker-block=${pickerProbe?.picker?.blockId ?? "null"} 卡=${hotzoneRects.targetBlockId ?? ""} scope=${pickerProbe?.picker?.scope ?? ""}`
+            );
+            check(
+                "board-card-emoji-click-no-dialog",
+                pickerProbe?.dialog === false,
+                `agent-dialog=${pickerProbe?.dialog}（emoji 是独立热区，不得顺带开整卡弹窗）`
+            );
+            await client
+                .evaluate(`(async () => {
+                    const host = await import("/frontend/app/agent-persona/picker-host.ts");
+                    host.closeAgentEmojiPicker();
+                    return host.getAgentEmojiPickerSnapshot() == null;
+                })()`)
+                .catch(() => false);
+            await new Promise((r) => setTimeout(r, 200));
+        } else {
+            skip("board-card-emoji-click-opens-picker", "无 emoji 热区按钮（本机看板可能没有带 provider 的 agent 卡）");
+            skip("board-card-emoji-click-no-dialog", "无 emoji 热区按钮");
+        }
+
         // ── 阶段 1b：卡片「定位到块」（任务 11-09-overview-card-jump）──
         // 1. 每张卡都长出 [data-board-jump]（有 tabId + 面板传了 onJumpCard）；
         // 2. 点它不开整卡弹窗（与卡片点击语义互不串）；

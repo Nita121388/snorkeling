@@ -32,11 +32,14 @@ R6 **选区保护**：`window.getSelection()?.isCollapsed === false` 时点击�
 
 ## 验收判据
 
-- [ ] 新增 DOM 回归用例（照 overview-board-jump.test.tsx 骨架）覆盖交互矩阵：
+- [x] 新增 DOM 回归用例（`overview-board-hotzones.test.tsx`，14 例，照 overview-board-jump.test.tsx 骨架）覆盖交互矩阵：
   - 点标题 / 预览 / 头像（无 provider 的卡）：onOpenCard 各 1 次；
   - 点 emoji button（有 provider 的卡）：picker 触发 1 次、onOpenCard 0 次；
   - 点动作按钮 / 状态 chip：各自回调 1 次、onOpenCard 0 次（既有用例不回归）;
   - 根节点 Enter：onOpenCard 1 次；emoji button 上 Enter：onOpenCard 0 次。
-- [ ] `npx vitest run frontend/app/session-overview --reporter=dot` 全绿。
-- [ ] `npx tsc --noEmit` 错误数不高于当前基线。
-- [ ] 真机验证：点卡片标题能开整卡弹窗；点 emoji 出 picker；动作按钮不误触（verify 台跑 overview 相关 area，台账入库）。
+- [x] `npx vitest run frontend/app/session-overview --reporter=dot` 全绿（17 文件 / 244 例）。
+- [x] `npx tsc --noEmit` 错误数不高于当前基线（58 < 69，本包 0 新增）。
+- [ ] ~~真机验证：点卡片标题能开整卡弹窗；点 emoji 出 picker；动作按钮不误触（verify 台跑 overview 相关 area，台账入库）。~~
+  **真机 skipped（2026-11-20，用户明确「本机性能不够，不需要真机验证」）**：`scripts/verify/overview-board/verify.mjs`
+  已扩阶段 1a 五条判据（真实指针点标题开弹窗 / 点 emoji 头像开 picker 且不开弹窗 / avatar-btn 计数），
+  待有环境时直接跑；台账已记 skipped 行。

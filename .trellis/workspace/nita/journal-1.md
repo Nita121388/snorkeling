@@ -408,3 +408,45 @@ merge 后 go build ./... 通过、四包测试全绿、`task generate` 无 diff�
   未就绪直报失败且只在 console。结论：别猜，改调后端 `agentsend`。
 - **晚上接手顺序**：11-20 v2（前端四项，白名单 `frontend/app/session-overview/` + i18n）先做；11-18 R10 独立一包跟在后面，
   先跑 `node scripts/verify/commontext-send-agent-block/verify.mjs --attach` 与 `commontext-send-background` 定位失败入口。
+
+## 2026-11-20 21:20 · 11-20 v2 落地（Overview 新建 Agent 弹窗四项）
+
+- **V2-1** 看板入口「＋ 新建」→ 纯 ＋ 图标（保留 aria-label + title）。`overview-board.tsx` AddAgentButton。
+- **V2-2** 弹窗顶部加「发送内容」多行输入；提交链路 = `CreateBlockInTab`（返回 blockId，不抢焦点）→ 非空则
+  `RpcApi.AgentSendCommand({blockid, text64, submit:true})`。失败不回滚块，`onSubmit` 回执 `{ok:false,error}` →
+  弹窗不关、内联报错、footer 只留「关闭」（不给重试，避免建第二个块）。远端路径禁用输入并提示（agentsend 本地限制）。
+- **V2-3** 点 agent chip 后展示模型下拉：`loadAgentCatalog()` + `modelOptionsFor/pickDefaultModel`，默认项 value=""
+  （跟随 profile 配置，行为不变），显式选中才写进 `modelOverride`；切 agent 自动回位；catalog 无模型 → 手填输入框。
+- **V2-4** 弹窗 480→560、段距 10→14、路径列表 280/36vh→320/40vh，新增 message/model/hint/error 样式。
+- **回归**：`npx vitest run frontend/app/session-overview` → 17 files / 244 tests 全绿；tsc 本包 0 错；eslint exit 0。
+- **并发警告**：`session-overview.tsx` / `overview-board.tsx` 里同时有并行包（11-20-overview-board-card-click-hotzones）
+  未提交改动（CardHotzoneSelector、provider raw key 等）。**本包暂不提交**，等对方收口后一起或按文件拆提交。
+
+## 2026-11-20 21:35 · 11-18 R10 落地（CommonText existing 发送收口到 agentsend）
+
+- `commontext-send-button.tsx` existing 分支：本地块 → `AgentSendCommand`（就绪等待+paste+回车全在后端），
+  先报 sending(info) 再落 sent；远端 / E_UNSUPPORTED / E_NOT_FOUND 回退旧前端 paste 链；
+  其它错误不回退（防双发）→ sendFailed 可见 + false。
+- 新增 `commontext-send-existing.test.ts` 5 用例；`npx vitest run frontend/app/commontext` 191/191 全绿；
+  tsc/eslint 0 错。新增 i18n key `commontext:send.sending`。
+- **未提交**（与 11-20 v2 一致）：`session-overview.tsx` / `overview-board.tsx` / `session-overview.scss` 里
+  混着并行包（hotzones）的未提交改动，等它收口再一起/分文件提交。R10 自身的三个文件是干净的，可先提。
+- 真机 verify（commontext-send-agent-block / background + wsh block read 复核）留到与 11-20 v2 收尾一起跑。
+
+## 2026-11-20 夜：11-20-overview-board-card-click-hotzones 收尾（实现 + 单测全绿，真机 skipped）
+
+- **根因落地修复**：`overview-board.tsx` 去掉 `target === currentTarget` 卫语句 → `isCardHotzone` 白名单
+  （button / a[href] / input / textarea / select / [contenteditable] / `[data-card-interactive]`，`closest` + `root.contains` 防越界）；
+  卡片根唯一 click handler，head 上重复 onClick 删除；动作区 stopCardEvent（含 mousedown）保留。
+- **emoji 独立热区**：`BoardAvatar` 双形态（有 `onPickEmoji` → `<button data-card-interactive>`，否则纯 span）；
+  `OverviewBoardCard` 补 raw `provider`（取自 `OverviewBlock.agentProvider`），`isAgentLike && provider !== ""` 才接
+  `openAgentEmojiPicker(..., "session", sessionId)`；兼容类 `.session-overview-board-card-avatar` + `data-avatar-kind` 保留给探针。
+- **连修**：根 keyDown 加 `target !== currentTarget` 守卫（原在 emoji/动作按钮上按 Enter 会双触发开卡）；
+  选区非折叠时点击不开卡（拖选文本松手不弹窗）。
+- **判据**：`overview-board-hotzones.test.tsx` 14 例逐格（点标题/预览/无 provider 头像/裸内边距开卡；
+  emoji 只开 picker 且参数全断言；jump/delete/close/chip 各自回调且不开卡；根 Enter 开卡、emoji Enter 不开卡；选区保护）；
+  `npx vitest run frontend/app/session-overview` 17 文件 244 例全绿；tsc 58 < 69 基线（本包 0 新增）；eslint 0 error。
+  旧 memo 用例「点子元素不开」正是本 bug 语义，已按新语义改写。
+- **真机 skipped**：用户明确本机性能不够、不要真机验证；`scripts/verify/overview-board/verify.mjs` 已扩阶段 1a
+  五条判据（真实指针点标题开弹窗 / 点 emoji 头像开 picker 且不开弹窗 / avatar-btn 计数），有环境直接跑；台账已记 skipped。
+- **spec**：`quality-guidelines.md` 新增「卡片点击 = 热区白名单，不是 target === currentTarget」（含探针契约与 Enter 双触发坑）。
