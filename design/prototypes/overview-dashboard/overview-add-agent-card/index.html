@@ -139,18 +139,22 @@
   }
   .agent-model-input::placeholder { color: var(--text-dim); }
   .agent-model-input:focus { border-color: var(--accent); }
-  .session-overview-add-path-row {
-    display: flex; align-items: center; gap: 6px; background: var(--card);
-    border: 1px solid var(--border); border-radius: 6px; padding: 5px 8px; font-size: 11px;
+  .session-overview-add-path-item {
+    position: relative; display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
+    padding: 8px 8px 8px 12px; border-radius: 6px; margin-bottom: 1px; cursor: pointer;
+    background: none; border: none; font: inherit; color: var(--text); transition: background .12s;
   }
-  .session-overview-add-path-row .path { font-family: var(--mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .session-overview-add-path-row .badge-remote { color: var(--yellow); }
-  .session-overview-add-path-row .lock-btn { margin-left: auto; background: none; border: none; color: var(--text-dim); cursor: pointer; font-size: 12px; }
-  .session-overview-add-path-row .lock-btn:hover { color: var(--accent); }
-  .session-overview-add-path-opts { display: none; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
-  .session-overview-add-path-opts.is-open { display: flex; }
-  .session-overview-add-path-opt { font-size: 10px; font-family: var(--mono); background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 2px 7px; cursor: pointer; color: var(--text-dim); }
-  .session-overview-add-path-opt.is-selected { color: var(--accent); border-color: var(--accent); }
+  .session-overview-add-path-item:hover { background: var(--card-hover); }
+  .session-overview-add-path-item.is-selected { background: #4f7cff1f; }
+  .session-overview-add-path-item.is-selected::before {
+    content: ""; position: absolute; left: 0; top: 6px; bottom: 6px; width: 2px;
+    border-radius: 9999px; background: var(--accent);
+  }
+  .agent-path-icon { width: 16px; flex: none; text-align: center; color: var(--text-dim); font-size: 11px; }
+  .agent-path-body { flex: 1; min-width: 0; }
+  .agent-path-detail { font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .agent-path-sub { font-size: 10px; color: #8b93abb3; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .agent-path-list { max-height: min(320px, 40vh); overflow-y: auto; overscroll-behavior: contain; }
   .modal-footer { display: flex; justify-content: flex-end; gap: 8px; padding: 10px 12px; border-top: 1px solid var(--border); }
   .btn-cancel { background: var(--card); border: 1px solid var(--border); color: var(--text-dim); font: inherit; font-size: 12px; border-radius: 4px; padding: 4px 12px; cursor: pointer; }
   .btn-cancel:hover { color: var(--text); border-color: #4a5470; }
@@ -206,7 +210,8 @@
     <li>＋ 占位卡 <code>.session-overview-board-add</code>：挂在 <code>overview-board.tsx</code> 列渲染分支末尾，仅 <code>group === "tab"</code> 时渲染；列表视图对应 <code>session-overview.tsx</code> <code>TabGroupSection</code> 末尾的 <code>.session-overview-tab-add</code></li>
     <li>新建界面：<b>居中弹窗</b>，chrome 与样式复刻 New Agent 弹窗（<code>frontend/app/workspace/hero-launch-window.tsx</code>：rounded-xl + bg-modalbg/80 + backdrop-blur、chip 行选中态 bg-accent/12 + 左 2px accent 条、h-[28px] 模型输入框、border-t footer）
       实现：全局 <code>&lt;Modal&gt;</code> 容器（<code>frontend/app/modals/modal.tsx</code>，居中 + backdrop）+ 内容段结构与文案照搬 <code>workspace:agentLaunch.*</code>（新建 Agent / 选择 agent 类型 / 自动（可能按项目偏好）/ 选择一个路径。/ 取消 / 创建）；目录候选复用 <code>collectFolderCandidatesForTab</code> / <code>collectAgentLaunchTargetsInTab</code></li>
-    <li>建块：<code>agent-launch.ts:createAgentBlockDefForProfile</code> + <code>createBlock</code>，context 传该 Tab 的 cwd/connection 且 <code>inheritWorkspaceContext:false</code>（<code>agent-launch.ts:1117</code> 已注释此坑）</li>
+    <li>路径段：<b>可滚动候选列表</b>（不是下拉/手风琴 ），与 New Agent 弹窗的 path list 同构（<code>widgets.tsx</code>：<code>max-h-[min(320px,40vh)] overflow-y-auto overscroll-contain</code>、行 <code>py-2 pl-3 pr-2 rounded-md</code>、选中 <code>bg-accent/12</code> + 左 2px accent 条 <code>top-1.5 bottom-1.5</code>、行内图标 + <code>MiddleEllipsis</code> 路径 + 远程二行）；默认选中随 Tab 那一项，点行即切换</li>
+    <li>建块：<code>agent-launch.ts:createAgentBlockDefForProfile</code> + <code>createBlock</code>，context 传选中路径/该 Tab connection 且 <code>inheritWorkspaceContext:false</code>（<code>agent-launch.ts:1117</code> 已注释此坑）</li>
     <li>块落进该 Tab：复用 <code>inlinetab-addmenu.tsx</code> 的 <code>layoutModel.addBlockToInlineTab</code> 链路；enter 动画走 <code>overview-board-motion.ts</code> 既有 enter(180ms)</li>
     <li>状态/Provider/标签 分组不显示 ＋（派生列）；远端 Tab 新卡继承同一 connection</li>
   </ul>
@@ -214,17 +219,34 @@
 
 <script>
 "use strict";
-/* ── 假数据：Tab → 块。tab.context 即新建时路径预填来源 ── */
+/* ── 假数据：Tab → 块。tab.context 即新建时路径预填来源；tab.paths 即该 Tab 的路径候选（可滚动列表） ── */
 const TABS = [
-  { tabId: "t1", name: "snorkel-dev", context: { connection: null, cwd: "E:/code/snorkeling" }, tone: "blue", cards: [
+  { tabId: "t1", name: "snorkel-dev", context: { connection: null, cwd: "E:/code/snorkeling" }, tone: "blue",
+    paths: [
+      { detail: "E:/code/snorkeling", sub: "当前 Tab · 随 Tab", icon: "terminal" },
+      { detail: "E:/code/snorkeling/frontend", sub: "该 Tab 内块", icon: "terminal" },
+      { detail: "E:/code/snorkeling/pkg", sub: "该 Tab 内块", icon: "terminal" },
+      { detail: "~/Primary/projects/loop", sub: "手选", icon: "folder" },
+    ],
+    cards: [
     { id: "b1", title: "修 tab 切换卡顿", agent: "🤖", provider: "pi", state: "working", age: "刚刚", preview: "reinitWave 5 次串行 RPC 拆 2 批…" },
     { id: "b2", title: "夜间批改跑批", agent: "🤖", provider: "codex", state: "idle", age: "1小时前", preview: null },
     { id: "b3", title: "fsmonitor 泄漏调查", agent: "🤖", provider: "claude", state: "blocked", age: "20分钟前", preview: "67 个 daemon，每个 36-80MB…" },
   ]},
-  { tabId: "t2", name: "remote-mac", context: { connection: "ssh://mac", cwd: "/Users/nita/work" }, tone: "green", cards: [
+  { tabId: "t2", name: "remote-mac", context: { connection: "ssh://mac", cwd: "/Users/nita/work" }, tone: "green",
+    paths: [
+      { detail: "/Users/nita/work", sub: "ssh://mac · 当前 Tab", icon: "terminal" },
+      { detail: "/Users/nita/work/snorkeling", sub: "ssh://mac", icon: "terminal" },
+      { detail: "/Users/nita", sub: "ssh://mac · home", icon: "home" },
+    ],
+    cards: [
     { id: "b4", title: "远端构建验证", agent: "🤖", provider: "claude", state: "done", age: "2小时前", preview: null },
   ]},
-  { tabId: "t3", name: "scratch", context: { connection: null, cwd: "E:/tmp" }, tone: "purple", cards: [] },
+  { tabId: "t3", name: "scratch", context: { connection: null, cwd: "E:/tmp" }, tone: "purple",
+    paths: [
+      { detail: "E:/tmp", sub: "当前 Tab · 随 Tab", icon: "terminal" },
+    ],
+    cards: [] },
 ];
 const STATUS_COLS = [
   { key: "blocked", title: "待我处理", tone: "red", ids: ["b3"] },
@@ -392,22 +414,28 @@ function pickerHTML(tab) {
              placeholder="自动（可能按项目偏好）" aria-label="模型" />
     </div>
     <div class="agent-launch-section">
-      <div class="agent-launch-label">选择一个路径。（继承自该 Tab）</div>
-      <div class="session-overview-add-path-row">
-        <span>📁</span>
-        ${tab.context.connection ? `<span class="badge-remote">⇄</span>` : ""}
-        <span class="path">${tab.context.cwd}</span>
-        <button type="button" class="lock-btn" title="切换路径候选" onclick="togglePathOpts(event)">▾</button>
-      </div>
-      <div class="session-overview-add-path-opts is-open" id="add-path-opts">
-        <span class="session-overview-add-path-opt is-selected">${tab.context.cwd} · 随 Tab</span>
-        <span class="session-overview-add-path-opt" onclick="log('切目录候选（真实实现复用 collectFolderCandidatesForTab）')">E:/code/other</span>
+      <div class="agent-launch-label">选择一个路径。（继承自该 Tab，可换）</div>
+      <div class="agent-path-list" id="add-path-list" role="listbox" aria-label="路径候选">
+        ${tab.paths.map((p, i) => `
+          <button type="button" class="session-overview-add-path-item ${p.detail === tab.context.cwd ? "is-selected" : ""}" role="option"
+                  aria-selected="${p.detail === tab.context.cwd}" data-path="${p.detail}" title="${p.detail}">
+            <span class="agent-path-icon">${p.icon === "home" ? "⌂" : p.icon === "folder" ? "▤" : "▸_"}</span>
+            <span class="agent-path-body">
+              <div class="agent-path-detail">${p.detail}</div>
+              <div class="agent-path-sub">${p.sub}</div>
+            </span>
+          </button>`).join("")}
       </div>
     </div>`;
 }
-function togglePathOpts(e) {
-  e.stopPropagation();
-  document.getElementById("add-path-opts").classList.toggle("is-open");
+function selectPath(path) {
+  picker.path = path;
+  picker.el.querySelectorAll(".session-overview-add-path-item").forEach((n) => {
+    const on = n.dataset.path === path;
+    n.classList.toggle("is-selected", on);
+    n.setAttribute("aria-selected", String(on));
+  });
+  log(`路径选中 → ${path}`);
 }
 function selectAgent(id) {
   picker.agent = id;
@@ -420,6 +448,7 @@ function createAgent() {
   const tab = TABS.find((t) => t.tabId === picker.tabId);
   const agent = AGENTS.find((a) => a.id === picker.agent);
   const model = picker.el.querySelector("#add-model-input").value.trim() || MODELS[picker.agent][0];
+  const cwd = picker.path;
   const id = "b" + seq++;
   const card = {
     id, title: `${agent.name} · ${tab.name}`, agent: agent.emoji, provider: agent.name,
@@ -427,7 +456,7 @@ function createAgent() {
   };
   tab.cards.push(card);
   closePicker();
-  log(`createAgentBlockDefForProfile("${agent.name}", model=${model}, cwd=${tab.context.cwd}${tab.context.connection ? ", connection=" + tab.context.connection : ""}, inheritWorkspaceContext=false) → addBlockToInlineTab(${tab.tabId})`);
+  log(`createAgentBlockDefForProfile("${agent.name}", model=${model}, cwd=${cwd}${tab.context.connection ? ", connection=" + tab.context.connection : ""}, inheritWorkspaceContext=false) → addBlockToInlineTab(${tab.tabId})`);
   /* board 视图直接落卡（含 enter 动画 + 计数 bump，镜像 motion 层行为）；list 视图重渲染 */
   if (viewMode === "board" && groupMode === "tab") {
     const cards = document.getElementById("cards-" + tab.tabId);
@@ -450,6 +479,8 @@ document.addEventListener("click", (e) => {
   if (addBtn) { openPicker(addBtn.dataset.addTab); return; }
   const agentRow = e.target.closest(".session-overview-add-agent");
   if (agentRow) { selectAgent(agentRow.dataset.agent); return; }
+  const pathItem = e.target.closest(".session-overview-add-path-item");
+  if (pathItem) { selectPath(pathItem.dataset.path); return; }
 });
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape") closePicker();

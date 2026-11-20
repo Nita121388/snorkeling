@@ -15,7 +15,7 @@ Overview 看板从纯只读投影变「可写入口」：按 Tab 分组时，每
 - 看板视图 + Tab 分组 → 每列底部 `＋ 新建` → 点击弹**居中弹窗** → 选 agent → 创建 → 新卡带 `is-entering` 动画入列、列计数 bump
 - 列表视图 → Tab 组末尾 `＋ 在此 Tab 新建 agent` 行，同一弹窗
 - 分组切到 状态 / Provider / 标签 → `＋` 消失（派生列，不可加卡）
-- 选择器内路径行显示该 Tab 的 cwd（远端 Tab 显示连接徽标），点 🔒 展开目录候选（复用 commontext 的 folder 候选交互）
+- 路径段是**可滚动候选列表**（不是下拉/手风琴）：默认选中「随 Tab」那一项，点任意行即切换；远端 Tab 每行第二行标 `ssh://mac`
 - 页面底部有原型事件日志 + 实现落点说明
 
 ## 设计决策（已与用户确认）
@@ -24,7 +24,8 @@ Overview 看板从纯只读投影变「可写入口」：按 Tab 分组时，每
 2. 只在**容器型分组**（Tab）显示 `＋`；status/provider/tags 是派生列，不显示（避免「把卡塞进 working 列 = 让它变 working」的假交互）。
 3. 新建的是 **agent 会话卡**（走 `createAgentBlockDefForProfile`），不是笔记卡，不做卡内层级。
 4. 路径继承**该 Tab 的 context**，不是当前焦点块的：`inheritWorkspaceContext: false`（`agent-launch.ts:1117` 已有该坑注释）。
-5. 创建后停留在 Overview，不切 Tab；新卡走既有 `agent-status` 通道出状态 chip。
+5. 路径段是**可滚动候选列表**（与 New Agent 弹窗 path list 同构），不是下拉/手风琴 —— 2026-11-20 用户第三次反馈改定。
+6. 创建后停留在 Overview，不切 Tab；新卡走既有 `agent-status` 通道出状态 chip。
 
 ## 实现落点（原型 → 代码映射）
 
@@ -33,7 +34,7 @@ Overview 看板从纯只读投影变「可写入口」：按 Tab 分组时，每
 | `＋` 占位卡 `.session-overview-board-add` | `overview-board.tsx` BoardColumn 渲染分支末尾（仅 `group === "tab"` 时挂） |
 | 居中弹窗容器 | 复用 `<Modal>`（`frontend/app/modals/modal.tsx`）居中 + backdrop；内部 chrome 复制 `hero-launch-window.tsx` 的类串（与 New Agent 弹窗同观感） |
 | 弹窗内容 | 新组件（结构参照 `commontext-send-button.tsx` 的 SendTargetPanel 紧凑档） |
-| 路径候选随 Tab | 复用 `commontext-send-target.ts` 的 `collectFolderCandidatesForTab` / `collectAgentLaunchTargetsInTab` |
+| 路径可滚动候选列表 | 数据复用 `commontext-send-target.ts` 的 `collectFolderCandidatesForTab` / `collectAgentLaunchTargetsInTab`；行样式照搬 `widgets.tsx` path list（`max-h-[min(320px,40vh)]` + 左 accent 条 + 图标 + `MiddleEllipsis`） |
 | 建块 | `agent-launch.ts:createAgentBlockDefForProfile` + `store/global.ts:createBlock`，context 带 `inheritWorkspaceContext:false` |
 | 块落进该 Tab | 复用 `inlinetab-addmenu.tsx` 的 `layoutModel.addBlockToInlineTab` 链路 |
 | enter 动画 | `overview-board-motion.ts` 既有 `enter`（180ms），新卡天然走 diff 进 enter 分支 |
