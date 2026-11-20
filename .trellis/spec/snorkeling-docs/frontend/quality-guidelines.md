@@ -973,3 +973,30 @@ Windows/Electron 下「焦点逃逸（blur）」不是可靠的关闭信号：
   被占死）。症状记法：`RUN` 后无任何输出、`--testTimeout` 无效。
 - `vi.mock` 工厂会被提升到模块顶部，**不能引用模块级变量**（`fakeT`、`fakeStatusStore`
   都要在工厂内部定义，或放到 `vi.hoisted`）。
+
+## React 里的「状态翻转 → 过渡动画」别用 effect 后挂类名；要常驻手感的地方用 WAAPI 一次性动画（2026-11-20, task 11-20-commontext-compose-polish）
+
+「点编辑器缓慢展开」这类**由 React 状态翻转驱动**的高度过渡，CSS transition 挂在 effect 里
+是跑不起来的：React 先把状态提交进 DOM（高度已经变成目标值），effect 才去挂
+`transition` 类名 —— 那时**已无值可插值**。反过来把 transition 常驻在元素上，又会把用户
+手动拖拽（textarea `resize-y`）的每一帧缓动掉，变成「跟不上手」的糊跟随。
+
+正解（`commontext-compose-modal.tsx` 的 `setEditorExpandedAnimated` / `animateEditorHeight`）：
+
+- 在**事件处理器里**先实测 `el.offsetHeight` 存下 `fromPx`，再 setState；
+- 下一帧（React 已提交）实测 `toPx`，用 `el.animate?.([{height: fromPx}, {height: toPx}], {duration, easing})`
+  播一次；动画结束自动释放，不污染后续拖拽/布局。
+- 两个兜底必带：`prefers-reduced-motion: reduce` 直接跳过；`el.animate?.` 可选链
+  （jsdom / 老运行时没有 WAAPI，降级为直切而不是报错）。
+
+## app 根级全屏 fixed 层的 z-index 会压过弹窗壳：新弹窗打开前要收口（2026-11-20, task 11-20-commontext-compose-polish）
+
+`.modal-wrapper` 的 `--zindex-modal-wrapper` 只有 **500**，而 `.markdown-emoji-backdrop`
+（`position:fixed; inset:0; z-index:10019`）这类全屏点击拦截层高于它。agent emoji picker 的
+全局单例状态放在 `agent-persona/picker-host.ts` 的模块级 `pickerSnapshot`，能活过打开它的
+表面；残留时整个弹窗「看得见、点不动」，用户只能切 Tab 重挂树才恢复。
+
+- 任何「打开新弹窗」的入口，都要先关掉可能残留的 app 根级全屏层
+  （`handleOpen` 里 `closeAgentEmojiPicker()` 即此模式）。
+- 新写全屏 backdrop 时自问一句：它的 z-index 是否高于 modal 壳、有没有不依赖外点 dismiss
+  的兜底关闭（表面 unmount / 打开其他弹窗时）。

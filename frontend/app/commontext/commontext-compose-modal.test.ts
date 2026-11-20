@@ -13,12 +13,28 @@ describe("CommonTextComposeModal hook order", () => {
         expect(closedReturnIndex).toBeGreaterThan(detailSaveEffectIndex);
     });
 
-    it("renders a direction-neutral focused-target insert action in each suggestion row", () => {
-        expect(source).toContain('className="item-insert-btn');
-        expect(source).toContain("fa fa-regular fa-paste");
-        expect(source).toContain("event.stopPropagation()");
-        expect(source).toContain("insertOrCopyCommonText(item.text)");
-        expect(source).toContain('i18n.t("commontext:status.copiedNoTarget")');
+    it("keeps insert as a detail-panel-only action and drops the row hover insert (R4)", () => {
+        // R4（2026-11-20）：列表行 hover 不再弹「插入到聚焦目标」按钮——它把右槽的
+        // 「次数 + 更新时间」顶掉，而且扫行时误点率高于收益。行内链接一并移除。
+        expect(source).not.toContain("item-insert-btn");
+        expect(source).not.toContain("insertOrCopyCommonText");
+        // 详情栏的 Insert 仍在（插入到编辑器光标处，行为不变）。
+        expect(source).toContain('data-commontext-detail-insert=""');
+        expect(source).toContain("handleInsertDetail(detailItem)");
+        expect(source).toContain('t("commontext:compose.insertAtCaret")');
+    });
+
+    it("expands the composer with a one-shot WAAPI height animation instead of a CSS transition (R2)", () => {
+        // React 把展开态写进 DOM 之后才轮到 effect，CSS transition 那时已无值可插；
+        // WAAPI 拿「变之前的 offsetHeight」反向 hold 一帧再冲到目标，跑完即释放（不糊 resize 拖拽）。
+        expect(source).toContain("const animateEditorHeight = useCallback(");
+        expect(source).toContain("el.animate?.([{ height: `${fromPx}px` }, { height: `${toPx}px` }], {");
+        expect(source).toContain("duration: EDITOR_ANIM_MS,");
+        expect(source).toContain('easing: "cubic-bezier(0.33, 1, 0.68, 1)"');
+        // 减动效偏好直切
+        expect(source).toContain("prefers-reduced-motion: reduce");
+        // 旧的「常驻 transition 类」方案不应回流
+        expect(source).not.toContain("commontext-editor-anim");
     });
 
     it("offers an action-row button to dismiss editor-based filtering", () => {
@@ -71,9 +87,9 @@ describe("CommonTextComposeModal hook order", () => {
         expect(source).toContain("tier={commonTextFreshnessTier(item)}");
         expect(source).toContain('data-commontext-updated-rel=""');
         expect(source).toContain("formatCommonTextFreshnessCompact(item.updatedat)");
-        // 元信息列不新增行高：与 hover 插入按钮共用同一固定宽槽
+        // 元信息列不新增行高，且 R4 之后常显：不再靠 hover 让位给插入按钮。
         expect(source).toContain("w-[58px]");
-        expect(source).toContain("group-hover:opacity-0");
+        expect(source).not.toContain("group-hover:opacity-0");
     });
 
     it("renders the usage count as a bare number in the row slot", () => {
@@ -113,10 +129,8 @@ describe("CommonTextComposeModal hook order", () => {
         expect(source).toContain("flex flex-col gap-2.5 overflow-y-auto");
     });
 
-    it("counts a use for row-hover insert and detail copy, but not for brand-new items", () => {
-        // 行内 hover 插入/无目标回退复制
-        expect(source).toContain("await recordCommonTextUse(item.id);");
-        // 详情 Copy
+    it("counts a use for detail insert and detail copy, but not for brand-new items", () => {
+        // 详情 Insert（光标处插入）与详情 Copy（无目标回退复制）
         expect(source).toContain("fireAndForget(() => recordCommonTextUse(item.id));");
         // 新建条目：只刷新 lastusedat，不虚记一次使用
         expect(source).toContain("recordCommonTextUse(item.id, { countUsage: false })");
@@ -140,7 +154,7 @@ describe("CommonTextComposeModal hook order", () => {
         // 下半部分的通道；手动收起后聚焦不再自动弹开，再点恢复自动行为。
         expect(source).toContain('data-commontext-editor-toggle=""');
         expect(source).toContain("const [editorManuallyCollapsed, setEditorManuallyCollapsed] = useState(false);");
-        expect(source).toContain("if (!editorManuallyCollapsed) setEditorExpanded(true);");
+        expect(source).toContain("if (!editorManuallyCollapsed) setEditorExpandedAnimated(true);");
         // 手动收起态不受失焦折叠判定影响（多行内容否则会被 blur 计时重新撞开）
         expect(source).toContain("if (editorManuallyCollapsed) return;");
         expect(source).toContain("const toggleEditorCollapse = () => {");
@@ -149,7 +163,7 @@ describe("CommonTextComposeModal hook order", () => {
         // 每次打开弹窗重置手动收起态，不继承上次的临时选择
         expect(source).toContain("setEditorManuallyCollapsed(false);");
         // 粘贴图片不再越过手动收起态自动展开
-        expect(source).toContain("if (!editorManuallyCollapsed) setEditorExpanded(true);");
+        expect(source).toContain("if (!editorManuallyCollapsed) setEditorExpandedAnimated(true);");
         // 拖高（resize-y inline height）后收起：收起态显式给 height 盖掉浏览器写入的 inline 高度，
         // 否则 inline 优先级压过 h-9，收不回一行
         expect(source).toContain("const EDITOR_COLLAPSED_HEIGHT_PX = 36;");
@@ -238,8 +252,9 @@ describe("CommonTextComposeModal hook order", () => {
         expect(source).toContain("const flushSearch = useCallback(() => {");
         expect(source).toContain("return computeFilteredItems(stateRef.current, baseItemsRef.current, pending.text, pending.caret);");
         expect(source).toContain("const flushSearchRef = useRef(flushSearch);");
-        // 三处确认动作一致走 flush：列表 Enter / 搜索框 Enter / 行选与行内插入。
-        expect(source.match(/flushSearchRef\.current\(\)/g)?.length ?? 0).toBeGreaterThanOrEqual(4);
+        // 三处确认动作一致走 flush：列表 Enter / 搜索框 Enter / 行选。
+        // （R4 之后行内插入按钮已移除，原先的第四处随之下线。）
+        expect(source.match(/flushSearchRef\.current\(\)/g)?.length ?? 0).toBeGreaterThanOrEqual(3);
         expect(source).toContain("const items = COMMONTEXT_PERF_INPUT_ENABLED ? flushSearchRef.current() : filteredItems;");
         // IME：composition 期间不 commit，合成结束后按当前文本提交一次。
         expect(source).toContain("const handleCompositionStart = () => {");

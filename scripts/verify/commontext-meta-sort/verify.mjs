@@ -263,11 +263,12 @@ try {
     second: second?.titles,
   });
 
-  // 行内插入：先把焦点放到 editor，再真实点击该行的插入按钮。
+  // 详情插入（R4 之后行内悬浮插入按钮已移除）：先点行选中进详情，再点详情栏的 Insert。
   // （无终端时 insertOrCopyCommonText 会退化成复制；当前可编辑元素存在时走插入，
   //   不依赖剪贴板权限，无头环境更稳。）
   await clickSelector(client, COMPOSER);
-  const insertClicked = await clickListRow(client, ITEMS[0].title, ".item-insert-btn");
+  const rowClicked = await clickListRow(client, ITEMS[0].title, "");
+  const insertClicked = rowClicked && (await clickSelector(client, `${MODAL} [data-commontext-detail-insert]`));
   const afterInsert = await waitForProbe(client, probeSnapshot(), (s) => usageOf(s, ITEMS[0].title) === "1", {
     timeoutMs: 20000,
   });

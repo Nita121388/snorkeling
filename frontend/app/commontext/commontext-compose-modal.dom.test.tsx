@@ -578,3 +578,105 @@ describe("CommonTextComposeModal — list row shrink guard", () => {
         expect(spacer!.className).toContain("shrink-0");
     });
 });
+
+// ── 2026-11-20 commontext-compose-polish（R1–R5）───────────────────────────
+// 这五点都是用户在真机上逐条提的视觉/交互整改；jsdom 量不了动画时长与像素居中，
+// 所以这里锁**结构扳机**（该在的标记在、该删的类名已不存在），像素证据走验证台。
+describe("CommonTextComposeModal — compose polish (11-20)", () => {
+    function secondaryDeviceItems() {
+        const other = {
+            ...seedItems[0],
+            id: "ct-charlie",
+            title: "Charlie deploy",
+            text: "Charlie deploy steps",
+            origin: { deviceid: "dev-2", devicename: "Laptop", platform: "win32" },
+        };
+        globalStore.set(atoms.fullConfigAtom, {
+            settings: { "commontext:items": [...seedItems, other] },
+        } as any);
+    }
+
+    it("R1: drops the tutorial subtitle line from the header", async () => {
+        await openModal();
+        expect(document.body.textContent ?? "").not.toContain("Click + to add a new item to the top");
+    });
+
+    it("R2: focuses the composer into the expanded state and keeps the manual-collapse contract", async () => {
+        await openModal();
+        expect(isCollapsed()).toBe(true);
+        await focusComposer();
+        // 展开：不再写 inline height（保留 resize-y 拖高持久），改由 min-h-[120px] 撑开
+        expect(isCollapsed()).toBe(false);
+        expect(composer().style.height).toBe("");
+        expect(composer().style.maxHeight).not.toBe("");
+        // 显式收起后再次聚焦不应自动弹开（既有回归锁 A 不破）
+        await click(editorToggle());
+        expect(isCollapsed()).toBe(true);
+        await focusComposer();
+        expect(isCollapsed()).toBe(true);
+    });
+
+    it("R3: machine filter uses the unified AppSelect chip and keeps the native value channel", async () => {
+        secondaryDeviceItems();
+        await openModal();
+        const chip = document.querySelector("[data-commontext-device-chip]");
+        expect(chip).not.toBeNull();
+        // 值通道仍是隐藏原生 select：验证台与 CDP 靠 .value/.options 驱动
+        const proxy = chip!.querySelector("[data-commontext-device]") as HTMLSelectElement | null;
+        expect(proxy).not.toBeNull();
+        expect(proxy!.tagName).toBe("SELECT");
+        expect([...proxy!.options].map((o) => o.value)).toEqual(["any", "dev-1", "dev-2"]);
+        // 统一 AppSelect 触发器（不再是裸 select 视觉）
+        expect(chip!.querySelector("[data-select-trigger]")).not.toBeNull();
+        expect(chip!.className).not.toContain("text-accent");
+        await act(async () => {
+            const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value")!.set!;
+            setter.call(proxy, "dev-2");
+            proxy!.dispatchEvent(new Event("change", { bubbles: true }));
+        });
+        // 激活非 any 时 chip 用 accent 底色高亮（可发现性：现在筛的是哪台机器）
+        expect(document.querySelector("[data-commontext-device-chip]")!.className).toContain("text-accent");
+        const titles = [...document.querySelectorAll("[data-commontext-title]")].map((el) =>
+            el.getAttribute("data-commontext-title")
+        );
+        expect(titles).toEqual(["Charlie deploy"]);
+    });
+
+    it("R4: rows no longer expose the hover insert icon and keep the meta column visible", async () => {
+        await openModal();
+        expect(document.querySelector(".item-insert-btn")).toBeNull();
+        const meta = document.querySelector("[data-commontext-meta]");
+        expect(meta).not.toBeNull();
+        const child = meta!.firstElementChild as HTMLElement;
+        expect(child.className).not.toContain("group-hover:opacity-0");
+        // 插入入口搬到详情栏（唯一可见插入动作）
+        await click(document.querySelector('[data-commontext-title="Alpha standup"]'));
+        expect(document.querySelector("[data-commontext-detail-insert]")).not.toBeNull();
+    });
+
+    it("R5: synced detail status uses a lit cloud in accent and a compact relative time", async () => {
+        globalStore.set(atoms.fullConfigAtom, {
+            settings: {
+                "commontext:items": [
+                    { ...seedItems[0], syncstate: "synced", syncedrev: 3 },
+                ],
+            },
+        } as any);
+        await openModal({ query: "Alpha" });
+        const sync = document.querySelector("[data-commontext-detail-sync]") as HTMLElement | null;
+        expect(sync).not.toBeNull();
+        expect(sync!.getAttribute("data-commontext-detail-sync")).toBe("synced");
+        // 点亮的云：实心云 + accent 字色（旧的暗灰云读不出「已同步」）
+        expect(sync!.className).toContain("text-accent");
+        expect(sync!.querySelector(".fa-cloud")).not.toBeNull();
+        expect(sync!.querySelector(".fa-cloud-arrow-up")).toBeNull();
+        // 图标与文字同一 14px 行盒居中
+        expect(sync!.className).toContain("h-[14px]");
+        expect(sync!.className).toContain("items-center");
+        // 相对时间改成紧凑字形（1h 而不是「1 hour ago」/「1 小时前」）
+        const compact = [...document.querySelectorAll<HTMLElement>("[data-commontext-detail-meta] span")]
+            .map((el) => (el.textContent ?? "").trim())
+            .filter((text) => /^(now|\d+[smhd])$/.test(text));
+        expect(compact.length).toBeGreaterThan(0);
+    });
+});

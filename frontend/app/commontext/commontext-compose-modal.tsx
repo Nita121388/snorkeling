@@ -2,9 +2,13 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { Button } from "@/app/element/button";
+import { AppSelect } from "@/app/element/select";
 import { Input, InputGroup, InputRightElement } from "@/app/element/input";
 import { Modal } from "@/app/modals/modal";
 import { atoms } from "@/app/store/global";
+// R6 防御：agent emoji picker 的全屏 backdrop（z-index 10019）压过 .modal-wrapper(500)，
+// 若它在上次会话里残留打开，Compose 弹窗整体点不动/聚焦不了。
+import { closeAgentEmojiPicker } from "@/app/agent-persona/picker-host";
 import { SessionTagChips } from "@/app/view/aisessions/session-tag-chips";
 import {
     extractSessionTagsFromNote,
@@ -23,7 +27,7 @@ import { OpenCommonTextSearchEvent, type CommonTextSearchDetail } from "./common
 import { PropertyTagEditor, PropertyValuePopover } from "@/app/element/property-editor";
 import { commonTextFreshnessTier, formatCommonTextFreshnessCompact } from "./commontext-freshness";
 import { CommonTextFreshnessSquare } from "./commontext-freshness-square";
-import { copyCommonText, insertOrCopyCommonText } from "./commontext-insert";
+import { copyCommonText } from "./commontext-insert";
 import {
     DefaultCommonTextSortKey,
     caretContextSignature,
@@ -160,10 +164,15 @@ type CommonTextRowProps = {
     nowMinute: number;
     language: string;
     onSelect: (item: CommonTextItem) => void;
-    onInsert: (item: CommonTextItem) => void;
 };
 
-/** 列表行。父层只传稳定回调与 item，行内自算 tooltip/预览，不随打字逐帧重跑。 */
+/**
+ * 列表行。父层只传稳定回调与 item，行内自算 tooltip/预览，不随打字逐帧重跑。
+ *
+ * 2026-11-20（commontext-compose-polish R4）：行内悬浮「插入到聚焦目标」按钮已移除——
+ * 用户扫行时机不稳定、hover 按钮又把右槽的「次数 + 更新时间」顶掉，误点率高于收益。
+ * 插入动作只保留右侧详情栏的 Insert 按钮（有明确目标说明与 tooltip）。
+ */
 const CommonTextRow = memo(function CommonTextRowImpl({
     item,
     index,
@@ -171,17 +180,9 @@ const CommonTextRow = memo(function CommonTextRowImpl({
     nowMinute,
     language,
     onSelect,
-    onInsert,
 }: CommonTextRowProps) {
     const metaTooltip = useMemo(() => describeCommonTextTime(item, nowMinute), [item, nowMinute, language]);
     const sourceTooltip = useMemo(() => describeCommonTextSource(item, nowMinute), [item, nowMinute, language]);
-    const insertTooltip = useMemo(
-        () =>
-            i18n.t("commontext:compose.insertTitle", {
-                time: formatSessionRelativeTime(item.updatedat, nowMinute),
-            }),
-        [item, nowMinute, language]
-    );
     const preview = useMemo(() => makePreview(item.text), [item, language]);
     const creatorKind = getCommonTextCreatorKind(item);
 
@@ -191,7 +192,7 @@ const CommonTextRow = memo(function CommonTextRowImpl({
             data-commontext-title={item.title}
             style={{ height: ROW_HEIGHT }}
             className={
-                "group flex items-start gap-1.5 overflow-hidden border-l-2 px-3 py-1.5 cursor-pointer transition-colors " +
+                "flex items-start gap-1.5 overflow-hidden border-l-2 px-3 py-1.5 cursor-pointer transition-colors " +
                 // shrink-0 不能省：列表容器是 `flex flex-col` 滚动容器，而行自己是 flex 子项，
                 // 又带 `overflow-hidden`（CSS 规定 overflow≠visible 时 min-height:auto 解析为 0）。
                 // 少了它，N 行 44px 会被 flex 收缩按比例摊薄成十几像素一行，行内容被裁掉大半 ——
@@ -237,10 +238,11 @@ const CommonTextRow = memo(function CommonTextRowImpl({
                     </div>
                 )}
             </div>
-            {/* 右侧固定宽槽：默认是「次数 + 更新时间」列，hover 时它淡出、插入按钮落在同一位置 */}
+            {/* 右侧固定宽槽：「次数 + 更新时间」列常显。
+                R4 之后不再被 hover 插入按钮顶掉——行内不再提供插入动作。 */}
             <div className="relative shrink-0 self-center w-[58px] h-7 flex items-center justify-end" data-commontext-meta="">
                 <div
-                    className="flex flex-col items-end gap-0.5 whitespace-nowrap text-[10px] leading-none tabular-nums text-secondary transition-opacity group-hover:opacity-0"
+                    className="flex flex-col items-end gap-0.5 whitespace-nowrap text-[10px] leading-none tabular-nums text-secondary"
                     title={metaTooltip}
                 >
                     <span
@@ -267,19 +269,6 @@ const CommonTextRow = memo(function CommonTextRowImpl({
                         </span>
                     </span>
                 </div>
-                <span
-                    role="button"
-                    tabIndex={-1}
-                    aria-label={i18n.t("commontext:compose.insertAria")}
-                    title={insertTooltip}
-                    className="item-insert-btn absolute right-0 top-1/2 -translate-y-1/2 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded bg-modalbg text-secondary opacity-0 transition-opacity hover:bg-hoverbg hover:text-primary group-hover:opacity-100 cursor-pointer"
-                    onClick={(event) => {
-                        event.stopPropagation();
-                        onInsert(item);
-                    }}
-                >
-                    <i className="fa fa-regular fa-paste text-[12px]" />
-                </span>
             </div>
         </div>
     );
@@ -333,6 +322,9 @@ const ComposeModalMinH = 350;
 // 收起态单行高度（= h-9 = leading-5 20px + p-2×2 16px）：拖高过（resize-y 会在元素上留下浏览器
 // 写入的 inline height）的 editor 收起时必须显式盖掉，否则 inline 高度压过 h-9、收不回一行。
 const EDITOR_COLLAPSED_HEIGHT_PX = 36;
+// Editor 展开/收起时的高度过渡时长（ms）：由 commontext-compose-modal.tsx 的
+// setEditorExpandedAnimated 用 WAAPI 一次性播（不靠 CSS transition）。
+const EDITOR_ANIM_MS = 240;
 // Editor 持久草稿防抖窗口：与详情区自动保存（800ms）同节奏。
 const EDITOR_DRAFT_DEBOUNCE_MS = 800;
 
@@ -798,6 +790,9 @@ const CommonTextComposeModal = memo(() => {
                 }
             }
             setState(next);
+            // 开弹窗前先关掉可能残留的全局 emoji picker：它的全屏 backdrop 挂在 body、
+            // z-index 10019 压过 .modal-wrapper(500)，残留时整个弹窗都吃不到鼠标。
+            closeAgentEmojiPicker();
             if (searchCommitTimerRef.current != null) {
                 window.clearTimeout(searchCommitTimerRef.current);
                 searchCommitTimerRef.current = null;
@@ -1145,15 +1140,48 @@ const CommonTextComposeModal = memo(() => {
         queueSearchCommit(editor, editorCaret);
     };
 
+    // Editor 展开/收起时的高度过渡（R2）。
+    //
+    // 为什么用 WAAPI 一次性动画而不是 CSS transition：React 把 `editorExpanded` 提交到 DOM
+    // 之后（高度已变成目标值）才轮到 effect 挂过渡类名，那时已经无值可插值，动画跑不出来。
+    // WAAPI 能拿「刚变之前的 offsetHeight」反向 hold 一帧再冲到目标值，且跑完即释放——
+    // 不会像常驻 transition 那样把用户拖拽 resize-y 的每一帧都缓动成「跟不上手」的糊跟随。
+    const animateEditorHeight = useCallback((fromPx: number) => {
+        const el = editorRef.current;
+        if (el == null) return;
+        // 减动效偏好：用户开了系统级 reduce 时直接切换，不放动画。
+        if (window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches) return;
+        // 下一帧量目标高度：此时 React 已把展开态 class / inline style 写进 DOM。
+        window.requestAnimationFrame(() => {
+            const toPx = el.offsetHeight;
+            if (!Number.isFinite(toPx) || toPx <= 0 || toPx === fromPx) return;
+            // jsdom / 老运行时没有 WAAPI：降级为直接切换（无动画，不报错）。
+            el.animate?.([{ height: `${fromPx}px` }, { height: `${toPx}px` }], {
+                duration: EDITOR_ANIM_MS,
+                easing: "cubic-bezier(0.33, 1, 0.68, 1)",
+            });
+        });
+    }, []);
+
+    const setEditorExpandedAnimated = useCallback(
+        (next: boolean) => {
+            const fromPx = editorRef.current?.offsetHeight;
+            setEditorExpanded(next);
+            if (fromPx == null || fromPx <= 0) return;
+            animateEditorHeight(fromPx);
+        },
+        [animateEditorHeight]
+    );
+
     // Editor 收起/展开切换：手动收起优先于聚焦自动展开；再次点按钮恢复自动行为。
     // 收起不清正文——内容仍留在 textarea 里，展开即恢复。
     const toggleEditorCollapse = () => {
         if (editorExpanded) {
             setEditorManuallyCollapsed(true);
-            setEditorExpanded(false);
+            setEditorExpandedAnimated(false);
         } else {
             setEditorManuallyCollapsed(false);
-            setEditorExpanded(true);
+            setEditorExpandedAnimated(true);
         }
     };
 
@@ -1396,31 +1424,8 @@ const CommonTextComposeModal = memo(() => {
         }
     };
 
-    const handleRowInsertItem = (item: CommonTextItem) => {
-        fireAndForget(async () => {
-            const result = await insertOrCopyCommonText(item.text);
-            setStatus(
-                result === "inserted"
-                    ? i18n.t("commontext:status.inserted")
-                    : i18n.t("commontext:status.copiedNoTarget"),
-                result === "inserted" ? "ok" : "info"
-            );
-            // 先把详情区未落盘的草稿写完再计数：两条写路径都是
-            // "读全表 → 改 → 写全表"，交错会把用户刚改的正文覆盖掉。
-            // 顺手取消防抖定时器，免得同一份草稿再被写一遍。
-            if (detailSaveTimerRef.current != null) {
-                window.clearTimeout(detailSaveTimerRef.current);
-                detailSaveTimerRef.current = null;
-            }
-            await flushDetailSave({ keepDirty: true });
-            // 行内插入/无目标回退复制同样是一次使用：与详情 Insert 同口径计数。
-            await recordCommonTextUse(item.id);
-        });
-    };
     const handleListItemClickRef = useRef(handleListItemClick);
     handleListItemClickRef.current = handleListItemClick;
-    const handleRowInsertItemRef = useRef(handleRowInsertItem);
-    handleRowInsertItemRef.current = handleRowInsertItem;
 
     // 稳定行回调：窗口化后行组件是 memo 的，不能每次父层渲染换闭包。
     const handleRowSelect = useCallback((item: CommonTextItem) => {
@@ -1431,15 +1436,6 @@ const CommonTextComposeModal = memo(() => {
             return;
         }
         handleListItemClickRef.current(item);
-    }, []);
-    const handleRowInsert = useCallback((item: CommonTextItem) => {
-        if (COMMONTEXT_PERF_INPUT_ENABLED) {
-            const items = flushSearchRef.current();
-            const target = items.find((next) => next.id === item.id) ?? item;
-            handleRowInsertItemRef.current(target);
-            return;
-        }
-        handleRowInsertItemRef.current(item);
     }, []);
 
     // 防抖触发：detailDirty 被置 true 后排 800ms 一次性 flush，timer 在每次新改动时被清并重排。
@@ -1566,7 +1562,7 @@ const CommonTextComposeModal = memo(() => {
             // 2. 把新条目拉进详情区就地编辑
             // 3. 下一帧把光标聚焦到详情 textarea，让用户直接继续 refine
             setEditor("", 0);
-            setEditorExpanded(false);
+            setEditorExpandedAnimated(false);
             // 已升格为列表条目：editor 里的草稿使命结束，立即清持久键。
             clearEditorDraft();
             lastDraftTextRef.current = "";
@@ -1689,7 +1685,7 @@ const CommonTextComposeModal = memo(() => {
             });
             // 图片引用是块级内容，粘完把 editor 撑开展示（折叠态只有一行高，看不见引用）。
             // 但手动收起优先：用户显式收起时不再自动弹开。
-            if (!editorManuallyCollapsed) setEditorExpanded(true);
+            if (!editorManuallyCollapsed) setEditorExpandedAnimated(true);
             const editor = editorRef.current;
             if (editor != null) {
                 requestAnimationFrame(() => {
@@ -1779,12 +1775,10 @@ const CommonTextComposeModal = memo(() => {
             onClickBackdrop={close}
         >
             <div className="flex flex-col gap-2 flex-1 min-h-0" style={{ overflow: "hidden" }}>
-                {/* Header */}
+                {/* Header —— 副标题已于 11-20（compose-polish R1）移除：弹窗自身的
+                    交互已是自解释的，常驻教程文案只占纵向空间。 */}
                 <div className="shrink-0">
-                    <div>
-                        <div className="text-base font-semibold">{t("commontext:compose.title")}</div>
-                        <div className="text-[11px] text-muted">{t("commontext:compose.subtitle")}</div>
-                    </div>
+                    <div className="text-base font-semibold">{t("commontext:compose.title")}</div>
                 </div>
 
                 {/* Editor 包裹层：收起/展开按钮贴右上角，不占正文布局；点击不抢 editor 焦点。 */}
@@ -1833,7 +1827,7 @@ const CommonTextComposeModal = memo(() => {
                                 : { height: `${EDITOR_COLLAPSED_HEIGHT_PX}px` }
                         }
                         className={
-                            "block w-full resize-y rounded border border-border bg-[var(--form-element-bg-color)] text-[var(--form-element-text-color)] text-sm font-mono p-2 focus:outline-none focus:border-accent leading-relaxed transition-[min-height] " +
+                            "block w-full resize-y rounded border border-border bg-[var(--form-element-bg-color)] text-[var(--form-element-text-color)] text-sm font-mono p-2 focus:outline-none focus:border-accent leading-relaxed " +
                             (editorExpanded
                                 ? "min-h-[120px]"
                                 : "min-h-0 h-9 resize-none overflow-hidden whitespace-nowrap leading-5")
@@ -1853,7 +1847,7 @@ const CommonTextComposeModal = memo(() => {
                                 window.clearTimeout(editorCollapseTimerRef.current);
                                 editorCollapseTimerRef.current = null;
                             }
-                            if (!editorManuallyCollapsed) setEditorExpanded(true);
+                            if (!editorManuallyCollapsed) setEditorExpandedAnimated(true);
                         }}
                         onBlur={(event) => {
                             // 手动收起态不受失焦折叠判定影响——多行草稿否则会一直保持展开。
@@ -1867,7 +1861,7 @@ const CommonTextComposeModal = memo(() => {
                             }
                             editorCollapseTimerRef.current = window.setTimeout(() => {
                                 editorCollapseTimerRef.current = null;
-                                setEditorExpanded(valueHasNewline);
+                                setEditorExpandedAnimated(valueHasNewline);
                             }, 600);
                         }}
                         onSelect={(event) => updateEditorCaret(event.currentTarget)}
@@ -1981,11 +1975,15 @@ const CommonTextComposeModal = memo(() => {
                                 </InputRightElement>
                             </InputGroup>
                             {allItems.length > 0 && (
-                                <div className="mt-2 flex min-w-0 items-center gap-1.5" data-commontext-source-row="">
+                                <div
+                                    className="mt-2 flex min-w-0 flex-wrap items-center gap-1.5"
+                                    data-commontext-source-row=""
+                                >
+                                    {/* 创建者三档：分段控件（同一壳、内部只靠底色分隔） */}
                                     <div
                                         role="group"
                                         aria-label={t("commontext:compose.filterCreator")}
-                                        className="inline-flex shrink-0 items-center overflow-hidden rounded-md border border-border"
+                                        className="inline-flex h-[22px] shrink-0 items-center overflow-hidden rounded-md border border-border bg-surface-soft"
                                     >
                                         {CommonTextCreatorFilters.map((option) => {
                                             const active = option.key === state.creatorFilter;
@@ -2005,7 +2003,7 @@ const CommonTextComposeModal = memo(() => {
                                                         }))
                                                     }
                                                     className={
-                                                        "inline-flex items-center gap-1 px-2 py-0.5 text-[11px] leading-none cursor-pointer transition-colors " +
+                                                        "inline-flex h-full items-center gap-1 px-2 text-[11px] leading-none cursor-pointer transition-colors " +
                                                         (active
                                                             ? "bg-actionsoft text-actionsofttext"
                                                             : "text-secondary hover:bg-hover hover:text-primary")
@@ -2022,28 +2020,45 @@ const CommonTextComposeModal = memo(() => {
                                             );
                                         })}
                                     </div>
+                                    {/* 机器筛选（R3）：原先是一枚原生 <select>，Windows 上拉开的
+                                        选项列表是系统 UA 绘制的方角白底，与弹窗主题不相容；
+                                        换成统一 AppSelect（值通道仍是隐藏原生 select，验证台口径不变），
+                                        外壳做成与创建者分段同高、同圆角的 chip，激活时用 accent 底色。 */}
                                     {deviceSummaries.length > 1 && (
-                                        <select
-                                            data-commontext-device=""
-                                            aria-label={t("commontext:compose.filterComputer")}
+                                        <div
+                                            data-commontext-device-chip=""
                                             title={t("commontext:compose.filterComputerTitle")}
-                                            value={state.deviceFilter}
-                                            onChange={(e) =>
-                                                setState((cur) => ({
-                                                    ...cur,
-                                                    deviceFilter: e.target.value,
-                                                    selectedIndex: 0,
-                                                }))
+                                            className={
+                                                "inline-flex h-[22px] min-w-0 max-w-[200px] shrink items-center gap-1 rounded-md border pr-0.5 text-[11px] leading-none transition-colors " +
+                                                (state.deviceFilter === "any"
+                                                    ? "border-border bg-surface-soft text-secondary"
+                                                    : "border-accent/50 bg-actionsoft text-accent")
                                             }
-                                            className="min-w-0 max-w-[160px] shrink truncate h-[22px] rounded-md border border-border bg-surface-soft px-1.5 text-[11px] text-secondary cursor-pointer focus:outline-none focus:border-accent"
                                         >
-                                            <option value="any">{t("commontext:compose.anyComputer")}</option>
-                                            {deviceSummaries.map((d) => (
-                                                <option key={d.deviceid} value={d.deviceid}>
-                                                    {d.devicename} ({d.count})
-                                                </option>
-                                            ))}
-                                        </select>
+                                            <i className="fa-solid fa-computer ml-1.5 shrink-0 text-[10px]" />
+                                            <AppSelect
+                                                variant="bare"
+                                                size="xs"
+                                                className="min-w-0"
+                                                data-commontext-device=""
+                                                ariaLabel={t("commontext:compose.filterComputer")}
+                                                value={state.deviceFilter}
+                                                onChange={(nextDevice) =>
+                                                    setState((cur) => ({
+                                                        ...cur,
+                                                        deviceFilter: nextDevice,
+                                                        selectedIndex: 0,
+                                                    }))
+                                                }
+                                                options={[
+                                                    { value: "any", label: t("commontext:compose.anyComputer") },
+                                                    ...deviceSummaries.map((d) => ({
+                                                        value: d.deviceid,
+                                                        label: `${d.devicename} (${d.count})`,
+                                                    })),
+                                                ]}
+                                            />
+                                        </div>
                                     )}
                                 </div>
                             )}
@@ -2184,7 +2199,6 @@ const CommonTextComposeModal = memo(() => {
                                                     nowMinute={nowMinute}
                                                     language={i18n.language}
                                                     onSelect={handleRowSelect}
-                                                    onInsert={handleRowInsert}
                                                 />
                                             );
                                         }
@@ -2252,17 +2266,14 @@ const CommonTextComposeModal = memo(() => {
                                                     </div>
                                                 )}
                                             </div>
-                                            {/* 右侧固定宽槽：默认是「次数 + 更新时间」列（次数是图标 + 数字，
-                                                更新时间是 12px 热力方块），鼠标悬浮时它淡出、插入按钮落在同一位置
-                                                ——hover 不产生布局抖动。
-                                                代价是标题列少了这 58px（靠 truncate 兜住，行高因此不变）。
+                                            {/* 右侧固定宽槽：「次数 + 更新时间」列常显（R4：行内插入按钮已移除）。
                                                 尺寸约束：次数行 10px + gap 2px + 方块 12px = 24px ≤ h-7(28px)。 */}
                                             <div
                                                 className="relative shrink-0 self-center w-[58px] h-7 flex items-center justify-end"
                                                 data-commontext-meta=""
                                             >
                                                 <div
-                                                    className="flex flex-col items-end gap-0.5 whitespace-nowrap text-[10px] leading-none tabular-nums text-secondary transition-opacity group-hover:opacity-0"
+                                                    className="flex flex-col items-end gap-0.5 whitespace-nowrap text-[10px] leading-none tabular-nums text-secondary"
                                                     title={metaTooltip}
                                                 >
                                                     <span
@@ -2298,39 +2309,6 @@ const CommonTextComposeModal = memo(() => {
                                                         </span>
                                                     </span>
                                                 </div>
-                                                <span
-                                                    role="button"
-                                                    tabIndex={-1}
-                                                    aria-label={t("commontext:compose.insertAria")}
-                                                    title={i18n.t("commontext:compose.insertTitle", {
-                                                        time: formatSessionRelativeTime(item.updatedat),
-                                                    })}
-                                                    className="item-insert-btn absolute right-0 top-1/2 -translate-y-1/2 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded bg-modalbg text-secondary opacity-0 transition-opacity hover:bg-hoverbg hover:text-primary group-hover:opacity-100 cursor-pointer"
-                                                    onClick={(event) => {
-                                                        event.stopPropagation();
-                                                        fireAndForget(async () => {
-                                                            const result = await insertOrCopyCommonText(item.text);
-                                                            setStatus(
-                                                                result === "inserted"
-                                                                    ? i18n.t("commontext:status.inserted")
-                                                                    : i18n.t("commontext:status.copiedNoTarget"),
-                                                                result === "inserted" ? "ok" : "info"
-                                                            );
-                                                            // 先把详情区未落盘的草稿写完再计数：两条写路径都是
-                                                            // "读全表 → 改 → 写全表"，交错会把用户刚改的正文覆盖掉。
-                                                            // 顺手取消防抖定时器，免得同一份草稿再被写一遍。
-                                                            if (detailSaveTimerRef.current != null) {
-                                                                window.clearTimeout(detailSaveTimerRef.current);
-                                                                detailSaveTimerRef.current = null;
-                                                            }
-                                                            await flushDetailSave({ keepDirty: true });
-                                                            // 行内插入/无目标回退复制同样是一次使用：与详情 Insert 同口径计数。
-                                                            await recordCommonTextUse(item.id);
-                                                        });
-                                                    }}
-                                                >
-                                                    <i className="fa fa-regular fa-paste text-[12px]" />
-                                                </span>
                                             </div>
                                         </div>
                                     );
@@ -2567,31 +2545,38 @@ const CommonTextComposeModal = memo(() => {
                                         <i className="fa fa-regular fa-copy mr-1" />
                                         {t("commontext:compose.copy")}
                                     </Button>
+                                    {/* 插入入口：R4 之后行内悬浮插入按钮已移除，这里是唯一可见的插入动作
+                                        （验证台 `commontext-meta-sort` 按 data-commontext-detail-insert 定位）。 */}
                                     <Button
+                                        data-commontext-detail-insert=""
                                         onClick={() => handleInsertDetail(detailItem)}
                                         title={t("commontext:compose.insertAtCaret")}
                                     >
                                         <i className="fa fa-solid fa-arrow-up mr-1" />
                                         {t("commontext:compose.insert")}
                                     </Button>
-                                    {/* 详情元信息：创建 / 更新 / 最近使用 / 次数。图标 + 数字，完整时间戳走 tooltip。 */}
+                                    {/* 详情元信息：同步状态 / 创建 / 更新 / 最近使用 / 次数。
+                                        R5：图标与文字统一 14px 高的 inline-flex 对齐（旧的 leading-none 让
+                                        9px 图标坐在 10.5px 文字基线上，读取时看起来总偏低）；
+                                        相对时间改用列表同一套紧凑字形（now / 5m / 1h / 3d）。 */}
                                     <div
                                         data-commontext-detail-meta=""
-                                        className="flex items-center gap-2 text-[10.5px] leading-none tabular-nums text-secondary"
+                                        className="flex items-center gap-2 text-[10.5px] tabular-nums text-secondary"
                                     >
                                         <span
                                             data-commontext-detail-sync={detailItem.syncstate ?? "pending"}
                                             className={
-                                                "inline-flex items-center gap-1 " +
-                                                (detailItem.syncstate === "synced" ? "" : "text-warn")
+                                                "inline-flex h-[14px] items-center gap-1 leading-none " +
+                                                (detailItem.syncstate === "synced" ? "text-accent" : "text-warn")
                                             }
                                             title={describeCommonTextSyncState(detailItem)}
                                         >
                                             <i
                                                 className={
                                                     detailItem.syncstate === "synced"
-                                                        ? "fa fa-solid fa-cloud text-[9px]"
-                                                        : "fa fa-solid fa-cloud-arrow-up text-[9px]"
+                                                        ? // “点亮的云”：实心 + accent 色（并接页面其他 accent 图标）。
+                                                          "fa fa-solid fa-cloud text-[10px]"
+                                                        : "fa fa-solid fa-cloud-arrow-up text-[10px]"
                                                 }
                                             />
                                             {detailItem.syncstate === "synced"
@@ -2599,7 +2584,7 @@ const CommonTextComposeModal = memo(() => {
                                                 : t("commontext:compose.pending")}
                                         </span>
                                         <span
-                                            className="inline-flex items-center gap-1"
+                                            className="inline-flex h-[14px] items-center gap-1 leading-none"
                                             title={i18n.t("commontext:meta.timeCreated", {
                                                 time: compactCommonTextTime(detailItem.createdat, true),
                                             })}
@@ -2608,33 +2593,33 @@ const CommonTextComposeModal = memo(() => {
                                             {compactCommonTextTime(detailItem.createdat)}
                                         </span>
                                         <span
-                                            className="inline-flex items-center gap-1"
+                                            className="inline-flex h-[14px] items-center gap-1 leading-none"
                                             title={i18n.t("commontext:meta.timeUpdated", {
                                                 time: compactCommonTextTime(detailItem.updatedat, true),
                                             })}
                                         >
-                                            <i className="fa fa-solid fa-pen text-[9px]" />
-                                            {formatSessionRelativeTime(detailItem.updatedat)}
+                                            <i className="fa fa-solid fa-pen text-[10px]" />
+                                            {formatCommonTextFreshnessCompact(detailItem.updatedat)}
                                         </span>
                                         <span
-                                            className="inline-flex items-center gap-1"
+                                            className="inline-flex h-[14px] items-center gap-1 leading-none"
                                             title={i18n.t("commontext:meta.timeLastUsed", {
                                                 time: compactCommonTextTime(detailItem.lastusedat, true),
                                             })}
                                         >
                                             <i className="fa fa-solid fa-clock-rotate-left text-[10px]" />
                                             {detailItem.lastusedat != null
-                                                ? formatSessionRelativeTime(detailItem.lastusedat)
+                                                ? formatCommonTextFreshnessCompact(detailItem.lastusedat)
                                                 : t("commontext:meta.never")}
                                         </span>
                                         <span
                                             data-commontext-detail-usage={detailItem.usagecount ?? 0}
-                                            className="inline-flex items-center gap-1"
+                                            className="inline-flex h-[14px] items-center gap-1 leading-none"
                                             title={i18n.t("commontext:meta.usedTimes", {
                                                 count: detailItem.usagecount ?? 0,
                                             })}
                                         >
-                                            <i className="fa fa-solid fa-repeat text-[9px]" />
+                                            <i className="fa fa-solid fa-repeat text-[10px]" />
                                             {detailItem.usagecount ?? 0}
                                         </span>
                                     </div>
