@@ -14,6 +14,8 @@ import { filterSessionOverviewTabIds } from "@/app/session-overview/session-over
 import { atoms, createBlock, getApi, getFocusedBlockId } from "@/app/store/global";
 import { globalStore } from "@/app/store/jotaiStore";
 import { ObjectService } from "@/app/store/services";
+import { RpcApi } from "@/app/store/wshclientapi";
+import { TabRpcClient } from "@/app/store/wshrpcutil";
 import * as WOS from "@/app/store/wos";
 import { stripSessionTagHashes } from "@/app/view/aisessions/session-tags";
 import { getAgentIcon } from "@/app/view/term/agent-logo";
@@ -27,7 +29,7 @@ import { useDetectedAgentProfileOptions } from "@/app/workspace/use-agent-profil
 import { i18n } from "@/i18n/config";
 import { getLayoutModelForStaticTab } from "@/layout/index";
 import { getLayoutDataActiveBlockId } from "@/layout/lib/inlineTabs";
-import { fireAndForget } from "@/util/util";
+import { fireAndForget, stringToBase64 } from "@/util/util";
 import { FloatingPortal, offset, useDismiss, useFloating, useInteractions } from "@floating-ui/react";
 import clsx from "clsx";
 import { atom, useAtomValue } from "jotai";
@@ -235,7 +237,47 @@ export async function executeCommonTextSend(input: {
         return false;
     }
     if (preview.kind === "existing") {
-        const target = sendTextToFocusedTerm(cleanText, [focusedAgent!.blockId]);
+        const blockId = focusedAgent!.blockId;
+        // R10（11-18 包）：本地块改走后端 agentsend（就绪等待 + 一次 bracketed paste + 回车，
+        // 全链在 blockcontroller.SendInput 单写路径上），不再用前端「paste 后固定 150ms 补回车」
+        // 的启发式竞态。远端块（agentsend 本地限制）与 E_UNSUPPORTED 回退旧前端链。
+        const connection = typeof focusedAgent!.connection === "string" ? focusedAgent!.connection.trim() : "";
+        const isRemote = connection !== "" && connection !== "local" && !connection.startsWith("local:");
+        if (!isRemote) {
+            onStatus?.(i18n.t("commontext:send.sending"), "info");
+            try {
+                await RpcApi.AgentSendCommand(TabRpcClient, {
+                    blockid: blockId,
+                    text64: stringToBase64(cleanText),
+                    submit: true,
+                });
+                onStatus?.(i18n.t("commontext:send.sent"), "ok");
+                return true;
+            } catch (error) {
+                const message = (error as Error)?.message ?? "";
+                // E_UNSUPPORTED / E_NOT_FOUND = 后端确定没写入（远端块 / 元数据异常）→ 回退
+                // 前端 paste 链。其它错误（如就绪超时 E_AGENT_NOT_READY）不回退：后端可能已
+                // 写入一部分，双路都发会出现重复文本，宁可报错让用户重试。
+                if (message.includes("E_UNSUPPORTED") || message.includes("E_NOT_FOUND")) {
+                    const target = sendTextToFocusedTerm(cleanText, [blockId]);
+                    if (target == null) {
+                        onStatus?.(i18n.t("commontext:send.notReady"), "err");
+                        return false;
+                    }
+                    onStatus?.(i18n.t("commontext:send.sent"), "ok");
+                    return true;
+                }
+                onStatus?.(
+                    i18n.t("commontext:send.sendFailed", {
+                        error: message !== "" ? message : i18n.t("commontext:send.unknownError"),
+                    }),
+                    "err"
+                );
+                return false;
+            }
+        }
+        // 远端块：保留前端 paste 链（agentsend 拒绝远端）
+        const target = sendTextToFocusedTerm(cleanText, [blockId]);
         if (target == null) {
             onStatus?.(i18n.t("commontext:send.notReady"), "err");
             return false;

@@ -114,6 +114,7 @@
     "notReady": "Agent 块尚未就绪 —— 聚焦它后重试，或新建一个块",
     "sent": "已发送",
     "sentPending": "已发送 —— {{agent}} 就绪后会注入",
+    "sending": "发送中…",
     "sendFailed": "发送失败：{{error}}",
     "pickFailed": "选择目录失败：{{error}}",
     "unknownError": "未知错误",
