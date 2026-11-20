@@ -192,6 +192,11 @@ const CommonTextRow = memo(function CommonTextRowImpl({
             style={{ height: ROW_HEIGHT }}
             className={
                 "group flex items-start gap-1.5 overflow-hidden border-l-2 px-3 py-1.5 cursor-pointer transition-colors " +
+                // shrink-0 不能省：列表容器是 `flex flex-col` 滚动容器，而行自己是 flex 子项，
+                // 又带 `overflow-hidden`（CSS 规定 overflow≠visible 时 min-height:auto 解析为 0）。
+                // 少了它，N 行 44px 会被 flex 收缩按比例摊薄成十几像素一行，行内容被裁掉大半 ——
+                // 真机表现为「列表字缩成一条细线、行叠在一起、底部凭空多出空白」。
+                "shrink-0 " +
                 (selected ? "border-actionsoftborder bg-actionsoft" : "border-transparent hover:bg-hoverbg")
             }
             // hover 仅高亮行、不联动右侧详情：避免鼠标在列表里扫过时右侧
@@ -2159,7 +2164,13 @@ const CommonTextComposeModal = memo(() => {
                             ) : (
                                 <>
                                     {COMMONTEXT_PERF_WINDOWING_ENABLED && listWindow.start > 0 && (
-                                        <div style={{ height: listWindow.start * ROW_HEIGHT }} aria-hidden="true" />
+                                        // 占位也是 flex 子项：不只被自身压缩，还会被摊薄到 0，
+                                        // 让滚动高度与虚拟窗口脱钩（滚动条乱跳 / 跳到底部）。
+                                        <div
+                                            className="shrink-0"
+                                            style={{ height: listWindow.start * ROW_HEIGHT }}
+                                            aria-hidden="true"
+                                        />
                                     )}
                                     {filteredItems.slice(listWindow.start, listWindow.end).map((item, index) => {
                                         const absoluteIndex = listWindow.start + index;
@@ -2186,7 +2197,9 @@ const CommonTextComposeModal = memo(() => {
                                             // 验证台按标题定位行：DOM 次序即真实排序结果，便于断言重排。
                                             data-commontext-title={item.title}
                                             className={
-                                                "group flex items-start gap-1.5 border-l-2 px-3 py-1.5 cursor-pointer transition-colors " +
+                                                // shrink-0 与窗口化分支同因：同为 flex 列容器的子项，
+                                                // 不加会在行内容超出时被压缩（回滚基线样式必须一致）。
+                                                "shrink-0 group flex items-start gap-1.5 border-l-2 px-3 py-1.5 cursor-pointer transition-colors " +
                                                 (state.selectedIndex === index
                                                     ? "border-actionsoftborder bg-actionsoft"
                                                     : "border-transparent hover:bg-hoverbg")

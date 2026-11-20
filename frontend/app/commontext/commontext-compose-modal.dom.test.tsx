@@ -533,3 +533,48 @@ describe("CommonTextComposeModal — detail properties fold", () => {
         expect(optionChips.some((t) => t.startsWith("#"))).toBe(false);
     });
 });
+
+describe("CommonTextComposeModal — list row shrink guard", () => {
+    // 回归背景（2026-11-20 用户截图）：列表滚动容器是 `flex flex-col`，行带
+    // `overflow-hidden`（min-height:auto 解析为 0）且是一次渲染 N 行的虚拟列表 ——
+    // 少了 shrink-0，N 行 44px 会被 flex 一起摊薄成十几像素一行，行内容被裁掉大半，
+    // 真机表现为「列表文字缩成一条细线、行与行叠在一起、列表底部凭空多出空白」。
+    // jsdom 不做 flex 布局计算（量不出 44px），所以这里锁的是**结构扳机**：
+    // 行 / 虚拟占位一旦丢掉 shrink-0，布局塌陷立刻复现，本用例先红。
+    function listBox(): HTMLElement {
+        const el = document.querySelector("[data-commontext-total]") as HTMLElement | null;
+        expect(el).not.toBeNull();
+        return el!;
+    }
+
+    it("gives every rendered row shrink-0", async () => {
+        await openModal();
+        const rows = [...listBox().querySelectorAll("[data-common-text-index]")];
+        expect(rows.length).toBeGreaterThan(0);
+        for (const row of rows) {
+            expect(row.className).toContain("shrink-0");
+        }
+    });
+
+    it("gives the virtualization spacer shrink-0 so scroll geometry stays intact", async () => {
+        // 200 条：抛过窗口后 start>0 才会渲染顶部占位。
+        const many = Array.from({ length: 200 }, (_, i) => ({
+            ...seedItems[0],
+            id: `ct-many-${i}`,
+            title: `Item ${i}`,
+            text: `Item ${i} body`,
+        }));
+        globalStore.set(atoms.fullConfigAtom, { settings: { "commontext:items": many } } as any);
+        await openModal();
+        const list = listBox();
+        await act(async () => {
+            list.scrollTop = 44 * 60;
+            list.dispatchEvent(new Event("scroll", { bubbles: true }));
+        });
+        const [start] = (list.getAttribute("data-commontext-window") ?? "0-0").split("-").map(Number);
+        expect(start).toBeGreaterThan(0);
+        const spacer = list.querySelector('div[aria-hidden="true"]');
+        expect(spacer).not.toBeNull();
+        expect(spacer!.className).toContain("shrink-0");
+    });
+});
