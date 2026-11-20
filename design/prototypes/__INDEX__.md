@@ -70,7 +70,7 @@
 - `overview-dashboard/combine-dashboard-legacy.html` — （单文件原型）
 - `overview-dashboard/overview-board-v2/` — 
 - `overview-dashboard/overview-card-click/` — 同步状态：（待确认）
-- `overview-dashboard/overview-add-agent-card/` — 同步状态：▲ 设计活跃（未实现）｜Tab 分组看板底部「＋ 新建」占位卡 → Agent 选择器（profile+模型+路径随 Tab）→ 建块入该 Tab｜镜像源：frontend/app/session-overview/overview-board.tsx, session-overview.tsx, commontext-send-button.tsx
+- `overview-dashboard/overview-add-agent-card/` — 同步状态：▲ 设计活跃（未实现）｜Tab 分组看板底部「＋ 新建」占位卡 → 居中弹窗（复用全局 Modal：profile+模型+路径随 Tab）→ 建块入该 Tab｜镜像源：frontend/app/session-overview/overview-board.tsx, session-overview.tsx, commontext-send-button.tsx
 - `overview-dashboard/overview-group-views/` — 同步状态：（待确认）
 - `overview-dashboard/overview-kanban/` — 
 
