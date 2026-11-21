@@ -144,3 +144,44 @@ describe("normalizeAddAgentMessage（v2 发送内容归一）", () => {
         expect(normalizeAddAgentMessage("line1\nline2\n")).toBe("line1\nline2");
     });
 });
+
+describe("collectAddAgentPathRows：isLocal 语义（2026-11-21 真机事故回归）", () => {
+    it('connection="local" 的候选行仍然是本地行（不能被标成远端）', () => {
+        const rows = collectAddAgentPathRows(
+            [
+                {
+                    blockId: "b1",
+                    connection: "local",
+                    cwd: "E:/code/snorkeling",
+                    source: "files",
+                    // 构造侧历史上会给出 isLocal=false（旧语义），行级判定必须以 connection 为准
+                    isLocal: false,
+                    label: "local",
+                    detail: "E:/code/snorkeling",
+                },
+            ],
+            "E:/code/snorkeling"
+        );
+        expect(rows).toHaveLength(1);
+        expect(rows[0].isLocal).toBe(true);
+        expect(rows[0].sub).toBe("");
+    });
+
+    it("默认项（fallback）跟随 Tab 连接：远端 Tab 的默认行不是本地行", () => {
+        const rows = collectAddAgentPathRows([], "/Users/nita/work", "ssh://mac");
+        expect(rows[0]).toEqual({
+            key: "/Users/nita/work",
+            detail: "/Users/nita/work",
+            sub: "ssh://mac",
+            isDefault: true,
+            isLocal: false,
+            source: "fallback",
+        });
+    });
+
+    it("默认项（fallback）无连接信息时仍是本地行", () => {
+        const rows = collectAddAgentPathRows([], "E:/code/snorkeling", null);
+        expect(rows[0].isLocal).toBe(true);
+        expect(rows[0].sub).toBe("");
+    });
+});

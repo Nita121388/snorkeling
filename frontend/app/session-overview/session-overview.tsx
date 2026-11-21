@@ -2740,9 +2740,12 @@ function SessionOverviewPanel({ blockId, model }: ViewComponentProps<SessionOver
         // focusedBlock 不传：这里要的是「这个 Tab 自己的上下文」，不是当前焦点块的上下文。
         const contextMeta = resolveWorkspaceAgentContextMeta({ tab, getBlockById });
         const tabCwd = typeof contextMeta["cmd:cwd"] === "string" ? contextMeta["cmd:cwd"].trim() : "";
+        const tabConnection = typeof contextMeta.connection === "string" ? contextMeta.connection : null;
         return {
             targets: collectAgentLaunchTargetsInTab(tab, getBlockById, null, {}),
             defaultPath: tabCwd === "" ? null : tabCwd,
+            // 远端 Tab 的默认行要带上 connection，不能当本地行（否则建块会落到本机）
+            defaultConnection: tabConnection,
         };
     }, [addAgentTab]);
     const submitAddAgent = React.useCallback(async (request: AddAgentSubmitRequest): Promise<AddAgentSubmitResult> => {
@@ -3153,6 +3156,7 @@ function SessionOverviewPanel({ blockId, model }: ViewComponentProps<SessionOver
                     tabName={addAgentTab.tabName}
                     targets={addAgentData.targets}
                     defaultPath={addAgentData.defaultPath}
+                    defaultConnection={addAgentData.defaultConnection}
                     onClose={() => setAddAgentTab(null)}
                     onSubmit={submitAddAgent}
                 />

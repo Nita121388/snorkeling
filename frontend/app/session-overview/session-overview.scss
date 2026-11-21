@@ -2590,6 +2590,11 @@
     color: var(--secondary-text-color);
     font-size: 11px;
     line-height: 1.4;
+
+    /* 远端路径 + 已写消息：这是「会被拦下」的错误，不是普通提示 */
+    &.is-error {
+        color: var(--error-color);
+    }
 }
 
 /* v2 模型选择器：点选 agent 后展开（下拉优先，目录无模型时手填） */

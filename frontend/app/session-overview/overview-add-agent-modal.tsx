@@ -67,6 +67,8 @@ export type OverviewAddAgentModalProps = {
     targets: readonly AgentLaunchTarget[];
     /** 随 Tab 的默认 cwd（resolveWorkspaceAgentContextMeta 解析出的该 Tab context）。 */
     defaultPath: string | null;
+    /** 该 Tab 默认路径所属连接（远端 Tab 的默认行不能当本地行）。 */
+    defaultConnection?: string | null;
     onClose: () => void;
     onSubmit: (request: AddAgentSubmitRequest) => Promise<AddAgentSubmitResult> | AddAgentSubmitResult | void;
 };
@@ -76,6 +78,7 @@ export function OverviewAddAgentModal({
     tabName,
     targets,
     defaultPath,
+    defaultConnection,
     onClose,
     onSubmit,
 }: OverviewAddAgentModalProps) {
@@ -107,7 +110,10 @@ export function OverviewAddAgentModal({
         };
     }, []);
 
-    const pathRows = useMemo(() => collectAddAgentPathRows(targets, defaultPath), [targets, defaultPath]);
+    const pathRows = useMemo(
+        () => collectAddAgentPathRows(targets, defaultPath, defaultConnection),
+        [targets, defaultPath, defaultConnection]
+    );
     // 未手选时跟随默认项（随 Tab）
     const effectivePath = useMemo(() => {
         const hit = selectedPath != null ? pathRows.find((row) => row.key === selectedPath) : undefined;
@@ -139,6 +145,8 @@ export function OverviewAddAgentModal({
         }
         if (selectedProfile == null || effectivePath == null) return;
         const normalizedMessage = isRemotePath ? null : normalizeAddAgentMessage(message);
+        // 远端路径 + 已写消息：不静默丢弃（旧行为：建块成功、消息凭空消失），直接阻止提交。
+        if (isRemotePath && normalizedMessage != null) return;
         setSubmitting(true);
         try {
             const result = (await onSubmit({
@@ -149,7 +157,7 @@ export function OverviewAddAgentModal({
                 cwd: effectivePath.key,
                 message: normalizedMessage,
                 modelOverride,
-            })) as AddAgentSubmitResult | undefined | void;
+            })) as AddAgentSubmitResult | undefined;
             if (result != null && result.ok === false) {
                 setSendFailure({ blockId: result.blockId, error: result.error ?? "" });
             }
@@ -170,7 +178,14 @@ export function OverviewAddAgentModal({
                     ? i18n.t("session-overview:addAgent.close")
                     : i18n.t("workspace:agentLaunch.create")
             }
-            okDisabled={submitting || (sendFailure == null && (selectedProfile == null || effectivePath == null))}
+            okDisabled={
+                submitting ||
+                (sendFailure == null &&
+                    (selectedProfile == null ||
+                        effectivePath == null ||
+                        // 远端路径已写了消息：不建块也不发（错误提示就在消息框下方，看得见原因）
+                        (isRemotePath && normalizeAddAgentMessage(message) != null)))
+            }
             title={i18n.t("workspace:agentLaunch.newAgent")}
             headerExtra={<span className="session-overview-add-agent-tabname">{tabName}</span>}
         >
@@ -184,12 +199,19 @@ export function OverviewAddAgentModal({
                     value={message}
                     onChange={(e) => setMessage(e.target.value)}
                     placeholder={i18n.t("session-overview:addAgent.messagePlaceholder")}
-                    disabled={isRemotePath || sendFailure != null}
+                    disabled={sendFailure != null}
                     rows={3}
                 />
                 {isRemotePath ? (
-                    <div className="session-overview-add-agent-hint">
-                        {i18n.t("session-overview:addAgent.messageRemoteBlocked")}
+                    <div
+                        className={cn(
+                            "session-overview-add-agent-hint",
+                            normalizeAddAgentMessage(message) != null && "is-error"
+                        )}
+                    >
+                        {normalizeAddAgentMessage(message) != null
+                            ? i18n.t("session-overview:addAgent.messageRemoteBlockedError")
+                            : i18n.t("session-overview:addAgent.messageRemoteBlocked")}
                     </div>
                 ) : null}
             </div>

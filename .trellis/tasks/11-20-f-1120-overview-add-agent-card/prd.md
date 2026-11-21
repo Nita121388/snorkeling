@@ -135,3 +135,28 @@ v1 已交付的部分（入口/分组守卫/弹窗骨架/路径候选/建块链�
 - catalog 模式参考：`frontend/app/modals/scheduledtaskeditormodal.tsx` L69-75、161-186。
 - RPC 客户端：`frontend/app/store/wshclientapi.ts` `AgentSendCommand`（L82，请求体 `AgentSendRequest`：blockid/text64/submit）。
 - i18n：新 key 放 `session-overview` 命名空间（en/zh 各一份）：messageLabel / messagePlaceholder / messageRemoteBlocked / modelLabel（可复用 workspace:agentLaunch.modelLabel 则复用）。
+
+## v2 事故修复（2026-11-21 · 真机「本地 Tab 被判成远端 / 消息发不出去」）
+
+### 用户现象
+1. 本地 Tab 里点 ＋ 新建，弹窗提示「远端 Tab 暂不支持发送内容」，消息框编辑不了；
+2. 第一次「新建 agent 并发送」后打开该 Tab，消息从未送达。
+
+### 根因（真机 + DB + CDP 探针三条证据闭合）
+1. **块级 isLocal 语义错**：`makeTerminalLaunchTarget` / `makePreviewLaunchTarget` 用 `isLocal = connection == null`，而块创建会把本机写成规范值 `"local"`（DB 实测：tab-01 的 8 个 preview + 1 个 vcs 块都是 `connection: "local"`）→ 这些**本地**目标被算成远端。
+2. files（preview）target 在 `collectLaunchTargetsInTab` 里排在 terminal target 之前，按 cwd dedupe 时 preview 行赢 → 默认行（随 Tab 的那一行）带着 `isLocal=false`。
+3. `collectAddAgentPathRows` 裸存 `isLocal: target.isLocal`，只把行级判定用于第二行文案 → 行看起来本地、标记却是远端。
+4. 弹窗 `isRemotePath = effectivePath.isLocal === false` → 本地 Tab 被判远端 → 消息框禁用 + 误导提示；若用户先写消息再切到该行，`submit` 里 `message = isRemotePath ? null : …` → **消息被静默丢弃**，块照建，弹窗正常关闭 → 「建了但没发」。
+
+### 修复
+- `agent-launch.ts`：新增 `isLocalTargetConnection(conn)`（空 / `local` / `local:*` 都算本机），terminal + preview 两个构造器改用它。
+- `overview-add-agent.ts`：路径行改存行级 `isLocal`（`isLocalRow`），并让 fallback 默认行携带 Tab 连接（`defaultConnection`）——远端 Tab 的默认行不再被当成本地（原来会丢 connection）。
+- `overview-add-agent-modal.tsx`：远端路径 + 已写消息 → **显式拦下**（红色提示 + 创建按钮禁用 + submit 直接 return），不再静默丢掉消息；消息框不再因远端而禁用（用户要能看到/清理自己写的内容）。
+- `session-overview.tsx`：`addAgentData` 增加 `defaultConnection`（来自 `resolveWorkspaceAgentContextMeta`）。
+
+### 判据与结果
+- [x] `npx vitest run frontend/app/session-overview frontend/app/workspace/agent-launch.test.ts` → 18 files / 295 tests 全绿（新增：connection="local" 的 target/行判本地、fallback 行随 Tab 连接、远端+已写消息被拦下）
+- [x] `npx tsc --noEmit` → 本包文件 0 错（残留 3 条是 11-17 propRows 在途基线）
+- [x] `npx eslint` 改动文件 → exit 0
+- [x] 真机（dev 实例 cdp profile，只用动态 import 跑纯函数，不触网络）：用用户真实 tab-01 数据跑 `collectAgentLaunchTargetsInTab` + `collectAddAgentPathRows` → 9/9 target 与 9/9 行 `isLocal: true`（修复前 8 个 files target 为 false）
+- [x] 真机后端链路复核（不涉及本包改动，用于排除嫌疑）：后台 Tab 里新建 agent 块 → `AgentSendCommand` → `injected=true submitted=true waitedms=501`，term 输出里确有探针文本；CommonText existing 路径 `executeCommonTextSend` 实跑 → `发送中… → 已发送`，term 输出确认注入。两者都正常，说明失败根因就在上面的前端判定。

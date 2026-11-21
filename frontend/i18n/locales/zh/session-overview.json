@@ -139,6 +139,7 @@
         "messageLabel": "发送内容",
         "messagePlaceholder": "让这个 agent 从什么开始？可留空——留空则只建块不发送。",
         "messageRemoteBlocked": "远端 Tab 暂不支持发送内容：会只在远端帮你建好块。",
+        "messageRemoteBlockedError": "远端 Tab 收不到消息：请清空发送内容（只建块），或改选本地路径。",
         "modelDefault": "默认 · {{model}}",
         "modelDefaultOnly": "默认（跟随 agent 配置）",
         "sendFailed": "块已创建，但消息没送达：{{error}}",

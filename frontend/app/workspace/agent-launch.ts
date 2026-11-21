@@ -336,6 +336,16 @@ function normalizeConnection(rawConnection: unknown): string | null {
     return rawConnection.trim();
 }
 
+/**
+ * 块级「本地」判定：connection 为空 / "local"（含 `local:` 前缀）都是本机。
+ * 只看 `connection == null` 是错的：块创建时会把本机写成规范值 "local"
+ * （db 实测：preview/vcs 块带 connection="local"），旧判定把这些本地块当远端，
+ * 顺着 isLocal 字段把 Overview「新建 Agent」弹窗的本地路径误标成远端（2026-11-21 真机事故）。
+ */
+function isLocalTargetConnection(connection: string | null): boolean {
+    return connection == null || connection === "local" || connection.startsWith("local:");
+}
+
 function normalizePath(rawPath: unknown): string | null {
     if (typeof rawPath !== "string" || isBlank(rawPath)) {
         return null;
@@ -514,8 +524,8 @@ function makeTerminalLaunchTarget(blockId: string, block: Block): AgentLaunchTar
     const connection = normalizeConnection(block.meta?.connection);
     const cwd = normalizePath(block.meta?.["cmd:cwd"]);
     const source = block.meta?.[AgentAutoResumeMetaKey] === true ? "agent" : "terminal";
-    const isLocal = connection == null;
-    const label = isLocal ? "local" : connection;
+    const isLocal = isLocalTargetConnection(connection);
+    const label = isLocal ? "local" : connection!;
     const detail = cwd ?? "";
     return {
         blockId,
@@ -545,8 +555,8 @@ function makePreviewLaunchTarget(blockId: string, block: Block): AgentLaunchTarg
     if (connection == null && cwd == null && filePath == null) {
         return null;
     }
-    const isLocal = connection == null;
-    const label = isLocal ? "local" : connection;
+    const isLocal = isLocalTargetConnection(connection);
+    const label = isLocal ? "local" : connection!;
     const locationDetail =
         filePath != null && cwd != null && filePath !== cwd ? `${filePath} -> ${cwd}` : (cwd ?? filePath);
     const detail = locationDetail ?? "";

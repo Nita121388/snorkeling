@@ -162,6 +162,10 @@ async function flushCatalog() {
     });
 }
 
+function rows(modalEl: HTMLElement) {
+    return [...modalEl.querySelectorAll(".session-overview-add-agent-path")];
+}
+
 function modalButtons(modalEl: HTMLElement) {
     const footer = modalEl.querySelector(".modal-footer") as HTMLElement;
     const buttons = [...footer.querySelectorAll("button")];
@@ -315,7 +319,7 @@ describe("OverviewAddAgentModal 发送内容（v2）", () => {
         expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ message: "帮我跑一遍 frontend 单测" }));
     });
 
-    it("远端路径：禁用消息输入 + 提示，且 message 恒 null", async () => {
+    it("远端路径：可输入但给出提示；消息为空时只建块（message=null）", async () => {
         const onSubmit = vi.fn();
         const { modalEl } = mountModal({
             targets: [RemoteTarget("b1", "/Users/nita/work")],
@@ -324,12 +328,39 @@ describe("OverviewAddAgentModal 发送内容（v2）", () => {
         });
         await flushCatalog();
         const textarea = modalEl.querySelector(".session-overview-add-agent-message") as HTMLTextAreaElement;
-        expect(textarea.disabled).toBe(true);
+        // 不再禁用输入（禁用会让用户看不到自己已写的内容，也无从清理）
+        expect(textarea.disabled).toBe(false);
         expect(modalEl.querySelector(".session-overview-add-agent-hint")).not.toBeNull();
         await clickCreate(modalEl);
         expect(onSubmit).toHaveBeenCalledWith(
             expect.objectContaining({ cwd: "/Users/nita/work", connection: "ssh://mac", message: null })
         );
+    });
+
+    it("远端路径 + 已写消息：显式拦下（不建块、不静默丢消息）", async () => {
+        const onSubmit = vi.fn();
+        const { modalEl } = mountModal({
+            targets: [LocalTarget("b1", "E:/code/snorkeling"), RemoteTarget("b2", "/Users/nita/work")],
+            defaultPath: "E:/code/snorkeling",
+            onSubmit,
+        });
+        await flushCatalog();
+        const textarea = modalEl.querySelector(".session-overview-add-agent-message") as HTMLTextAreaElement;
+        const valueSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value")?.set;
+        act(() => {
+            valueSetter?.call(textarea, "这条消息不该被丢掉");
+            textarea.dispatchEvent(new Event("input", { bubbles: true }));
+        });
+        // 切到远端行：本地行 → 远端行
+        act(() => {
+            (rows(modalEl)[1] as HTMLElement).dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+        const hint = modalEl.querySelector(".session-overview-add-agent-hint");
+        expect(hint?.classList.contains("is-error")).toBe(true);
+        const { create } = modalButtons(modalEl);
+        expect((create as HTMLButtonElement).disabled).toBe(true);
+        await clickCreate(modalEl);
+        expect(onSubmit).not.toHaveBeenCalled();
     });
 
     it("发送失败回执：内联报错 + footer 只留「关闭」，再点即关闭（不建第二个块）", async () => {

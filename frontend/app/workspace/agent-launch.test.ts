@@ -162,6 +162,30 @@ describe("agent launch context", () => {
         });
     });
 
+    it('treats connection "local" as a local launch target (canonical local connection)', () => {
+        // 2026-11-21 真机事故回归：preview/vcs 块的 connection 会写成规范值 "local"，
+        // 旧判定（connection == null 才算本地）把它们当远端 → Overview 新建 Agent 弹窗把
+        // 本地路径误标成「远端 Tab」，消息框被禁用、消息被静默丢弃。
+        const tab = makeTab(["block:preview-local"]);
+        const blockMap: Record<string, Block> = {
+            "block:preview-local": makeBlock("block:preview-local", {
+                view: "preview",
+                connection: "local",
+                file: "/Users/nita/work",
+            }),
+        };
+
+        const targets = collectAgentLaunchTargetsInTab(tab, (blockId: string) => blockMap[blockId], "block:preview-local");
+
+        expect(targets[0]).toMatchObject({
+            blockId: "block:preview-local",
+            connection: "local",
+            source: "files",
+            isLocal: true,
+            label: "local",
+        });
+    });
+
     it("adds focused Files target when no terminal target exists", () => {
         const tab = makeTab(["block:preview"]);
         const blockMap: Record<string, Block> = {

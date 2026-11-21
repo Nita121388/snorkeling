@@ -64,7 +64,9 @@ function cleanPath(value: string | null | undefined): string | null {
  */
 export function collectAddAgentPathRows(
     targets: readonly AgentLaunchTarget[] | null | undefined,
-    defaultPath: string | null | undefined
+    defaultPath: string | null | undefined,
+    /** 默认项（随 Tab）所属连接：远端 Tab 的默认行不能当作本地行（否则会丢掉 connection）。 */
+    defaultConnection?: string | null
 ): AddAgentPathRow[] {
     // 候选先按 cwd 去重（保留首次出现的行 —— 这样远端行的 connection 不会丢）
     const byKey = new Map<string, AddAgentPathRow>();
@@ -79,11 +81,14 @@ export function collectAddAgentPathRows(
             detail: key,
             sub: isLocalRow ? "" : (target.connection ?? "").trim(),
             isDefault: false,
-            isLocal: target.isLocal,
+            // 行级本地判定（connection 空/local/local:* 都算本机）：不能裸存 target.isLocal ——
+            // 构造侧的 isLocal 语义已经错过一次（connection="local" 被当远端），这里用同一套判定兑底
+            isLocal: isLocalRow,
             source: target.source,
         });
     }
     const def = cleanPath(defaultPath);
+    const defaultIsLocal = !isRemoteConnection(defaultConnection);
     let rows = Array.from(byKey.values());
     if (def != null) {
         const hit = byKey.get(def);
@@ -91,7 +96,14 @@ export function collectAddAgentPathRows(
             hit.isDefault = true;
         } else {
             rows = [
-                { key: def, detail: def, sub: "", isDefault: true, isLocal: true, source: "fallback" },
+                {
+                    key: def,
+                    detail: def,
+                    sub: defaultIsLocal ? "" : (defaultConnection ?? "").trim(),
+                    isDefault: true,
+                    isLocal: defaultIsLocal,
+                    source: "fallback",
+                },
                 ...rows,
             ];
         }

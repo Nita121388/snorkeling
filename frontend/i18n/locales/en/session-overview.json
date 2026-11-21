@@ -139,6 +139,7 @@
         "messageLabel": "Message",
         "messagePlaceholder": "What should this agent start with? Optional — leave empty to just create the block.",
         "messageRemoteBlocked": "Remote tabs can't receive a message yet — the agent will be created on the remote host without one.",
+        "messageRemoteBlockedError": "Remote tabs can't receive a message. Clear the message to create the block on the remote host, or pick a local path.",
         "modelDefault": "Default · {{model}}",
         "modelDefaultOnly": "Default (agent config)",
         "sendFailed": "Block created, but the message was not delivered: {{error}}",
