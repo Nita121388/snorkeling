@@ -34,6 +34,7 @@
 - `commontext/commontext-compose-modal-improved.html` — （单文件原型）
 - `commontext/commontext-list-meta-sort/` — 同步状态：✅ 已落地（2026-11-05，`frontend/app/commontext/`，分支 `feat/commontext-list-meta-sort`）
 - `commontext/commontext-pinned-detail-insert.html` — （单文件原型）
+- `commontext/commontext-row-filter-polish/` — 同步状态：▲ 设计活跃（未实现；列表行 44→52px 修裁切 + 筛选区四层收成一行，2026-11-21）
 - `commontext/commontext-send-agent-block/` — 同步状态：● 已落地（2026-11-10，`frontend/app/commontext/commontext-send-button.tsx` + `pending-input.ts` + `term.tsx`）
 - `commontext/commontext-send-compact/` — 同步状态：◐ 部分落地（2026-11-18，A 档常显 + 目录候选随 Tab；B 折叠档未实现）
 - `commontext/commontext-search-virtual.html` — （单文件原型）

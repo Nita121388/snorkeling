@@ -1,0 +1,647 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Common Text · 列表行高修复 + 筛选区单行化（原型）</title>
+<!-- 图标与真实组件同源（Font Awesome）；离线时退化为无色块，不影响布局判断 -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" />
+<style>
+  :root{
+    /* 取自 frontend/app/theme.scss 暗色主题（与 commontext-cloud-sync-notion 原型同一套令牌） */
+    --bg:#222222;
+    --panel:#1b1c1b;
+    --panel-2:#262726;
+    --surface:rgba(255,255,255,.06);
+    --surface-soft:rgba(255,255,255,.04);
+    --border:rgba(255,255,255,.16);
+    --border-soft:rgba(255,255,255,.09);
+    --text:#f7f7f7;
+    --text-2:rgb(195,200,194);
+    --text-3:rgba(195,200,194,.55);
+    --accent:rgb(88,193,66);
+    --accent-soft:rgba(88,193,66,.12);
+    --accent-line:rgba(88,193,66,.4);
+    --warn:#e8c87c;
+    --err:#e87c7c;
+    --blue:#6fb3e0;
+    --orange:#e8a87c;
+    --mono:ui-monospace,"Cascadia Mono","SF Mono",Consolas,monospace;
+    --ui:system-ui,-apple-system,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",sans-serif;
+    --row-h:52px;
+    --row-pad:8px;
+    --line2-h:18px;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0;background:#151615;color:var(--text);font:13px/1.5 var(--ui);
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    min-height:100vh;padding:18px 16px 28px;
+  }
+
+  /* ===== 原型外壳（不属于产品 UI）：模式开关 + 标注 ===== */
+  .chrome{
+    display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+    width:min(96vw,1120px);margin:0 auto 10px;font-size:12px;color:var(--text-2);
+  }
+  .chrome .grp{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 8px;
+    border:1px solid var(--border-soft);border-radius:6px;background:var(--surface-soft)}
+  .chrome .grp > b{font-weight:500;color:var(--text-3);font-size:11px}
+  .chrome label{display:inline-flex;align-items:center;gap:4px;cursor:pointer;color:var(--text-2)}
+  .chrome input[type=radio]{accent-color:var(--accent);margin:0}
+  .chrome .hint{color:var(--text-3);font-size:11px}
+  .chrome .spacer{flex:1}
+
+  /* ===== 模态：镜像真实 commontext-compose-modal（900x620 兜底，这里放大便于看清） ===== */
+  .modal{
+    width:min(96vw,1120px);height:min(92vh,760px);background:var(--bg);
+    border:1px solid var(--border);border-radius:10px;box-shadow:0 24px 60px rgba(0,0,0,.6);
+    display:flex;flex-direction:column;overflow:hidden;position:relative;
+  }
+  body.narrow .modal{width:min(96vw,700px)}
+  .modal-head{padding:14px 16px 8px;display:flex;align-items:flex-start;gap:10px}
+  .modal-head .title{font-size:16px;font-weight:600;line-height:1.3}
+
+  /* ===== compose editor（36px 折叠 / 聚焦展开 120px，240ms；真实实现走 WAAPI 一次性动画） ===== */
+  .compose{flex-shrink:0;padding:0 16px 8px;display:flex;flex-direction:column;gap:8px}
+  .editor-wrap{position:relative}
+  .editor-wrap .toggle{
+    position:absolute;right:6px;top:6px;display:inline-flex;align-items:center;justify-content:center;
+    width:24px;height:24px;border-radius:5px;border:0;background:rgba(27,28,27,.7);color:var(--text-3);
+    cursor:pointer;font-size:10px;z-index:2;
+  }
+  .editor-wrap .toggle:hover{background:var(--surface);color:var(--text)}
+  textarea{
+    width:100%;resize:none;border-radius:5px;border:1px solid var(--border-soft);
+    background:var(--panel-2);color:var(--text);padding:8px;outline:none;
+    font-family:var(--mono);font-size:13px;line-height:1.6;
+    height:36px;min-height:36px;overflow:hidden;white-space:nowrap;
+    transition:height 240ms cubic-bezier(.33,1,.68,1),min-height 240ms cubic-bezier(.33,1,.68,1);
+  }
+  textarea::placeholder{color:var(--text-3)}
+  textarea.expanded{height:120px;min-height:120px;white-space:pre-wrap;overflow:auto;border-color:var(--accent-line)}
+  .action-row{display:flex;align-items:center;gap:6px}
+  .action-row .sp{flex:1}
+  .icobtn{
+    display:inline-flex;align-items:center;justify-content:center;height:26px;min-width:26px;
+    border-radius:5px;border:1px solid var(--border-soft);background:var(--surface-soft);
+    color:var(--text-2);cursor:pointer;font-size:11px;gap:5px;padding:0 7px;
+  }
+  .icobtn:hover{background:var(--surface);color:var(--text)}
+  .icobtn.primary{background:var(--accent-soft);border-color:var(--accent-line);color:var(--accent)}
+
+  /* ===== 双栏 Master-Detail ===== */
+  .body{flex:1;min-height:0;display:flex;border-top:1px solid var(--border-soft)}
+  .col-l{flex:1;min-width:0;display:flex;flex-direction:column;border-right:1px solid var(--border-soft)}
+  .col-r{width:380px;min-width:0;display:flex;flex-direction:column}
+  body.narrow .col-r{width:280px}
+
+  /* ===== 列表顶栏：搜索（28）+ 筛选行（26×1，新） ===== */
+  .list-top{flex-shrink:0;padding:8px;border-bottom:1px solid var(--border-soft);display:flex;flex-direction:column;gap:6px}
+  .search{display:flex;align-items:center;gap:6px;height:28px;padding:0 9px;border-radius:15px;
+    border:1px solid var(--border-soft);background:var(--surface-soft);color:var(--text-3)}
+  .search input{flex:1;min-width:0;border:0;background:transparent;color:var(--text);outline:none;font:inherit;font-size:12px}
+  .search input::placeholder{color:var(--text-3)}
+
+  /* ---- 筛选行（本次改造重点）：所有控件同高 26px、同一圆角、同一间距 ---- */
+  .filters{display:flex;align-items:center;gap:6px;flex-wrap:nowrap;min-width:0}
+  body.narrow .filters{flex-wrap:wrap;row-gap:6px}
+
+  /* 1) 创建者分段控件：同一壳，内部靠底色分隔（去掉每颗 chip 各自描边） */
+  .seg{display:inline-flex;align-items:center;height:26px;border-radius:6px;overflow:hidden;
+    border:1px solid var(--border);background:var(--surface-soft);flex-shrink:0}
+  .seg-btn{display:inline-flex;align-items:center;gap:4px;height:100%;padding:0 8px;border:0;background:transparent;
+    color:var(--text-3);font-size:11px;line-height:1;cursor:pointer}
+  .seg-btn i{font-size:10px}
+  .seg-btn .cnt{font-variant-numeric:tabular-nums;opacity:.75}
+  .seg-btn:hover{background:var(--surface);color:var(--text-2)}
+  .seg-btn.on{background:var(--accent-soft);color:var(--accent)}
+
+  /* 2) 通用 chip 控件：机器 / 排序 / 无标签 */
+  .ctl{display:inline-flex;align-items:center;gap:5px;height:26px;padding:0 8px;border-radius:6px;
+    border:1px solid var(--border-soft);background:var(--surface-soft);color:var(--text-2);
+    font-size:11px;line-height:1;cursor:pointer;flex-shrink:0;max-width:200px}
+  .ctl:hover{background:var(--surface);color:var(--text)}
+  .ctl > span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .ctl .caret{font-size:8px;color:var(--text-3);margin-left:1px}
+  .ctl.on{background:var(--accent-soft);border-color:var(--accent-line);color:var(--accent)}
+  .ctl.on .caret{color:var(--accent)}
+  .ctl.ghost{border-color:transparent;background:transparent}
+  .ctl.ghost:hover{background:var(--surface);border-color:var(--border-soft)}
+  .ctl i{font-size:10px}
+
+  /* 3) 标签条：单行、可横向滚动、右缘渐隐（不再占一整行、不再把无标签挤到下一行） */
+  .tagstrip{position:relative;display:flex;align-items:center;gap:4px;min-width:0;flex:1 1 auto;
+    overflow-x:auto;overflow-y:hidden;scrollbar-width:none;padding-right:14px;
+    mask-image:linear-gradient(90deg,#000 calc(100% - 18px),transparent);
+    -webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 18px),transparent)}
+  .tagstrip::-webkit-scrollbar{display:none}
+  body.narrow .tagstrip{flex:1 1 100%}
+  .tagchip{display:inline-flex;align-items:center;gap:4px;height:22px;padding:0 7px;border-radius:5px;
+    border:1px solid var(--border-soft);background:var(--surface-soft);color:var(--text-2);
+    font-size:11px;line-height:1;cursor:pointer;flex-shrink:0;max-width:130px}
+  .tagchip span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .tagchip .cnt{font-size:10px;opacity:.6;font-variant-numeric:tabular-nums}
+  .tagchip:hover{background:var(--surface);color:var(--text)}
+  .tagchip.on{background:var(--accent-soft);border-color:transparent;color:var(--accent)}
+
+  /* 4) 生效中的筛选项计数提示（可点击清空） */
+  .reset{display:none}
+  .filters.dirty .reset{display:inline-flex}
+
+  /* ===== 下拉菜单（机器 / 排序） ===== */
+  .menu{position:absolute;z-index:30;min-width:190px;padding:4px;border-radius:8px;
+    border:1px solid var(--border);background:var(--panel-2);box-shadow:0 16px 40px rgba(0,0,0,.55);display:none}
+  .menu.open{display:block}
+  .menu-item{display:flex;align-items:center;gap:8px;height:30px;padding:0 8px;border-radius:5px;
+    font-size:12px;color:var(--text-2);cursor:pointer}
+  .menu-item:hover{background:var(--surface);color:var(--text)}
+  .menu-item .chk{margin-left:auto;color:var(--accent);font-size:10px;visibility:hidden}
+  .menu-item.on{color:var(--accent)}
+  .menu-item.on .chk{visibility:visible}
+  .menu-item .mn-cnt{margin-left:auto;font-size:10px;color:var(--text-3);font-variant-numeric:tabular-nums}
+
+  /* ===== 列表行（本次改造重点） =====
+     行高由 --row-h 驱动；52px = 两行（标题 / 摘要+标签同行）；64px = 三行（标签独占一行）；
+     44px = 现状复现（带标签的行被 overflow:hidden 裁掉半截，用来对照） */
+  .list{flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column}
+  .row{position:relative;display:flex;align-items:center;gap:6px;flex-shrink:0;
+    height:var(--row-h);padding:var(--row-pad) 12px;border-left:2px solid transparent;
+    cursor:pointer;overflow:hidden;transition:background .12s ease,border-color .12s ease}
+  .row:hover{background:var(--surface-soft)}
+  .row.sel{background:var(--accent-soft);border-left-color:var(--accent-line)}
+  .pin{width:16px;flex:0 0 16px;display:flex;justify-content:center;color:var(--text-3);font-size:11px;
+    align-self:flex-start;padding-top:2px}
+  .rowmain{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+  .line1{display:flex;align-items:center;gap:6px;min-width:0}
+  .rtitle{font-size:12px;font-weight:500;line-height:16px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+  .badge{display:inline-flex;align-items:center;gap:3px;flex-shrink:0;font-size:9.5px;line-height:1;
+    padding:1px 4px;border-radius:3px;border:1px solid transparent;max-width:96px}
+  .badge span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .badge i{font-size:8px}
+  .badge.agent{color:#8ecdf0;background:rgba(111,179,224,.12);border-color:rgba(111,179,224,.3)}
+  .badge.human{color:#e8b48c;background:rgba(232,168,124,.12);border-color:rgba(232,168,124,.3)}
+  /* 同步圆点：只在 pending 出现（与真实组件同一语义） */
+  .syncdot{width:6px;height:6px;border-radius:50%;background:var(--warn);flex-shrink:0}
+
+  .line2{display:flex;align-items:center;gap:6px;min-width:0;height:var(--line2-h)}
+  .preview{flex:1 1 auto;min-width:0;font-size:11px;line-height:16px;color:var(--text-3);
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  /* 行内标签：与摘要同行（52px 档），最多显示 3 颗 + 「+N」；不再和摘要抢整行 */
+  .rowtags{display:flex;align-items:center;gap:4px;flex:0 1 auto;min-width:0;max-width:52%;overflow:hidden}
+  .rowtags .tagchip{height:16px;padding:0 5px;font-size:9.5px;border-radius:4px;max-width:96px}
+  .rowtags .more{flex-shrink:0;font-size:9.5px;color:var(--text-3);padding:0 2px}
+
+  /* 64px 三行档：标签独占第三行（标签多、需要一眼看全时用）。预算：pad 5×2 + 16 + 2 + 16 + 2 + 18 = 64 */
+  body.h64{--row-h:64px;--row-pad:5px}
+  body.h64 .line2{height:auto;flex-direction:column;align-items:flex-start;gap:2px}
+  body.h64 .rowtags{max-width:100%;flex:0 0 auto;width:100%}
+  body.h64 .rowtags .tagchip{height:18px;padding:0 6px;font-size:10px}
+
+  /* 44px 现状档：line2 改回「摘要 / 标签」两行（镜像真实组件的第三行），
+     行内 overflow:hidden 会把标签裁得只剩上半截 —— 这就是现状截图里「被截断」的样子 */
+  body.h44{--row-h:44px;--row-pad:3px;--line2-h:16px}
+  body.h44 .line2{height:auto;flex-direction:column;align-items:flex-start;gap:2px}
+  body.h44 .rowtags{max-width:100%;flex:0 0 auto}
+  body.h44 .rowtags .tagchip{height:16px;padding:0 5px;font-size:9.5px}
+
+  /* meta 列（次数 + 新鲜度方块 + 紧凑时间；与真实组件同口径） */
+  .meta{width:58px;flex:0 0 58px;display:flex;flex-direction:column;align-items:flex-end;gap:2px;
+    font-size:10px;line-height:1;font-variant-numeric:tabular-nums;color:var(--text-3)}
+  .meta .usage{display:inline-flex;align-items:center;gap:3px}
+  .meta .fresh{display:inline-flex;align-items:center;gap:4px}
+  .fsq{width:12px;height:12px;border-radius:2px;border:1px solid var(--border);display:inline-block;position:relative;overflow:hidden}
+  .fsq::after{content:"";position:absolute;left:0;right:0;bottom:0;height:var(--fill,82%);background:var(--accent);opacity:var(--op,1)}
+
+  /* ===== 右栏详情（本原型不改造，只做上下文） ===== */
+  .detail{padding:12px;display:flex;flex-direction:column;gap:8px;min-height:0;flex:1}
+  .detail .page-head{display:flex;align-items:center;gap:8px}
+  .pageicon{width:32px;height:32px;flex:0 0 32px;display:flex;align-items:center;justify-content:center;
+    border-radius:6px;border:1px dashed var(--border);font-size:17px;color:var(--text-3);cursor:pointer}
+  .dtitle{flex:1;min-width:0;border:1px solid transparent;background:transparent;border-radius:5px;
+    font-size:17px;font-weight:600;color:var(--text);padding:4px 6px;margin-left:-6px;outline:none;font-family:inherit}
+  .dtitle:hover{background:var(--surface-soft)}
+  .dtitle:focus{border-color:var(--border);background:var(--panel-2)}
+  .propsum{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:11px;color:var(--text-3);padding:4px}
+  .propsum .it{display:inline-flex;align-items:center;gap:3px}
+  .dtext{flex:1;min-height:120px;border:1px solid var(--border-soft);border-radius:6px;background:var(--panel-2);
+    color:var(--text);padding:8px;font-family:var(--mono);font-size:12px;line-height:1.7;resize:none;outline:none}
+  .dfoot{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .detailmeta{display:flex;align-items:center;gap:8px;font-size:10.5px;color:var(--text-2);font-variant-numeric:tabular-nums}
+  .detailmeta .it{display:inline-flex;align-items:center;height:14px;gap:4px;line-height:1}
+  .detailmeta .synced{color:var(--accent)}
+  .dfoot .sp{flex:1}
+
+  /* ===== 标注 ===== */
+  .ann{display:none;width:min(96vw,1120px);margin:12px auto 0;padding:12px 14px;border-radius:8px;
+    border:1px dashed var(--accent-line);background:rgba(88,193,66,.05);font-size:12px;color:var(--text-2)}
+  body.mark .ann{display:block}
+  .ann ol{margin:6px 0 0;padding-left:18px}
+  .ann li{margin:3px 0}
+  .ann b{color:var(--accent);font-weight:600}
+  .ann code{font-family:var(--mono);font-size:11px;color:var(--text)}
+</style>
+</head>
+<body class="h52 mark">
+
+<!-- 原型外壳：只用于对照，不是产品 UI -->
+<div class="chrome">
+  <span class="grp"><b>行高</b>
+    <label><input type="radio" name="h" value="44"> 44px（现状，会裁）</label>
+    <label><input type="radio" name="h" value="52" checked> 52px（两行 · 建议）</label>
+    <label><input type="radio" name="h" value="64"> 64px（三行 · 备选）</label>
+  </span>
+  <span class="grp"><b>宽度</b>
+    <label><input type="radio" name="w" value="wide" checked> 宽 900+</label>
+    <label><input type="radio" name="w" value="narrow"> 窄 700</label>
+  </span>
+  <span class="grp">
+    <label><input type="checkbox" id="ann-tog" checked> 显示标注</label>
+  </span>
+  <span class="hint">点编辑器看展开动效 · 点机器/排序看下拉 · 点标签筛选（可多选）</span>
+</div>
+
+<div class="modal">
+  <div class="modal-head">
+    <div class="title">Common Text</div>
+  </div>
+
+  <div class="compose">
+    <div class="editor-wrap">
+      <button class="toggle" id="editor-toggle" title="收起 / 展开编辑器"><i class="fa-solid fa-chevron-down"></i></button>
+      <textarea id="editor" placeholder="Compose here. The list below suggests common text matching what you type.">Refund policy</textarea>
+    </div>
+    <div class="action-row">
+      <button class="icobtn primary" title="按编辑器内容筛选列表"><i class="fa-solid fa-filter"></i></button>
+      <button class="icobtn" title="Clear editor"><i class="fa-solid fa-eraser"></i></button>
+      <button class="icobtn" title="Add new common text item"><i class="fa-solid fa-plus"></i></button>
+      <button class="icobtn" title="Copy editor"><i class="fa-regular fa-copy"></i></button>
+      <button class="icobtn primary" title="Send"><i class="fa-solid fa-paper-plane"></i> 发送</button>
+      <span class="sp"></span>
+      <span style="font-size:11px;color:var(--text-3)">draft saved</span>
+    </div>
+  </div>
+
+  <div class="body">
+    <!-- ===== 左栏：列表 ===== -->
+    <div class="col-l">
+      <div class="list-top">
+        <div class="search">
+          <i class="fa-regular fa-magnifying-glass"></i>
+          <input placeholder="搜索常用文本" />
+        </div>
+
+        <!-- 筛选行：本次改造重点（单行 26px；窄态自动折两行） -->
+        <div class="filters" id="filters">
+          <div class="seg" role="group" aria-label="按创建者筛选">
+            <button class="seg-btn on" data-creator="all"><i class="fa-solid fa-layer-group"></i><span class="cnt">7</span></button>
+            <button class="seg-btn" data-creator="human"><i class="fa-solid fa-user"></i><span class="cnt">4</span></button>
+            <button class="seg-btn" data-creator="agent"><i class="fa-solid fa-robot"></i><span class="cnt">3</span></button>
+          </div>
+
+          <button class="ctl" id="machine-btn" title="按来源电脑筛选">
+            <i class="fa-solid fa-computer"></i><span id="machine-label">Workstation</span><i class="fa-solid fa-chevron-down caret"></i>
+          </button>
+
+          <button class="ctl" id="sort-btn" title="常用文本列表排序">
+            <i class="fa-solid fa-arrow-down-wide-short"></i><span id="sort-label">最近使用</span><i class="fa-solid fa-chevron-down caret"></i>
+          </button>
+
+          <button class="ctl" id="untagged-btn" title="显示没有标签的条目">
+            <i class="fa-regular fa-square"></i><span>无标签</span><span class="cnt" style="font-size:10px;opacity:.6">2</span>
+          </button>
+
+          <div class="tagstrip" id="tagstrip">
+            <button class="tagchip" data-tag="客户"><span>#客户</span><span class="cnt">2</span></button>
+            <button class="tagchip" data-tag="退款"><span>#退款</span><span class="cnt">1</span></button>
+            <button class="tagchip" data-tag="sql"><span>#sql</span><span class="cnt">2</span></button>
+            <button class="tagchip" data-tag="报表"><span>#报表</span><span class="cnt">2</span></button>
+            <button class="tagchip" data-tag="release"><span>#release</span><span class="cnt">1</span></button>
+            <button class="tagchip" data-tag="review"><span>#review</span><span class="cnt">1</span></button>
+            <button class="tagchip" data-tag="会议"><span>#会议</span><span class="cnt">1</span></button>
+          </div>
+
+          <button class="ctl ghost reset" id="reset-btn" title="清空筛选条件"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+      </div>
+
+      <div class="list" id="list">
+        <!-- 行结构镜像真实组件；line2 里 preview + tags 同行（52px 档） -->
+        <div class="row" data-title="Refund policy reply">
+          <div class="pin"></div>
+          <div class="rowmain">
+            <div class="line1">
+              <span class="rtitle">Refund policy reply</span>
+              <span class="badge human"><i class="fa-solid fa-user"></i><span>nita</span></span>
+            </div>
+            <div class="line2">
+              <span class="preview">Hi — per our refund policy, orders can be returned within 30 days…</span>
+              <span class="rowtags">
+                <span class="tagchip"><span>#客户</span></span>
+                <span class="tagchip"><span>#退款</span></span>
+              </span>
+            </div>
+          </div>
+          <div class="meta"><span class="usage">5</span><span class="fresh"><i class="fsq" style="--fill:82%;--op:.84"></i>12m</span></div>
+        </div>
+
+        <div class="row" data-title="Onboarding checklist">
+          <div class="pin"></div>
+          <div class="rowmain">
+            <div class="line1">
+              <span class="rtitle">Onboarding checklist</span>
+              <span class="badge agent"><i class="fa-solid fa-robot"></i><span>pi</span></span>
+            </div>
+            <div class="line2">
+              <span class="preview">1) repo access 2) local toolchain 3) first PR…</span>
+              <span class="rowtags"></span>
+            </div>
+          </div>
+          <div class="meta"><span class="usage" style="color:var(--text-3)">0</span><span class="fresh"><i class="fsq" style="--fill:46%;--op:.58"></i>3d</span></div>
+        </div>
+
+        <div class="row" data-title="SQL: weekly cohort">
+          <div class="pin"></div>
+          <div class="rowmain">
+            <div class="line1">
+              <span class="rtitle">SQL: weekly cohort</span>
+              <span class="syncdot" title="待上传"></span>
+              <span class="badge human"><i class="fa-solid fa-user"></i><span>nita</span></span>
+            </div>
+            <div class="line2">
+              <span class="preview">select cohort, count(distinct uid) from events where…</span>
+              <span class="rowtags">
+                <span class="tagchip"><span>#sql</span></span>
+                <span class="tagchip"><span>#报表</span></span>
+                <span class="tagchip"><span>#周报</span></span>
+                <span class="more">+1</span>
+              </span>
+            </div>
+          </div>
+          <div class="meta"><span class="usage">12</span><span class="fresh"><i class="fsq" style="--fill:64%;--op:.7"></i>2h</span></div>
+        </div>
+
+        <div class="row sel" data-title="Code review 模板">
+          <div class="pin"></div>
+          <div class="rowmain">
+            <div class="line1">
+              <span class="rtitle">Code review 模板</span>
+              <span class="badge agent"><i class="fa-solid fa-robot"></i><span>codex</span></span>
+            </div>
+            <div class="line2">
+              <span class="preview">请按以下顺序看：1) 契约 2) 失败路径 3) 回滚开关…</span>
+              <span class="rowtags"><span class="tagchip"><span>#review</span></span></span>
+            </div>
+          </div>
+          <div class="meta"><span class="usage">3</span><span class="fresh"><i class="fsq" style="--fill:100%;--op:1"></i>now</span></div>
+        </div>
+
+        <div class="row" data-title="发版说明模板">
+          <div class="pin"><i class="fa-solid fa-thumbtack"></i></div>
+          <div class="rowmain">
+            <div class="line1">
+              <span class="rtitle">发版说明模板</span>
+              <span class="badge human"><i class="fa-solid fa-user"></i><span>nita</span></span>
+            </div>
+            <div class="line2">
+              <span class="preview">## 变更 / ## 修复 / ## 已知问题（每条一行，带 issue 号）…</span>
+              <span class="rowtags">
+                <span class="tagchip"><span>#release</span></span>
+                <span class="tagchip"><span>#changelog</span></span>
+              </span>
+            </div>
+          </div>
+          <div class="meta"><span class="usage">8</span><span class="fresh"><i class="fsq" style="--fill:64%;--op:.7"></i>9h</span></div>
+        </div>
+
+        <div class="row" data-title="微信小程序支付回调失败排查步骤与常见错误码对照（长标题截断示例）">
+          <div class="pin"></div>
+          <div class="rowmain">
+            <div class="line1">
+              <span class="rtitle">微信小程序支付回调失败排查步骤与常见错误码对照（长标题截断示例）</span>
+              <span class="badge agent"><i class="fa-solid fa-robot"></i><span>deepseek</span></span>
+            </div>
+            <div class="line2">
+              <span class="preview">1) 先看 notify_url 是否公网可达 2) 验签失败区分…</span>
+              <span class="rowtags"></span>
+            </div>
+          </div>
+          <div class="meta"><span class="usage">1</span><span class="fresh"><i class="fsq" style="--fill:28%;--op:.48"></i>45d</span></div>
+        </div>
+
+        <div class="row" data-title="会议纪要骨架">
+          <div class="pin"></div>
+          <div class="rowmain">
+            <div class="line1">
+              <span class="rtitle">会议纪要骨架</span>
+              <span class="badge human"><i class="fa-solid fa-user"></i><span>nita</span></span>
+            </div>
+            <div class="line2">
+              <span class="preview">结论 / 待办（人+时间）/ 争议点 / 下一步…</span>
+              <span class="rowtags"><span class="tagchip"><span>#会议</span></span></span>
+            </div>
+          </div>
+          <div class="meta"><span class="usage">0</span><span class="fresh"><i class="fsq" style="--fill:28%;--op:.48"></i>6d</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== 右栏：详情（不改，仅上下文） ===== -->
+    <div class="col-r">
+      <div class="detail">
+        <div class="page-head">
+          <div class="pageicon" title="page icon">🙶</div>
+          <input class="dtitle" value="Code review 模板" />
+          <button class="icobtn" title="pin"><i class="fa-solid fa-thumbtack"></i></button>
+        </div>
+        <div class="propsum">
+          <span class="it"><i class="fa-solid fa-robot" style="font-size:9px"></i>agent codex</span>
+          <span class="it"><i class="fa-solid fa-computer" style="font-size:9px"></i>Workstation</span>
+          <span class="it"><i class="fa-solid fa-pen" style="font-size:9px"></i>now</span>
+          <span class="it"><i class="fa-solid fa-repeat" style="font-size:9px"></i>3</span>
+          <span class="it"><i class="fa-solid fa-tag" style="font-size:9px"></i>#review</span>
+        </div>
+        <textarea class="dtext">请按以下顺序看：
+1) 契约（输入/输出/边界）
+2) 失败路径（超时、部分成功、重试幂等）
+3) 回滚开关与观测点</textarea>
+        <div class="dfoot">
+          <button class="icobtn"><i class="fa-regular fa-copy"></i> 复制</button>
+          <button class="icobtn primary"><i class="fa-solid fa-arrow-up"></i> 插入</button>
+          <span class="sp"></span>
+          <div class="detailmeta">
+            <span class="it synced" title="已同步 · rev 3"><i class="fa-solid fa-cloud" style="font-size:10px"></i>已同步</span>
+            <span class="it"><i class="fa-regular fa-calendar-plus" style="font-size:10px"></i>11-18</span>
+            <span class="it"><i class="fa-solid fa-pen" style="font-size:10px"></i>now</span>
+            <span class="it"><i class="fa-solid fa-clock-rotate-left" style="font-size:10px"></i>2h</span>
+            <span class="it"><i class="fa-solid fa-repeat" style="font-size:10px"></i>3</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 下拉：机器 -->
+  <div class="menu" id="machine-menu" style="left:56px;top:216px">
+    <div class="menu-item on" data-machine="any">任意电脑<em class="chk fa-solid fa-check"></em></div>
+    <div class="menu-item" data-machine="dev-1">Workstation <em class="mn-cnt">5</em></div>
+    <div class="menu-item" data-machine="dev-2">Laptop <em class="mn-cnt">2</em></div>
+  </div>
+  <!-- 下拉：排序 -->
+  <div class="menu" id="sort-menu" style="left:56px;top:216px">
+    <div class="menu-item on" data-sort="lastused-desc">最近使用<em class="chk fa-solid fa-check"></em></div>
+    <div class="menu-item" data-sort="updated-desc">最近更新<em class="chk fa-solid fa-check"></em></div>
+    <div class="menu-item" data-sort="created-desc">最近创建<em class="chk fa-solid fa-check"></em></div>
+    <div class="menu-item" data-sort="usage-desc">使用最多<em class="chk fa-solid fa-check"></em></div>
+    <div class="menu-item" data-sort="title-asc">标题 A → Z<em class="chk fa-solid fa-check"></em></div>
+  </div>
+</div>
+
+<div class="ann">
+  <b>这版原型要拍板的四件事</b>
+  <ol>
+    <li><b>行高 = 52px（两行）</b>：标题一行，摘要 + 标签同行。真实组件当前 <code>ROW_HEIGHT=44</code>，
+        而带标签的行实测需要 ≈62px（标题 16 + 摘要 16 + 标签 18 + 上下 padding 12），
+        第三行被 <code>overflow:hidden</code> 裁掉 —— 切到「44px（现状）」档可以直接看到被裁的标签。</li>
+    <li><b>64px（三行）备选</b>：标签独占第三行，标签多且需要一眼看全时用；代价是可视行数减少
+        （列表每次少 20%）。两档都用常量行高，虚拟化 <code>ROW_HEIGHT</code>/spacer 数学不用改结构。</li>
+    <li><b>筛选区收敛成一行</b>：创建者分段（同壳内靠底色分隔）+ 机器下拉 chip + 排序 chip（显示当前排序名，
+        不再只给 5 个图标）+ 无标签开关 + 标签条（单行横向滚动、右缘渐隐）。
+        对比现状的「搜索 + 创建者行 + 排序行 + 无标签/标签行」四层，省 2 行纵向空间给列表。</li>
+    <li><b>窄态自动折两行</b>：宽度 &lt; 约 700px 时筛选行按「创建者+机器 / 排序+无标签+标签」折行，
+        标签条独占一整行 —— 切到「窄 700」档查看。</li>
+  </ol>
+</div>
+
+<script>
+  // ── 外壳开关 ────────────────────────────────────────────────
+  const body = document.body;
+  document.querySelectorAll('input[name="h"]').forEach((el) => {
+    el.addEventListener("change", () => {
+      body.classList.remove("h44", "h52", "h64");
+      body.classList.add("h" + el.value);
+    });
+  });
+  document.querySelectorAll('input[name="w"]').forEach((el) => {
+    el.addEventListener("change", () => body.classList.toggle("narrow", el.value === "narrow"));
+  });
+  document.getElementById("ann-tog").addEventListener("change", (e) => body.classList.toggle("mark", e.target.checked));
+
+  // ── 编辑器：点击 / 聚焦展开（真实实现走 WAAPI 一次性高度动画） ──
+  const editor = document.getElementById("editor");
+  const toggle = document.getElementById("editor-toggle");
+  const syncToggle = () => {
+    const expanded = editor.classList.contains("expanded");
+    toggle.innerHTML = `<i class="fa-solid fa-chevron-${expanded ? "up" : "down"}"></i>`;
+  };
+  editor.addEventListener("focus", () => { editor.classList.add("expanded"); syncToggle(); });
+  editor.addEventListener("blur", () => {
+    window.setTimeout(() => {
+      if (document.activeElement === editor) return;
+      if (!editor.value.includes("\n")) { editor.classList.remove("expanded"); syncToggle(); }
+    }, 500);
+  });
+  toggle.addEventListener("click", () => {
+    editor.classList.toggle("expanded"); syncToggle();
+  });
+
+  // ── 筛选交互（只做视觉联动；真实组件由 jotai state 驱动） ──
+  const filters = document.getElementById("filters");
+  const tagstrip = document.getElementById("tagstrip");
+  let creator = "all";
+  let tagSel = new Set();
+  let untagged = false;
+
+  const refreshDirty = () => {
+    const dirty = creator !== "all" || tagSel.size > 0 || untagged;
+    filters.classList.toggle("dirty", dirty);
+  };
+
+  document.querySelectorAll(".seg-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      creator = btn.dataset.creator;
+      document.querySelectorAll(".seg-btn").forEach((b) => b.classList.toggle("on", b === btn));
+      refreshDirty();
+    });
+  });
+
+  tagstrip.querySelectorAll(".tagchip").forEach((chip) => {
+    chip.addEventListener("click", () => {
+      const tag = chip.dataset.tag;
+      if (tagSel.has(tag)) { tagSel.delete(tag); chip.classList.remove("on"); }
+      else { tagSel.add(tag); chip.classList.add("on"); }
+      refreshDirty();
+    });
+  });
+
+  const untaggedBtn = document.getElementById("untagged-btn");
+  untaggedBtn.addEventListener("click", () => {
+    untagged = !untagged;
+    untaggedBtn.classList.toggle("on", untagged);
+    refreshDirty();
+  });
+
+  document.getElementById("reset-btn").addEventListener("click", () => {
+    creator = "all"; tagSel.clear(); untagged = false;
+    document.querySelectorAll(".seg-btn").forEach((b) => b.classList.toggle("on", b.dataset.creator === "all"));
+    tagstrip.querySelectorAll(".tagchip").forEach((c) => c.classList.remove("on"));
+    untaggedBtn.classList.remove("on");
+    refreshDirty();
+  });
+
+  // ── 下拉菜单（机器 / 排序）：打开时贴着按钮下沿定位（坐标由按钮实时量出） ──
+  const machineBtn = document.getElementById("machine-btn");
+  const machineMenu = document.getElementById("machine-menu");
+  const sortBtn = document.getElementById("sort-btn");
+  const sortMenu = document.getElementById("sort-menu");
+  const modalEl = document.querySelector(".modal");
+  const placeMenu = (menu, anchor) => {
+    const m = modalEl.getBoundingClientRect();
+    const a = anchor.getBoundingClientRect();
+    menu.style.left = `${a.left - m.left}px`;
+    menu.style.top = `${a.bottom - m.top + 4}px`;
+  };
+  const closeMenus = () => { machineMenu.classList.remove("open"); sortMenu.classList.remove("open"); };
+  machineBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const opening = !machineMenu.classList.contains("open");
+    closeMenus();
+    if (opening) { placeMenu(machineMenu, machineBtn); machineMenu.classList.add("open"); }
+  });
+  sortBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const opening = !sortMenu.classList.contains("open");
+    closeMenus();
+    if (opening) { placeMenu(sortMenu, sortBtn); sortMenu.classList.add("open"); }
+  });
+  document.addEventListener("click", closeMenus);
+
+  machineMenu.querySelectorAll(".menu-item").forEach((item) => {
+    item.addEventListener("click", () => {
+      machineMenu.querySelectorAll(".menu-item").forEach((i) => i.classList.remove("on"));
+      item.classList.add("on");
+      const label = item.dataset.machine === "any" ? "任意电脑" : item.firstChild.textContent.trim();
+      const labelEl = document.getElementById("machine-label");
+      labelEl.textContent = label;
+      machineBtn.classList.toggle("on", item.dataset.machine !== "any");
+    });
+  });
+  sortMenu.querySelectorAll(".menu-item").forEach((item) => {
+    item.addEventListener("click", () => {
+      sortMenu.querySelectorAll(".menu-item").forEach((i) => i.classList.remove("on"));
+      item.classList.add("on");
+      document.getElementById("sort-label").textContent = item.firstChild.textContent.trim();
+    });
+  });
+
+  // ── 行选中 ──
+  document.querySelectorAll(".row").forEach((row) => {
+    row.addEventListener("click", () => {
+      document.querySelectorAll(".row").forEach((r) => r.classList.remove("sel"));
+      row.classList.add("sel");
+    });
+  });
+</script>
+</body>
+</html>
