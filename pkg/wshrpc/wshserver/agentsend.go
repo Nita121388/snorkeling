@@ -7,9 +7,12 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"log"
+	"regexp"
 	"strings"
 	"time"
 
+	"github.com/wavetermdev/waveterm/pkg/agentstatus"
 	"github.com/wavetermdev/waveterm/pkg/blockcontroller"
 	"github.com/wavetermdev/waveterm/pkg/filestore"
 	"github.com/wavetermdev/waveterm/pkg/wavebase"
@@ -44,8 +47,22 @@ const (
 	DefaultSubmitVerifyMs = 700
 	MinSubmitVerifyMs     = 200
 	MaxSubmitVerifyMs     = 5000
-	// 补回车的最多次数（硬上限，真正的截止时间还是 params.WaitMs）。
-	MaxSubmitRetries = 30
+	// 单次观察窗口的退避上限（700ms × 尝试次数，最多 3s）。
+	MaxSubmitVerifyWindowMs = 3000
+	// 补回车最多次数（硬上限，真正的截止时间是 SubmitWaitMs）。
+	MaxSubmitRetries = 64
+	// 提交确认的总窗口：pi 启动期会跑 `npm view` 查扩展更新，真机可达 40s+，
+	// 静默判定的 waitms（默认 30s）不够打，提交确认单独给宽窗口。
+	DefaultSubmitWaitMs = 180000
+	MaxSubmitWaitMs     = 600000
+	// 未就绪标记：某些 agent TUI（实测 pi）在启动期会持续显示这句话，期间对 Enter 完全无响应
+	// （启动会跑 `npm view` 查扩展更新，慢网络下可达 40s+）。静默判定会把它误当“就绪”。
+	// 命中这些标记时不当就绪，继续等（宁可报 E_AGENT_NOT_READY，也不静默把消息塞进输入框当成功）。
+	termStartupMarkers = "startup is still in progress|starting up|initializing"
+	// 读 term 输出尾部判定标记时的长度上限。
+	termTailReadBytes = 4096
+	// 等「启动结束」时的轮询间隔：期间只等不打回车。
+	submitStartupPollMs = 500
 )
 
 // AgentSendCommand writes text into a term block's PTY. It is the backend twin of
@@ -86,6 +103,7 @@ func (ws *WshServer) AgentSendCommand(ctx context.Context, data wshrpc.AgentSend
 	if err := ensureSendBlockController(ctx, blockId, blockObj); err != nil {
 		return nil, err
 	}
+	log.Printf("[agentsend] %s controller ready", blockId)
 
 	rtn := &wshrpc.AgentSendResult{
 		Version:       wshrpc.AgentControlVersion,
@@ -99,6 +117,7 @@ func (ws *WshServer) AgentSendCommand(ctx context.Context, data wshrpc.AgentSend
 	if params.Wait {
 		waitedMs, err := waitForTermQuiet(ctx, blockId, params.WaitMs, params.QuietMs)
 		rtn.WaitedMs = waitedMs
+		log.Printf("[agentsend] %s quiet wait done waitedms=%d err=%v", blockId, waitedMs, err)
 		if err != nil {
 			return rtn, err
 		}
@@ -112,6 +131,7 @@ func (ws *WshServer) AgentSendCommand(ctx context.Context, data wshrpc.AgentSend
 		return rtn, fmt.Errorf("E_BLOCK_NOT_READY: write to pty failed: %w", err)
 	}
 	rtn.Injected = true
+	log.Printf("[agentsend] %s injected %d bytes", blockId, len(text))
 
 	if params.Submit {
 		// The TUI needs the bracketed paste consumed before CR means "submit".
@@ -123,7 +143,13 @@ func (ws *WshServer) AgentSendCommand(ctx context.Context, data wshrpc.AgentSend
 		// 提交确认（真机事故 2026-11-21）：pi 启动期（"Startup is still in progress"）会
 		// 吞掉回车 —— 文字进了输入框但没提交，用户看到「文字在输入框里、没发出去」。
 		// 输出继续增长 = TUI 真的接了；静默不动 = 补发回车。
-		rtn.SubmitRetries, rtn.SubmitConfirmed = confirmSubmit(ctx, blockId, params)
+		submitStart := time.Now()
+		isAgentBlock := strings.TrimSpace(blockObj.Meta.GetString("agent:provider", "")) != ""
+		rtn.SubmitRetries, rtn.SubmitConfirmed = confirmSubmit(ctx, blockId, params, isAgentBlock)
+		log.Printf(
+			"[agentsend] %s submit confirm retries=%d confirmed=%v elapsedms=%d",
+			blockId, rtn.SubmitRetries, rtn.SubmitConfirmed, time.Since(submitStart).Milliseconds(),
+		)
 		if !rtn.SubmitConfirmed {
 			rtn.Warnings = append(rtn.Warnings, "submit-unconfirmed")
 		}
@@ -132,26 +158,78 @@ func (ws *WshServer) AgentSendCommand(ctx context.Context, data wshrpc.AgentSend
 }
 
 // confirmSubmit 确认这次提交真的被 TUI 接住：以 term 输出文件是否继续增长为信号。
-// 没长就补发 CR（有界：params.WaitMs 截止 + MaxSubmitRetries 硬上限），返回补发次数。
+// 没长就补发 CR（有界：params.SubmitWaitMs 截止 + MaxSubmitRetries 硬上限，间隔退避），
+// 返回补发次数与是否确认。
 //
 // 为什么“补发”是安全的：文字已经在 TUI 的输入缓冲区里（paste 已成功），此时多按几次回车
 // 最多是空提交（agent TUI 忽略空输入 / 命令行多一个空提示符），比默默丢消息好得多。
-func confirmSubmit(ctx context.Context, blockId string, params sendParams) (int, bool) {
-	verifyMs := params.SubmitVerifyMs
-	deadline := time.Now().Add(time.Duration(params.WaitMs) * time.Millisecond)
+//
+// 为什么需要宽窗口：真机实测（2026-11-21）pi 启动期会跑 `npm view` 查扩展更新，启动可达 40s+，
+// 期间 term 输出完全不动。只等 waitms（默认 30s）会打空重试，消息仍睡在输入框。
+// 该窗口与“等静默”分开：静默判定仍需快，提交确认可以慢。
+func confirmSubmit(ctx context.Context, blockId string, params sendParams, isAgentBlock bool) (int, bool) {
+	submitWaitMs := params.SubmitWaitMs
+	if submitWaitMs <= 0 {
+		submitWaitMs = DefaultSubmitWaitMs
+	}
+	deadline := time.Now().Add(time.Duration(submitWaitMs) * time.Millisecond)
+	ackWindowMs := params.SubmitVerifyMs
+	baselineSeq := agentStatusSeq(blockId)
+	statusAckUsable := isAgentBlock
 	retries := 0
+	// 阶段一：等 TUI 真的就绪（屏上没有「还在启动」标记）——期间**不打回车**，
+	// 启动期的回车必被吞（实测 pi 会冻结几十秒到几分钟），打了也是白发。
+	// 阶段二：就绪后投回车，并用 agent status hook（agent_start → working）确认；
+	// 没有 hook 时退回「输出继续增长」判定。没确认就再补一次回车。
 	for retries <= MaxSubmitRetries {
-		if termOutputMoved(ctx, blockId, verifyMs) {
-			// 输出有变化 = TUI 接住了这次提交（开始渲染回复/状态行）
-			return retries, true
-		}
-		if time.Now().After(deadline) {
+		if ctx.Err() != nil {
 			return retries, false
 		}
+		if statusAckUsable && agentStatusSeq(blockId) > baselineSeq {
+			return retries, true
+		}
+		if termTailShowsStartup(blockId) {
+			// 还在启动：只等，不打 CR
+			if time.Now().After(deadline) {
+				return retries, false
+			}
+			select {
+			case <-ctx.Done():
+				return retries, false
+			case <-time.After(submitStartupPollMs):
+			}
+			continue
+		}
+		// 就绪：投一次回车
 		if err := sendInputReady(ctx, blockId, []byte("\r")); err != nil {
 			return retries, false
 		}
 		retries++
+		// 等 ack：状态 hook 优先，没有则看输出是否继续增长
+		ackDeadline := time.Now().Add(time.Duration(ackWindowMs) * time.Millisecond)
+		moved := false
+		for time.Now().Before(ackDeadline) {
+			if statusAckUsable {
+				if agentStatusSeq(blockId) > baselineSeq {
+					return retries, true
+				}
+				if !moved {
+					moved = termOutputMoved(ctx, blockId, submitStartupPollMs)
+				}
+				if retries >= 2 && !moved {
+					// 两轮都没有 hook 报告：该 agent 没装 hook，退回输出判定
+					statusAckUsable = false
+				}
+			} else if termOutputMoved(ctx, blockId, submitStartupPollMs) {
+				return retries, true
+			}
+			if ctx.Err() != nil {
+				return retries, false
+			}
+		}
+		if time.Now().After(deadline) {
+			return retries, false
+		}
 	}
 	return retries, false
 }
@@ -266,6 +344,7 @@ type sendParams struct {
 	Submit         bool
 	SubmitDelayMs  int
 	SubmitVerifyMs int
+	SubmitWaitMs   int
 }
 
 func normalizeSendParams(data wshrpc.AgentSendRequest) (sendParams, error) {
@@ -278,6 +357,7 @@ func normalizeSendParams(data wshrpc.AgentSendRequest) (sendParams, error) {
 		Submit:         data.Submit == nil || *data.Submit,
 		SubmitDelayMs:  data.SubmitDelayMs,
 		SubmitVerifyMs: data.SubmitVerifyMs,
+		SubmitWaitMs:   data.SubmitWaitMs,
 	}
 	if params.WaitMs <= 0 {
 		params.WaitMs = DefaultSendWaitMs
@@ -308,6 +388,12 @@ func normalizeSendParams(data wshrpc.AgentSendRequest) (sendParams, error) {
 			"E_USAGE: submitverifyms %d out of range [%d,%d]",
 			params.SubmitVerifyMs, MinSubmitVerifyMs, MaxSubmitVerifyMs,
 		)
+	}
+	if params.SubmitWaitMs <= 0 {
+		params.SubmitWaitMs = DefaultSubmitWaitMs
+	}
+	if params.SubmitWaitMs > MaxSubmitWaitMs {
+		return params, fmt.Errorf("E_USAGE: submitwaitms %d over the %d ms cap", params.SubmitWaitMs, MaxSubmitWaitMs)
 	}
 	return params, nil
 }
@@ -383,10 +469,19 @@ func waitForTermQuiet(ctx context.Context, blockId string, waitMs int, quietMs i
 		if haveBaseline {
 			quietFor := time.Since(lastChange)
 			if quietFor >= time.Duration(quietMs)*time.Millisecond {
-				return int(time.Since(start).Milliseconds()), nil
+				if !termTailShowsStartup(blockId) {
+					return int(time.Since(start).Milliseconds()), nil
+				}
+				// 静默了，但 TUI 仍显示启动中：继续等（不要让 CR 白打）
+				lastChange = time.Now()
 			}
 		}
 		if time.Now().After(deadline) {
+			if termTailShowsStartup(blockId) {
+				return int(time.Since(start).Milliseconds()), fmt.Errorf(
+					"E_AGENT_NOT_READY: agent TUI in block %q is still starting after %d ms (startup marker still on screen)",
+					blockId, waitMs)
+			}
 			return int(time.Since(start).Milliseconds()), fmt.Errorf(
 				"E_AGENT_NOT_READY: no quiet window of %d ms within %d ms (block %q is still producing output)",
 				quietMs, waitMs, blockId)
@@ -398,6 +493,31 @@ func waitForTermQuiet(ctx context.Context, blockId string, waitMs int, quietMs i
 		}
 	}
 }
+
+// agentStatusSeq 返回该块当前 agent 状态的 seq；没有 hook / 没状态时返回 -1。
+// seq 是 agentstatus 管理器里每次新报告都会加的计数器，用它做“提交后是否真的有新报告”。
+func agentStatusSeq(blockId string) int64 {
+	status := agentstatus.Get(blockId)
+	if status == nil {
+		return -1
+	}
+	return status.Seq
+}
+
+// termTailShowsStartup 读 term 文件尾部，判断 TUI 是否还在启动阶段（见 termStartupMarkers）。
+// 读不到文件 / 读失败一律算“不是启动中”（不能因为读错误把发送卡死）。
+func termTailShowsStartup(blockId string) bool {
+	_, data, err := filestore.WFS.ReadFile(context.Background(), blockId, wavebase.BlockFile_Term)
+	if err != nil || len(data) == 0 {
+		return false
+	}
+	if len(data) > termTailReadBytes {
+		data = data[len(data)-termTailReadBytes:]
+	}
+	return termTailStartupRe.Match(data)
+}
+
+var termTailStartupRe = regexp.MustCompile("(?i)" + termStartupMarkers)
 
 // findTabIdForBlock locates the tab that currently owns a block via the shared
 // wstore lookup (block parents walk). ResyncController needs it, and a block

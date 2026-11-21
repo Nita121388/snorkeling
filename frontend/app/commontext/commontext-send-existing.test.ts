@@ -1,13 +1,13 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-// executeCommonTextSend 的 existing 路径单测（11-18 包 R10：收口到后端 agentsend）。
+// executeCommonTextSend 的 existing 路径单测（11-18 包 R10 + 派发不等待）。
 //
-// R10 契约：
-//   1. 本地块 → RpcApi.AgentSendCommand（blockid + text64 + submit=true），绝不走前端 terminal.paste；
-//   2. 远端块（connection 非空非 local）→ 不调后端，走原前端 paste 链；
-//   3. 后端报错（E_AGENT_NOT_READY 等非「确定没写入」错误）→ sendFailed 状态可见、返回 false，不回退（避免双发）；
-//   4. 后端报 E_UNSUPPORTED / E_NOT_FOUND（确定没写入）→ 回退前端 paste 链。
+// 契约（2026-11-21 定稿）：
+//   1. 本地块 → 立即返回 true（状态先给「已发送」），发送**后台投递**给 RpcApi.AgentSendCommand；
+//      绝不在 UI 关键路径上等待就绪/确认（agent 启动可能几十秒到几分钟）。
+//   2. 本地块绝不走前端 terminal.paste（粘贴 + 150ms 回车是启发式竞态，实测会丢回车）。
+//   3. 远端块（connection 非空非 local）→ 不调后端，走原前端 paste 链。
 //
 // create 路径（建块 + pending input）不在本测试范围（行为未变，由 verify 台
 // scripts/verify/commontext-send-agent-block 覆盖）。
@@ -19,7 +19,6 @@ import { initI18n } from "@/i18n/config";
 import { executeCommonTextSend, type CommontextSendConfig } from "./commontext-send-button";
 import type { AgentBlockInfo } from "./commontext-send-target";
 
-// 后端 agentsend RPC：断言调用参数 / 注入错误
 vi.mock("@/app/store/wshclientapi", () => ({
     RpcApi: { AgentSendCommand: vi.fn() },
 }));
@@ -74,9 +73,13 @@ const Profiles = [
     { name: "claude", label: "Claude", cmd: "claude", isDefault: false },
 ];
 
-/** base64 解码（断言 text64 原文） */
 function decode64(value: string): string {
     return Buffer.from(value, "base64").toString("utf-8");
+}
+
+/** 等 fireAndForget 的后台任务跑到 RPC 调用 */
+async function flush() {
+    await new Promise((resolve) => setTimeout(resolve, 0));
 }
 
 beforeEach(async () => {
@@ -85,9 +88,9 @@ beforeEach(async () => {
     pasteSend.mockReset();
 });
 
-describe("executeCommonTextSend existing 路径（R10：本地块走后端 agentsend）", () => {
-    it("本地块：调 AgentSendCommand（blockid/text64/submit），不走前端 paste", async () => {
-        agentSend.mockResolvedValue({ ok: true, injected: true, submitted: true });
+describe("executeCommonTextSend existing 路径（派发不等待）", () => {
+    it("本地块：立即返回 true，后台调 AgentSendCommand（blockid/text64/submit），不走前端 paste", async () => {
+        agentSend.mockResolvedValue({ ok: true, injected: true, submitted: true, submitconfirmed: true });
         const onStatus = vi.fn();
         const ok = await executeCommonTextSend({
             text: "hello #fix",
@@ -96,7 +99,10 @@ describe("executeCommonTextSend existing 路径（R10：本地块走后端 agent
             profiles: Profiles,
             onStatus,
         });
+        // 关键：不等后端就返回（状态立即给已发送）
         expect(ok).toBe(true);
+        expect(onStatus).toHaveBeenCalledWith(expect.stringContaining("Sent"), "ok");
+        await flush();
         expect(agentSend).toHaveBeenCalledTimes(1);
         const [client, request] = agentSend.mock.calls[0];
         expect(client).toEqual({ __test: true });
@@ -104,66 +110,36 @@ describe("executeCommonTextSend existing 路径（R10：本地块走后端 agent
         expect(decode64(request.text64)).toBe("hello"); // #tag 剥离 + 原文送达
         expect(request.submit).toBe(true);
         expect(pasteSend).not.toHaveBeenCalled();
-        expect(onStatus).toHaveBeenCalledWith(expect.stringContaining("Sent"), "ok");
     });
 
-    it("远端块：不调后端，回退前端 paste 链", async () => {
+    it("远端块：不调后端，走前端 paste 链", async () => {
         pasteSend.mockReturnValue("b2");
-        const onStatus = vi.fn();
         const ok = await executeCommonTextSend({
             text: "hello",
             config: FocusedConfig,
             focusedAgent: RemoteAgent,
             profiles: Profiles,
-            onStatus,
+            onStatus: vi.fn(),
         });
         expect(ok).toBe(true);
+        await flush();
         expect(agentSend).not.toHaveBeenCalled();
         expect(pasteSend).toHaveBeenCalledWith("hello", ["b2"]);
     });
 
-    it("后端就绪超时（E_AGENT_NOT_READY）：sendFailed 可见 + 返回 false，不回退 paste（防双发）", async () => {
-        agentSend.mockRejectedValue(new Error("E_AGENT_NOT_READY: block b1 not ready"));
-        pasteSend.mockReturnValue("b1");
-        const onStatus = vi.fn();
+    it("后台投递失败不影响返回值（不阻塞用户，只记日志）", async () => {
+        agentSend.mockRejectedValue(new Error("E_AGENT_NOT_READY: still starting"));
+        const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
         const ok = await executeCommonTextSend({
             text: "hello",
             config: FocusedConfig,
             focusedAgent: LocalAgent,
             profiles: Profiles,
-            onStatus,
-        });
-        expect(ok).toBe(false);
-        expect(pasteSend).not.toHaveBeenCalled();
-        expect(onStatus).toHaveBeenCalledWith(expect.stringContaining("E_AGENT_NOT_READY"), "err");
-    });
-
-    it("后端 E_UNSUPPORTED（确定没写入，如连接元数据异常）：回退前端 paste 链", async () => {
-        agentSend.mockRejectedValue(new Error("E_UNSUPPORTED: remote"));
-        pasteSend.mockReturnValue("b1");
-        const onStatus = vi.fn();
-        const ok = await executeCommonTextSend({
-            text: "hello",
-            config: FocusedConfig,
-            focusedAgent: LocalAgent,
-            profiles: Profiles,
-            onStatus,
+            onStatus: vi.fn(),
         });
         expect(ok).toBe(true);
-        expect(pasteSend).toHaveBeenCalledWith("hello", ["b1"]);
-    });
-
-    it("发送前先给 sending 状态（后端等待期间界面有反馈）", async () => {
-        agentSend.mockResolvedValue({ ok: true });
-        const onStatus = vi.fn();
-        await executeCommonTextSend({
-            text: "hello",
-            config: FocusedConfig,
-            focusedAgent: LocalAgent,
-            profiles: Profiles,
-            onStatus,
-        });
-        const kinds = onStatus.mock.calls.map(([, kind]) => kind);
-        expect(kinds[0]).toBe("info"); // Sending…
+        await flush();
+        expect(warn).toHaveBeenCalled();
+        warn.mockRestore();
     });
 });

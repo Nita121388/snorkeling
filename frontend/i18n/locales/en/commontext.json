@@ -115,7 +115,6 @@
     "notReady": "Agent block not ready — focus it and retry, or create a new block",
     "sent": "Sent",
     "sentPending": "Sent — will inject when {{agent}} is ready",
-    "sending": "Sending…",
     "sendFailed": "Send failed: {{error}}",
     "pickFailed": "Pick directory failed: {{error}}",
     "unknownError": "unknown error",

@@ -899,6 +899,7 @@ declare global {
         quietms?: number;
         submitdelayms?: number;
         submitverifyms?: number;
+        submitwaitms?: number;
     };
 
     // wshrpc.AgentSendResult
@@ -2884,17 +2885,17 @@ declare global {
         "waveai:maxoutputtokens"?: number;
     };
 
-    // syncproto.Origin
-    type Origin = {
-        deviceid?: string;
-        devicename?: string;
-        platform?: string;
-    };
-
     // hero.Origin
     type Origin = {
         deviceId?: string;
         deviceName?: string;
+        platform?: string;
+    };
+
+    // syncproto.Origin
+    type Origin = {
+        deviceid?: string;
+        devicename?: string;
         platform?: string;
     };
 

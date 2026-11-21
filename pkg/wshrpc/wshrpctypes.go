@@ -1384,6 +1384,10 @@ type AgentSendRequest struct {
 	// default 700, range [200,5000]. While the poll sees no new output the CR
 	// is re-sent (the pasted text is still in the input buffer).
 	SubmitVerifyMs int `json:"submitverifyms,omitempty"`
+	// SubmitWaitMs bounds the whole submit-confirmation window (re-sending CR
+	// while the TUI stays silent, e.g. pi's 40s+ startup update checks),
+	// default 60000, cap 300000. Independent of the quiet-wait WaitMs.
+	SubmitWaitMs int `json:"submitwaitms,omitempty"`
 }
 
 // AgentSendResult reports what actually happened to the text.

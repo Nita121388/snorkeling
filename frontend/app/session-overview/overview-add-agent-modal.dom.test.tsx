@@ -21,11 +21,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AgentLaunchTarget } from "@/app/workspace/agent-launch";
 import { initI18n } from "@/i18n/config";
-import {
-    OverviewAddAgentModal,
-    type AddAgentSubmitRequest,
-    type AddAgentSubmitResult,
-} from "./overview-add-agent-modal";
+import { OverviewAddAgentModal, type AddAgentSubmitRequest } from "./overview-add-agent-modal";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -131,7 +127,7 @@ type MountOpts = {
     tabName?: string;
     targets?: AgentLaunchTarget[];
     defaultPath?: string | null;
-    onSubmit?: (request: AddAgentSubmitRequest) => Promise<AddAgentSubmitResult> | AddAgentSubmitResult | void;
+    onSubmit?: (request: AddAgentSubmitRequest) => Promise<void> | void;
 };
 
 function mountModal(opts: MountOpts = {}) {
@@ -363,22 +359,36 @@ describe("OverviewAddAgentModal 发送内容（v2）", () => {
         expect(onSubmit).not.toHaveBeenCalled();
     });
 
-    it("发送失败回执：内联报错 + footer 只留「关闭」，再点即关闭（不建第二个块）", async () => {
-        const onSubmit = vi.fn(async (): Promise<AddAgentSubmitResult> => ({
-            ok: false,
-            blockId: "block-new",
-            error: "E_AGENT_NOT_READY: timeout",
-        }));
+    it("建块失败：内联报错 + 保留取消/创建（可重试，失败时块没有建成功）", async () => {
+        const onSubmit = vi.fn(async (): Promise<void> => {
+            throw new Error("E_NOT_FOUND: tab gone");
+        });
         const { modalEl } = mountModal({ onSubmit });
         await flushCatalog();
         await clickCreate(modalEl);
         const errorEl = modalEl.querySelector(".session-overview-add-agent-error");
         expect(errorEl).not.toBeNull();
-        expect(errorEl?.textContent).toContain("E_AGENT_NOT_READY");
-        const buttons = [...modalEl.querySelectorAll(".modal-footer button")];
-        expect(buttons).toHaveLength(1);
-        // 再点一次：不重新提交，只关闭
+        expect(errorEl?.textContent).toContain("E_NOT_FOUND");
+        const { cancel, create } = modalButtons(modalEl);
+        expect(cancel).not.toBeNull();
+        expect((create as HTMLButtonElement).disabled).toBe(false);
+        // 重试（不再是「只能关闭」的终态）
         await clickCreate(modalEl);
+        expect(onSubmit).toHaveBeenCalledTimes(2);
+    });
+
+    it("派发不等待：onSubmit resolve 后弹窗结束（不因消息投递卡住）", async () => {
+        const onSubmit = vi.fn(async (): Promise<void> => {
+            await new Promise((resolve) => setTimeout(resolve, 20));
+        });
+        const { modalEl } = mountModal({ onSubmit });
+        await flushCatalog();
+        const t0 = Date.now();
+        await clickCreate(modalEl);
+        expect(Date.now() - t0).toBeLessThan(2000);
         expect(onSubmit).toHaveBeenCalledTimes(1);
+        expect(onSubmit).toHaveBeenCalledWith(
+            expect.objectContaining({ message: null, modelOverride: null })
+        );
     });
 });

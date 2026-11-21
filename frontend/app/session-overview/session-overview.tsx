@@ -53,7 +53,7 @@ import { useTranslation } from "react-i18next";
 import { AgentStatusChip, shouldShowAgentStatusChip } from "./agent-status-chip";
 import { planBlockRemoval } from "./block-removal";
 import { buildAddAgentLaunchContext } from "./overview-add-agent";
-import { OverviewAddAgentModal, type AddAgentSubmitRequest, type AddAgentSubmitResult } from "./overview-add-agent-modal";
+import { OverviewAddAgentModal, type AddAgentSubmitRequest } from "./overview-add-agent-modal";
 import { OverviewBoard } from "./overview-board";
 import {
     normalizeBoardTags,
@@ -2748,7 +2748,7 @@ function SessionOverviewPanel({ blockId, model }: ViewComponentProps<SessionOver
             defaultConnection: tabConnection,
         };
     }, [addAgentTab]);
-    const submitAddAgent = React.useCallback(async (request: AddAgentSubmitRequest): Promise<AddAgentSubmitResult> => {
+    const submitAddAgent = React.useCallback(async (request: AddAgentSubmitRequest): Promise<void> => {
         const settings = globalStore.get(atoms.settingsAtom);
         const blockDef = createAgentBlockDefForProfile(
             request.profileName,
@@ -2761,35 +2761,28 @@ function SessionOverviewPanel({ blockId, model }: ViewComponentProps<SessionOver
         );
         const runtimeOpts: RuntimeOpts = { termsize: { rows: 25, cols: 80 } };
         // activateTargetTab=false：建块后不抢焦点，用户留在 Overview 看到新卡入列。
+        // 抛出异常 = 建块失败（可重试）；建块成功就关弹窗，绝不把用户卡在「创建中」。
         const blockId = await ObjectService.CreateBlockInTab(request.tabId, blockDef, runtimeOpts, false, false);
-        // v2「新建并发送」：建块成功后再发消息。就绪等待/bracketed paste/回车全部由后端
-        // agentsend 承担（看 term 输出 quiet 轮询），前端不写第二份等待逻辑。
-        // 发送失败不回滚块（块已可用），失败信息回传给弹窗内联展示。
+        setAddAgentTab(null);
+        // 首发消息走后台投递（派发不等待）：agent 启动可能几十秒到几分钟（pi 会跑 npm 查扩展更新），
+        // 就绪门 + 提交确认都在 agentsend 后端做。这里只记日志，失败不阻塞、不回滚块。
         const text = request.message;
         if (text != null && text !== "") {
-            try {
-                const sendResult = await RpcApi.AgentSendCommand(TabRpcClient, {
-                    blockid: blockId,
-                    text64: stringToBase64(text),
-                    submit: true,
-                });
-                if (sendResult?.ok === false) {
-                    return {
-                        ok: false,
-                        blockId,
-                        error: sendResult.warnings?.join(", ") ?? "send-failed",
-                    };
+            fireAndForget(async () => {
+                try {
+                    const sendResult = await RpcApi.AgentSendCommand(TabRpcClient, {
+                        blockid: blockId,
+                        text64: stringToBase64(text),
+                        submit: true,
+                    });
+                    if (sendResult?.submitconfirmed === false) {
+                        console.warn("[overview-add-agent] 消息已放入输入框但未确认提交", { blockId });
+                    }
+                } catch (error) {
+                    console.warn("[overview-add-agent] 首发消息投递失败", { blockId, error });
                 }
-            } catch (error) {
-                return {
-                    ok: false,
-                    blockId,
-                    error: (error as Error)?.message ?? "send-failed",
-                };
-            }
+            });
         }
-        setAddAgentTab(null);
-        return { ok: true, blockId };
     }, []);
 
     return (

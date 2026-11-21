@@ -244,37 +244,23 @@ export async function executeCommonTextSend(input: {
         const connection = typeof focusedAgent!.connection === "string" ? focusedAgent!.connection.trim() : "";
         const isRemote = connection !== "" && connection !== "local" && !connection.startsWith("local:");
         if (!isRemote) {
-            onStatus?.(i18n.t("commontext:send.sending"), "info");
-            try {
-                await RpcApi.AgentSendCommand(TabRpcClient, {
-                    blockid: blockId,
-                    text64: stringToBase64(cleanText),
-                    submit: true,
-                });
-                onStatus?.(i18n.t("commontext:send.sent"), "ok");
-                return true;
-            } catch (error) {
-                const message = (error as Error)?.message ?? "";
-                // E_UNSUPPORTED / E_NOT_FOUND = 后端确定没写入（远端块 / 元数据异常）→ 回退
-                // 前端 paste 链。其它错误（如就绪超时 E_AGENT_NOT_READY）不回退：后端可能已
-                // 写入一部分，双路都发会出现重复文本，宁可报错让用户重试。
-                if (message.includes("E_UNSUPPORTED") || message.includes("E_NOT_FOUND")) {
-                    const target = sendTextToFocusedTerm(cleanText, [blockId]);
-                    if (target == null) {
-                        onStatus?.(i18n.t("commontext:send.notReady"), "err");
-                        return false;
+            // 派发不等待：后台投递（后端做就绪门 + 提交确认，agent 启动慢也不卡弹窗）。
+            onStatus?.(i18n.t("commontext:send.sent"), "ok");
+            fireAndForget(async () => {
+                try {
+                    const sendResult = await RpcApi.AgentSendCommand(TabRpcClient, {
+                        blockid: blockId,
+                        text64: stringToBase64(cleanText),
+                        submit: true,
+                    });
+                    if (sendResult?.submitconfirmed === false) {
+                        console.warn("[commontext] 消息已放入输入框但未确认提交", { blockId });
                     }
-                    onStatus?.(i18n.t("commontext:send.sent"), "ok");
-                    return true;
+                } catch (error) {
+                    console.warn("[commontext] 发送失败", { blockId, error });
                 }
-                onStatus?.(
-                    i18n.t("commontext:send.sendFailed", {
-                        error: message !== "" ? message : i18n.t("commontext:send.unknownError"),
-                    }),
-                    "err"
-                );
-                return false;
-            }
+            });
+            return true;
         }
         // 远端块：保留前端 paste 链（agentsend 拒绝远端）
         const target = sendTextToFocusedTerm(cleanText, [blockId]);

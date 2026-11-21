@@ -53,12 +53,7 @@ export type AddAgentSubmitRequest = {
     modelOverride: string | null;
 };
 
-/** onSubmit 的回执：建块总会发生（拿到 blockId），ok=false 表示消息没送出去。 */
-export type AddAgentSubmitResult = {
-    ok: boolean;
-    blockId: string;
-    error?: string;
-};
+
 
 export type OverviewAddAgentModalProps = {
     tabId: string;
@@ -70,7 +65,9 @@ export type OverviewAddAgentModalProps = {
     /** 该 Tab 默认路径所属连接（远端 Tab 的默认行不能当本地行）。 */
     defaultConnection?: string | null;
     onClose: () => void;
-    onSubmit: (request: AddAgentSubmitRequest) => Promise<AddAgentSubmitResult> | AddAgentSubmitResult | void;
+    /** 派发语义：resolve = 建块成功（弹窗关闭）；throw = 建块失败（弹窗保留可重试）。
+     * 首发消息**不在**这里等待——发送是后台投递（agent 启动可达数分钟），等它会把弹窗卡死。 */
+    onSubmit: (request: AddAgentSubmitRequest) => Promise<void> | void;
 };
 
 export function OverviewAddAgentModal({
@@ -88,10 +85,10 @@ export function OverviewAddAgentModal({
     const [profileName, setProfileName] = useState<string | null>(null);
     const [selectedPath, setSelectedPath] = useState<string | null>(null);
     const [submitting, setSubmitting] = useState(false);
-    // v2：发送内容 + 模型选择 + 发送失败内联错误（失败后不能再建第二个块）
+    // v2：发送内容 + 模型选择 + 建块失败内联错误（失败可重试：块没有建成功）
     const [message, setMessage] = useState("");
     const [modelPick, setModelPick] = useState<string | null>(null);
-    const [sendFailure, setSendFailure] = useState<{ blockId: string; error: string } | null>(null);
+    const [submitError, setSubmitError] = useState<string | null>(null);
 
     // 模型目录（agentprofilelist RPC，60s 缓存，与定时任务编辑器同一数据源）。探测失败回空数组，
     // 模型选择器退化成手填输入框，不阻塞建块。
@@ -138,18 +135,14 @@ export function OverviewAddAgentModal({
     );
 
     const submit = async () => {
-        if (sendFailure != null) {
-            // 块已经建出来了（只是消息没送到）：关闭，不给「再建一个」的机会
-            onClose();
-            return;
-        }
         if (selectedProfile == null || effectivePath == null) return;
         const normalizedMessage = isRemotePath ? null : normalizeAddAgentMessage(message);
         // 远端路径 + 已写消息：不静默丢弃（旧行为：建块成功、消息凭空消失），直接阻止提交。
         if (isRemotePath && normalizedMessage != null) return;
         setSubmitting(true);
+        setSubmitError(null);
         try {
-            const result = (await onSubmit({
+            await onSubmit({
                 tabId,
                 tabName,
                 profileName: selectedProfile.name,
@@ -157,10 +150,10 @@ export function OverviewAddAgentModal({
                 cwd: effectivePath.key,
                 message: normalizedMessage,
                 modelOverride,
-            })) as AddAgentSubmitResult | undefined;
-            if (result != null && result.ok === false) {
-                setSendFailure({ blockId: result.blockId, error: result.error ?? "" });
-            }
+            });
+            // 成功由调用方收尾（关弹窗）；失败走 catch
+        } catch (error) {
+            setSubmitError((error as Error)?.message ?? "create-failed");
         } finally {
             setSubmitting(false);
         }
@@ -170,21 +163,16 @@ export function OverviewAddAgentModal({
         <Modal
             className="session-overview-add-agent-modal"
             onClose={onClose}
-            onCancel={sendFailure != null ? undefined : onClose}
+            onCancel={onClose}
             cancelLabel={i18n.t("workspace:heroLaunch.cancel")}
             onOk={submit}
-            okLabel={
-                sendFailure != null
-                    ? i18n.t("session-overview:addAgent.close")
-                    : i18n.t("workspace:agentLaunch.create")
-            }
+            okLabel={submitting ? i18n.t("workspace:agentLaunch.creating") : i18n.t("workspace:agentLaunch.create")}
             okDisabled={
                 submitting ||
-                (sendFailure == null &&
-                    (selectedProfile == null ||
-                        effectivePath == null ||
-                        // 远端路径已写了消息：不建块也不发（错误提示就在消息框下方，看得见原因）
-                        (isRemotePath && normalizeAddAgentMessage(message) != null)))
+                selectedProfile == null ||
+                effectivePath == null ||
+                // 远端路径已写了消息：不建块也不发（错误提示就在消息框下方，看得见原因）
+                (isRemotePath && normalizeAddAgentMessage(message) != null)
             }
             title={i18n.t("workspace:agentLaunch.newAgent")}
             headerExtra={<span className="session-overview-add-agent-tabname">{tabName}</span>}
@@ -199,7 +187,7 @@ export function OverviewAddAgentModal({
                     value={message}
                     onChange={(e) => setMessage(e.target.value)}
                     placeholder={i18n.t("session-overview:addAgent.messagePlaceholder")}
-                    disabled={sendFailure != null}
+                    disabled={submitting}
                     rows={3}
                 />
                 {isRemotePath ? (
@@ -259,7 +247,7 @@ export function OverviewAddAgentModal({
                                 className="session-overview-add-agent-model-select"
                                 value={modelPick ?? ""}
                                 onChange={(e) => setModelPick(e.target.value)}
-                                disabled={sendFailure != null}
+                                disabled={submitting}
                                 aria-label={i18n.t("workspace:agentLaunch.modelLabel")}
                             >
                                 <option value="">
@@ -284,7 +272,7 @@ export function OverviewAddAgentModal({
                                 value={modelPick ?? ""}
                                 onChange={(e) => setModelPick(e.target.value)}
                                 placeholder={i18n.t("workspace:agentLaunch.modelPlaceholder")}
-                                disabled={sendFailure != null}
+                                disabled={submitting}
                                 aria-label={i18n.t("workspace:agentLaunch.modelLabel")}
                             />
                         )}
@@ -309,7 +297,7 @@ export function OverviewAddAgentModal({
                                     aria-selected={isSelected}
                                     onClick={() => setSelectedPath(row.key)}
                                     title={row.detail}
-                                    disabled={sendFailure != null}
+                                    disabled={submitting}
                                 >
                                     <span className="session-overview-add-agent-path-icon">
                                         <i className={makePathIconClass(row.source)} />
@@ -326,10 +314,10 @@ export function OverviewAddAgentModal({
                     </div>
                 )}
             </div>
-            {/* 建块成功但消息没送到：内联错误（块保留，关闭即结束——重试只会建第二个块，不给） */}
-            {sendFailure != null ? (
+            {/* 建块失败：内联错误（可重试——失败时块没有创建成功） */}
+            {submitError != null ? (
                 <div className="session-overview-add-agent-error" role="alert">
-                    {i18n.t("session-overview:addAgent.sendFailed", { error: sendFailure.error })}
+                    {i18n.t("session-overview:addAgent.sendFailed", { error: submitError })}
                 </div>
             ) : null}
         </Modal>

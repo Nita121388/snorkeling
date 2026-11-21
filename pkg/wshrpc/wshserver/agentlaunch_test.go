@@ -253,6 +253,9 @@ func TestNormalizeSendParamsDefaults(t *testing.T) {
 	if params.SubmitVerifyMs != DefaultSubmitVerifyMs {
 		t.Fatalf("submitverifyms default = %d, want %d", params.SubmitVerifyMs, DefaultSubmitVerifyMs)
 	}
+	if params.SubmitWaitMs != DefaultSubmitWaitMs {
+		t.Fatalf("submitwaitms default = %d, want %d", params.SubmitWaitMs, DefaultSubmitWaitMs)
+	}
 }
 
 func TestNormalizeSendParamsExplicitFalse(t *testing.T) {
@@ -277,6 +280,7 @@ func TestNormalizeSendParamsBounds(t *testing.T) {
 		{SubmitDelayMs: MaxSubmitDelayMs + 1, Submit: truePtr()},
 		{SubmitVerifyMs: MinSubmitVerifyMs - 1},
 		{SubmitVerifyMs: MaxSubmitVerifyMs + 1},
+		{SubmitWaitMs: MaxSubmitWaitMs + 1},
 	}
 	for i, req := range cases {
 		if _, err := normalizeSendParams(req); err == nil {
