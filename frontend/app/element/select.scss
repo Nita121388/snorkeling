@@ -133,7 +133,9 @@
 
 // ── 弹层（portal 到 body，fixed 定位由 floating-ui 提供）────────────────
 .app-select__menu {
-    z-index: var(--zindex-typeahead-modal, 100);
+    // 1000 与 SplitButton 弹层同一档：稳定压过 .modal-wrapper(z-index 500)——
+    // 否则在 Modal 里用 AppSelect（CommonText 的机器/排序筛选）时菜单会被弹窗壳盖住。
+    z-index: 1000;
     max-height: 264px;
     overflow-y: auto;
     padding: 3px;

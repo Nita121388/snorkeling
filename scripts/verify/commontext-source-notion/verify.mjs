@@ -42,8 +42,8 @@ const ADD_BUTTON = `${MODAL} [title="Add new common text item (edit on the right
 const SEARCH_INPUT = `${MODAL} input[placeholder^="Search common text"]`;
 
 // 与 commontext-meta-sort 同区间：来源徽标是行内小 chip，不允许把行高顶出这个范围。
-const ROW_HEIGHT_MIN = 36;
-const ROW_HEIGHT_MAX = 46;
+const ROW_HEIGHT_MIN = 50;
+const ROW_HEIGHT_MAX = 54;
 
 const ITEMS = [
   { title: "Alpha standup", body: "Alpha standup\nalpha notes" },

@@ -512,11 +512,16 @@ describe("CommonTextComposeModal — detail properties fold", () => {
             },
         } as any);
         await openModal({ query: "Bravo" });
-        // 列表行 chip：历史 `#legacy` / `work#` 存量读出来即净，不显示 #
-        const row = document.querySelector("[data-common-text-index]")?.parentElement;
-        const rowChips = [...(row?.querySelectorAll("button") ?? [])]
-            .filter((b) => b.textContent === "legacy" || b.textContent === "work")
-            .map((b) => b.textContent);
+        // 列表行 chip：历史 `#legacy` / `work#` 存量读出来即净，不显示 #。
+        // 行内标签是静态 span（非 button）——不是筛选控件，点击该选中行而不是吞 click。
+        const row = document.querySelector("[data-common-text-index]");
+        const rowChips = [
+            ...new Set(
+                [...(row?.querySelectorAll("[data-commontext-row-tags] span") ?? [])]
+                    .map((el) => (el.textContent ?? "").trim())
+                    .filter((text) => text === "legacy" || text === "work")
+            ),
+        ];
         expect(rowChips.sort()).toEqual(["legacy", "work"]);
         // 左侧标签筛选 chips 同源：也不带 #
         const allChips = [...document.querySelectorAll("button")].map((b) => (b.textContent ?? "").trim());
@@ -678,5 +683,142 @@ describe("CommonTextComposeModal — compose polish (11-20)", () => {
             .map((el) => (el.textContent ?? "").trim())
             .filter((text) => /^(now|\d+[smhd])$/.test(text));
         expect(compact.length).toBeGreaterThan(0);
+    });
+});
+
+// ── 2026-11-21 commontext-row-filter-polish（R1–R4）─────────────────────────
+// 行高 44→52 修裁切 + 徽章居右 + 筛选区单行化 + 排序 chip 菜单。
+// jsdom 量不出真实像素，这里锁结构扳机：行高常量、行内两段拆分、标签 3+N、
+// 徽章 ml-auto、筛选条单容器与清空链路；像素证据由真机验证台兜住。
+describe("CommonTextComposeModal — row height & filter bar (11-21)", () => {
+    function seedManyTags() {
+        const tagged = {
+            ...seedItems[0],
+            id: "ct-many-tags",
+            title: "Many tags",
+            text: "Row with four tags",
+            tags: ["alpha", "bravo", "charlie", "delta", "echo"],
+        };
+        globalStore.set(atoms.fullConfigAtom, {
+            settings: { "commontext:items": [...seedItems, tagged] },
+        } as any);
+        return tagged;
+    }
+
+    it("R1: rows are a fixed 52px two-line layout (title / preview+tags) with no third line", async () => {
+        await openModal();
+        const rows = [...document.querySelectorAll("[data-common-text-index]")];
+        expect(rows.length).toBeGreaterThan(0);
+        for (const row of rows) {
+            // 固定行高仍是虚拟化的单一常量；py-2 = 8/8，内高 36（16 + 2 + 18）
+            expect((row as HTMLElement).style.height).toBe("52px");
+            expect(row.className).toContain("py-2");
+            // 行内标签容器绝不换行：换行第三行 = 旧行被裁切的根因
+            const tagsSlot = row.querySelector("[data-commontext-row-tags]");
+            if (tagsSlot != null) {
+                expect((tagsSlot as HTMLElement).className).not.toContain("flex-wrap");
+            }
+            // 摘要与标签在同一行容器内（line2），不是两个独立块
+            const main = row.firstElementChild?.nextElementSibling;
+            expect(main?.className).toContain("flex-col");
+            expect(main?.childElementCount).toBe(2);
+        }
+    });
+
+    it("R1: shows at most 3 inline tags with +N and a full-list tooltip", async () => {
+        seedManyTags();
+        await openModal({ query: "Many tags" });
+        const row = document.querySelector("[data-common-text-index]") as HTMLElement;
+        const tagsSlot = row.querySelector("[data-commontext-row-tags]") as HTMLElement | null;
+        expect(tagsSlot).not.toBeNull();
+        expect(tagsSlot!.getAttribute("data-commontext-row-tags")).toBe("5");
+        const chips = [...tagsSlot!.querySelectorAll(":scope > span")].map((el) =>
+            (el.textContent ?? "").trim()
+        );
+        expect(chips).toEqual(["alpha", "bravo", "charlie", "+2"]);
+        // 完整标签列表走 tooltip：截断不丢语义
+        expect(tagsSlot!.getAttribute("title")).toContain("alpha");
+        expect(tagsSlot!.getAttribute("title")).toContain("delta");
+    });
+
+    it("R2: creator badge is right-aligned after the title main area", async () => {
+        await openModal({ query: "Alpha" });
+        const row = document.querySelector("[data-common-text-index]") as HTMLElement;
+        const badge = row.querySelector("[data-commontext-creator-badge]") as HTMLElement | null;
+        expect(badge).not.toBeNull();
+        expect(badge!.className).toContain("ml-auto");
+        // 徽章在标题主区（title + syncdot wrapper）之后，不在标题文本前面
+        const line1 = badge!.parentElement!;
+        expect(line1.childElementCount).toBe(2);
+        expect(line1.firstElementChild!.querySelector(".truncate")).not.toBeNull();
+        expect(line1.lastElementChild).toBe(badge);
+    });
+
+    it("R3: the filter bar is a single container holding creator/device/sort/untagged/tags/reset", async () => {
+        seedManyTags();
+        await openModal();
+        const bar = document.querySelector("[data-commontext-source-row]");
+        expect(bar).not.toBeNull();
+        // 创建者三档
+        for (const key of ["all", "human", "agent"]) {
+            expect(bar!.querySelector(`[data-commontext-creator="${key}"]`)).not.toBeNull();
+        }
+        // 无标签 chip / 标签条（nowrap + 单行滚动）
+        expect(bar!.querySelector('[title="Show items with no tags"]')).not.toBeNull();
+        const tagStrip = bar!.querySelector(".overflow-x-auto");
+        expect(tagStrip).not.toBeNull();
+        const chipsRoot = tagStrip!.firstElementChild as HTMLElement;
+        expect(chipsRoot.className).toContain("flex-nowrap");
+        expect(chipsRoot.className).not.toContain("flex-wrap");
+        // 默认无筛选生效 → 清空按钮不出现
+        expect(document.querySelector("[data-commontext-filter-reset]")).toBeNull();
+        // 点一个创建者档 → 清空按钮出现；点它回到 all（机器/标签一并清）
+        await click(bar!.querySelector('[data-commontext-creator="agent"]'));
+        const reset = document.querySelector("[data-commontext-filter-reset]");
+        expect(reset).not.toBeNull();
+        const tagChip = [...document.querySelectorAll("[data-commontext-source-row] button")].find((b) =>
+            (b.textContent ?? "").trim().startsWith("alpha")
+        );
+        expect(tagChip).toBeDefined();
+        await click(tagChip!);
+        expect(document.querySelector('[data-commontext-creator="all"]')!.getAttribute("aria-pressed")).toBe(
+            "false"
+        );
+        await click(document.querySelector("[data-commontext-filter-reset]"));
+        expect(document.querySelector('[data-commontext-creator="all"]')!.getAttribute("aria-pressed")).toBe(
+            "true"
+        );
+        expect(document.querySelector("[data-commontext-filter-reset]")).toBeNull();
+    });
+
+    it("R4: sort is a native-select-backed chip menu that disables during relevance sort", async () => {
+        await openModal();
+        const sortSelect = document.querySelector("[data-commontext-sort]") as HTMLSelectElement | null;
+        expect(sortSelect).not.toBeNull();
+        expect(sortSelect!.tagName).toBe("SELECT");
+        expect([...sortSelect!.options].map((o) => o.value)).toEqual([
+            "lastused-desc",
+            "updated-desc",
+            "created-desc",
+            "usage-desc",
+            "title-asc",
+        ]);
+        expect(sortSelect!.disabled).toBe(false);
+        // 切排序：值通道落盘（localStorage 偏好）
+        await act(async () => {
+            const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value")!.set!;
+            setter.call(sortSelect, "title-asc");
+            sortSelect!.dispatchEvent(new Event("change", { bubbles: true }));
+        });
+        expect(sortSelect!.value).toBe("title-asc");
+        expect(localStorage.getItem("commontext:sortKey")).toBe("title-asc");
+        // 搜索态：菜单禁用 + 相关度指示出现
+        await typeIntoComposer("Alpha standup notes");
+        await act(async () => {
+            await new Promise((r) => setTimeout(r, 300));
+        });
+        const disabledSelect = document.querySelector("[data-commontext-sort]") as HTMLSelectElement | null;
+        expect(disabledSelect!.disabled).toBe(true);
+        expect(document.querySelector("[data-commontext-sort-relevance]")).not.toBeNull();
     });
 });

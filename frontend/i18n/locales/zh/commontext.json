@@ -19,6 +19,7 @@
     "filterComputer": "按电脑筛选",
     "filterComputerTitle": "按来源电脑筛选",
     "anyComputer": "任意电脑",
+    "clearFilters": "清空筛选条件",
     "sortList": "常用文本列表排序",
     "sortDisabledTitle": "结果按相关度排序 —— 清空搜索后可恢复排序",
     "pinTitle": "置顶条目始终排在最前",

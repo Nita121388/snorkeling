@@ -53,22 +53,20 @@ describe("CommonTextComposeModal hook order", () => {
         expect(source).toContain("untaggedOnly: false, selectedIndex: 0");
     });
 
-    it("renders the icon-only sort control under the search box", () => {
-        // 5 个排序键都是纯图标按钮：含义只走 title / aria-label，不占左栏宽度。
-        expect(source).toContain('aria-label={t("commontext:compose.sortList")}');
-        expect(source).toContain("data-commontext-sort={option.key}");
-        expect(source).toContain("aria-label={t(option.labelKey)}");
-        // 图标名集中在 CommonTextSortOptions 表里，渲染时统一拼 `fa fa-solid ${icon}`
+    it("renders the sort control as a name-showing chip menu (R4)", () => {
+        // 2026-11-21：从 5 个裸图标换成「显示当前排序名」的 chip 菜单——
+        // 图标组含义只在 tooltip 里，窄列下也学不到；选项名集在 CommonTextSortOptions 表里。
+        expect(source).toContain("data-commontext-sort-chip=\"\"");
+        expect(source).toContain('data-commontext-sort=""');
+        expect(source).toContain('ariaLabel={t("commontext:compose.sortList")}');
+        expect(source).toContain("options={CommonTextSortOptions.map((option) => ({");
         expect(source).toContain('icon: "fa-clock-rotate-left"');
         expect(source).toContain('icon: "fa-fire"');
         expect(source).toContain('icon: "fa-arrow-down-a-z"');
-        expect(source).toContain("fa fa-solid ${option.icon}");
-        // 置顶说明常驻，相关度图标只在搜索态点亮
-        expect(source).toContain('title={t("commontext:compose.pinTitle")}');
+        // 相关度接管时禁用菜单（AppSelect disabled，不是 aria-disabled），并保留相关度指示
+        expect(source).toContain("disabled={relevanceActive}");
         expect(source).toContain("data-commontext-sort-relevance");
-        // 用 aria-disabled 而非 disabled：disabled 按钮的 tooltip 在 Chromium 里不显示
-        expect(source).toContain("aria-disabled={relevanceActive}");
-        expect(source).toContain("if (relevanceActive) return;");
+        expect(source).toContain('t("commontext:compose.sortDisabledTitle")');
     });
 
     it("feeds the chosen sort key into the search pipeline", () => {
@@ -267,7 +265,7 @@ describe("CommonTextComposeModal hook order", () => {
         expect(source).toContain("const COMMONTEXT_PERF_INPUT_ENABLED = true;");
         expect(source).toContain("const COMMONTEXT_PERF_CACHE_ENABLED = true;");
         expect(source).toContain("const COMMONTEXT_PERF_WINDOWING_ENABLED = true;");
-        expect(source).toContain("const ROW_HEIGHT = 44;");
+        expect(source).toContain("const ROW_HEIGHT = 52;");
         expect(source).toContain("const OVERSCAN = 8;");
         // 输入链路关闭：onChange/onSelect 直接同步写 searchText（旧行为）。
         expect(source).toContain("if (!COMMONTEXT_PERF_INPUT_ENABLED) {")

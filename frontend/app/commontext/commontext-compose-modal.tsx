@@ -70,7 +70,8 @@ const MAX_TAG_CHIPS = 16;
 const COMMONTEXT_PERF_INPUT_ENABLED = true;
 const COMMONTEXT_PERF_CACHE_ENABLED = true;
 const COMMONTEXT_PERF_WINDOWING_ENABLED = true;
-const ROW_HEIGHT = 44;
+const ROW_HEIGHT = 52;
+const ROW_TAGS_MAX = 3;
 const OVERSCAN = 8;
 const SEARCH_COMMIT_DEBOUNCE_MS = 80;
 const EMPTY_ITEMS: CommonTextItem[] = [];
@@ -185,6 +186,10 @@ const CommonTextRow = memo(function CommonTextRowImpl({
     const sourceTooltip = useMemo(() => describeCommonTextSource(item, nowMinute), [item, nowMinute, language]);
     const preview = useMemo(() => makePreview(item.text), [item, language]);
     const creatorKind = getCommonTextCreatorKind(item);
+    // 行内标签：最多 ROW_TAGS_MAX 颗 + `+N`。不换行、不换行成第三行——行高是虚拟化的单一常量。
+    const rowTags = item.tags ?? [];
+    const shownTags = rowTags.slice(0, ROW_TAGS_MAX);
+    const hiddenTagCount = rowTags.length - shownTags.length;
 
     return (
         <div
@@ -192,10 +197,10 @@ const CommonTextRow = memo(function CommonTextRowImpl({
             data-commontext-title={item.title}
             style={{ height: ROW_HEIGHT }}
             className={
-                "flex items-start gap-1.5 overflow-hidden border-l-2 px-3 py-1.5 cursor-pointer transition-colors " +
+                "flex items-start gap-1.5 overflow-hidden border-l-2 px-3 py-2 cursor-pointer transition-colors " +
                 // shrink-0 不能省：列表容器是 `flex flex-col` 滚动容器，而行自己是 flex 子项，
                 // 又带 `overflow-hidden`（CSS 规定 overflow≠visible 时 min-height:auto 解析为 0）。
-                // 少了它，N 行 44px 会被 flex 收缩按比例摊薄成十几像素一行，行内容被裁掉大半 ——
+                // 少了它，N 行 52px 会被 flex 收缩按比例摊薄成十几像素一行，行内容被裁掉大半 ——
                 // 真机表现为「列表字缩成一条细线、行叠在一起、底部凭空多出空白」。
                 "shrink-0 " +
                 (selected ? "border-actionsoftborder bg-actionsoft" : "border-transparent hover:bg-hoverbg")
@@ -205,17 +210,29 @@ const CommonTextRow = memo(function CommonTextRowImpl({
             onClick={() => onSelect(item)}
         >
             <div className="pt-0.5 w-4 shrink-0 text-secondary">
-                {item.pinned ? <i className="fa fa-solid fa-thumbtack text-[11px]" /> : null}
+                {item.pinned ? (
+                    <i
+                        className="fa fa-solid fa-thumbtack text-[11px]"
+                        title={i18n.t("commontext:compose.pinTitle")}
+                        aria-label={i18n.t("commontext:compose.pinTitle")}
+                    />
+                ) : null}
             </div>
-            <div className="min-w-0 flex-1">
+            {/* 行内两段：主区（标题 / 摘要+标签）与固定宽槽（次数 + 新鲜度）。 */}
+            <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                {/* line1：标题 + pending 圆点占左侧全部可用宽度，创建者徽章靠右。
+                    徽章原来紧跟标题，位置随标题长度漂移，跳行扫「谁创建的」对不齐；
+                    靠右后所有徽章右缘对齐，和右侧 meta 列成一条竖线。 */}
                 <div className="flex min-w-0 items-center gap-1.5">
-                    <span className="min-w-0 truncate text-xs font-medium">{item.title}</span>
-                    <CommonTextSyncDot item={item} />
+                    <span className="flex min-w-0 flex-1 items-center gap-1.5">
+                        <span className="min-w-0 truncate text-xs font-medium">{item.title}</span>
+                        <CommonTextSyncDot item={item} />
+                    </span>
                     <span
                         data-commontext-creator-badge={creatorKind}
                         title={sourceTooltip}
                         className={
-                            "inline-flex shrink-0 items-center gap-1 rounded-sm border px-1 py-px text-[9.5px] leading-none " +
+                            "ml-auto inline-flex max-w-[96px] shrink-0 items-center gap-1 rounded-sm border px-1 py-px text-[9.5px] leading-none " +
                             (creatorKind === "agent"
                                 ? "border-sky-500/30 bg-sky-500/10 text-sky-300"
                                 : "border-orange-400/30 bg-orange-400/10 text-orange-300")
@@ -228,15 +245,33 @@ const CommonTextRow = memo(function CommonTextRowImpl({
                                     : "fa-solid fa-user text-[8px]"
                             }
                         />
-                        {describeCommonTextCreatorName(item)}
+                        <span className="min-w-0 truncate">{describeCommonTextCreatorName(item)}</span>
                     </span>
                 </div>
-                <div className="text-[11px] text-secondary truncate">{preview}</div>
-                {(item.tags?.length ?? 0) > 0 && (
-                    <div className="mt-0 min-w-0 overflow-hidden">
-                        <SessionTagChips tags={item.tags?.slice(0, 4)} />
-                    </div>
-                )}
+                {/* line2：摘要（吃掉剩下宽度）+ 行内标签同行。tags 用静态 span，不用 button：
+                    disabled button 会把 click 吞掉，整行就点不中进详情。 */}
+                <div className="flex min-w-0 items-center gap-1.5">
+                    <span className="min-w-0 flex-1 truncate text-[11px] leading-4 text-secondary">{preview}</span>
+                    {shownTags.length > 0 && (
+                        <span
+                            className="flex min-w-0 max-w-[52%] shrink-0 items-center justify-end gap-1 overflow-hidden"
+                            data-commontext-row-tags={rowTags.length}
+                            title={i18n.t("commontext:meta.tagsList", { tags: rowTags.join(" · ") })}
+                        >
+                            {shownTags.map((tag) => (
+                                <span
+                                    key={tag}
+                                    className="inline-flex h-4 max-w-[96px] shrink-0 items-center rounded border border-border bg-surface-soft px-1 text-[9.5px] leading-none text-secondary"
+                                >
+                                    <span className="truncate">{tag}</span>
+                                </span>
+                            ))}
+                            {hiddenTagCount > 0 && (
+                                <span className="shrink-0 text-[9.5px] leading-none text-muted">+{hiddenTagCount}</span>
+                            )}
+                        </span>
+                    )}
+                </div>
             </div>
             {/* 右侧固定宽槽：「次数 + 更新时间」列常显。
                 R4 之后不再被 hover 插入按钮顶掉——行内不再提供插入动作。 */}
@@ -609,10 +644,22 @@ const CommonTextComposeModal = memo(() => {
     flushSearchRef.current = flushSearch;
     // 空结果文案按起因分流：查询无命中 vs 筛选把结果清空，两种情况用户要做的事不一样。
     const sourceFilterActive = state.creatorFilter !== "all" || state.deviceFilter !== "any";
+    // 筛选条是否有任一条件生效：标签与无标签也计入（否则空态会说成「没匹配」）。
+    const filterBarDirty = sourceFilterActive || state.selectedTags.length > 0 || state.untaggedOnly;
+    // 一次清空筛选条的四个维度；不动搜索框/编辑器过滤（那两个是用户主动输入的内容）。
+    const clearAllFilters = () =>
+        setState((cur) => ({
+            ...cur,
+            creatorFilter: "all",
+            deviceFilter: "any",
+            selectedTags: [],
+            untaggedOnly: false,
+            selectedIndex: 0,
+        }));
     const emptyListMessage =
         allItems.length === 0
             ? i18n.t("commontext:list.emptyNoItems")
-            : filteredItems.length === 0 && sourceFilterActive
+            : filteredItems.length === 0 && filterBarDirty
               ? i18n.t("commontext:list.emptyFilter")
               : i18n.t("commontext:list.emptySearch");
     const editorFilterActive =
@@ -1975,6 +2022,10 @@ const CommonTextComposeModal = memo(() => {
                                 </InputRightElement>
                             </InputGroup>
                             {allItems.length > 0 && (
+                                /* 筛选条（2026-11-21）：四层收敛成一行 —— 创建者分段 / 机器 / 排序 / 无标签 /
+                                   标签条 / 清空。控件同高 26px、同圆角、同 6px 间距；窄列靠 flex-wrap
+                                   自然折行（不写死断点：列宽由弹窗拖拽决定，媒体断点在这里没用）。
+                                   data-commontext-source-row 仍是这一整条的锚点。 */
                                 <div
                                     className="mt-2 flex min-w-0 flex-wrap items-center gap-1.5"
                                     data-commontext-source-row=""
@@ -1983,7 +2034,7 @@ const CommonTextComposeModal = memo(() => {
                                     <div
                                         role="group"
                                         aria-label={t("commontext:compose.filterCreator")}
-                                        className="inline-flex h-[22px] shrink-0 items-center overflow-hidden rounded-md border border-border bg-surface-soft"
+                                        className="inline-flex h-[26px] shrink-0 items-center overflow-hidden rounded-md border border-border bg-surface-soft"
                                     >
                                         {CommonTextCreatorFilters.map((option) => {
                                             const active = option.key === state.creatorFilter;
@@ -2020,16 +2071,14 @@ const CommonTextComposeModal = memo(() => {
                                             );
                                         })}
                                     </div>
-                                    {/* 机器筛选（R3）：原先是一枚原生 <select>，Windows 上拉开的
-                                        选项列表是系统 UA 绘制的方角白底，与弹窗主题不相容；
-                                        换成统一 AppSelect（值通道仍是隐藏原生 select，验证台口径不变），
-                                        外壳做成与创建者分段同高、同圆角的 chip，激活时用 accent 底色。 */}
+                                    {/* 机器筛选：统一 AppSelect（值通道仍是隐藏原生 select，验证台口径不变），
+                                        外壳与创建者分段同高同圆角，激活非 any 时 accent 底色。 */}
                                     {deviceSummaries.length > 1 && (
                                         <div
                                             data-commontext-device-chip=""
                                             title={t("commontext:compose.filterComputerTitle")}
                                             className={
-                                                "inline-flex h-[22px] min-w-0 max-w-[200px] shrink items-center gap-1 rounded-md border pr-0.5 text-[11px] leading-none transition-colors " +
+                                                "inline-flex h-[26px] min-w-0 max-w-[200px] shrink items-center gap-1 rounded-md border pr-0.5 text-[11px] leading-none transition-colors " +
                                                 (state.deviceFilter === "any"
                                                     ? "border-border bg-surface-soft text-secondary"
                                                     : "border-accent/50 bg-actionsoft text-accent")
@@ -2060,99 +2109,105 @@ const CommonTextComposeModal = memo(() => {
                                             />
                                         </div>
                                     )}
-                                </div>
-                            )}
-                            {allItems.length > 0 && (
-                                <div className="mt-2 flex min-w-0 items-center gap-1.5" data-commontext-sort-row="">
+                                    {/* 排序（R4）：从 5 个裸图标换成「显示当前排序名」的 chip 菜单。
+                                        值通道仍是隐藏原生 select（data-commontext-sort），验证台与 CDP
+                                        靠 .value + change 驱动；搜索态 disabled 并给出原因。 */}
                                     <div
-                                        role="group"
-                                        aria-label={t("commontext:compose.sortList")}
-                                        className="inline-flex shrink-0 items-center overflow-hidden rounded-md border border-border"
+                                        data-commontext-sort-chip=""
+                                        title={
+                                            relevanceActive
+                                                ? t("commontext:compose.sortDisabledTitle")
+                                                : t("commontext:compose.sortList")
+                                        }
+                                        className={
+                                            "inline-flex h-[26px] shrink-0 items-center gap-1 rounded-md border pl-1.5 pr-0.5 text-[11px] leading-none transition-colors " +
+                                            (relevanceActive
+                                                ? "border-border bg-surface-soft text-secondary/50"
+                                                : "border-border bg-surface-soft text-secondary")
+                                        }
                                     >
-                                        {CommonTextSortOptions.map((option) => {
-                                            const active = option.key === state.sortKey;
-                                            return (
-                                                <button
-                                                    key={option.key}
-                                                    type="button"
-                                                    data-commontext-sort={option.key}
-                                                    aria-label={t(option.labelKey)}
-                                                    aria-pressed={active}
-                                                    // 用 aria-disabled 而不是 disabled：disabled 按钮在 Chromium 里
-                                                    // 不派发鼠标事件，tooltip 也跟着失效——用户就看不到"为什么点不动"。
-                                                    aria-disabled={relevanceActive}
-                                                    title={
-                                                        relevanceActive
-                                                            ? t("commontext:compose.sortDisabledTitle")
-                                                            : t(option.labelKey)
-                                                    }
-                                                    onClick={() => {
-                                                        if (relevanceActive) return;
-                                                        handleSortChange(option.key);
-                                                    }}
-                                                    className={
-                                                        "inline-flex h-6 w-6 items-center justify-center transition-colors " +
-                                                        (relevanceActive
-                                                            ? "text-secondary/30 cursor-default"
-                                                            : active
-                                                              ? "bg-actionsoft text-accent cursor-pointer"
-                                                              : "text-secondary hover:bg-hoverbg hover:text-primary cursor-pointer")
-                                                    }
-                                                >
-                                                    <i className={`fa fa-solid ${option.icon} text-[11px]`} />
-                                                </button>
-                                            );
-                                        })}
+                                        <i className="fa-solid fa-arrow-down-wide-short shrink-0 text-[10px]" />
+                                        <AppSelect
+                                            variant="bare"
+                                            size="xs"
+                                            className="min-w-0"
+                                            data-commontext-sort=""
+                                            ariaLabel={t("commontext:compose.sortList")}
+                                            disabled={relevanceActive}
+                                            value={state.sortKey}
+                                            onChange={handleSortChange}
+                                            options={CommonTextSortOptions.map((option) => ({
+                                                value: option.key,
+                                                label: t(option.labelKey),
+                                            }))}
+                                        />
                                     </div>
-                                    <span
-                                        role="img"
-                                        aria-label={t("commontext:compose.pinTitle")}
-                                        title={t("commontext:compose.pinTitle")}
-                                        className="inline-flex h-6 w-6 shrink-0 items-center justify-center text-secondary/60"
-                                    >
-                                        <i className="fa fa-solid fa-thumbtack text-[10px]" />
-                                    </span>
                                     {relevanceActive && (
                                         <span
                                             data-commontext-sort-relevance=""
                                             role="img"
                                             aria-label={t("commontext:compose.relevanceAria")}
                                             title={t("commontext:compose.relevanceTitle")}
-                                            className="inline-flex h-6 shrink-0 items-center gap-1 rounded-md bg-actionsoft px-1.5 text-accent"
+                                            className="inline-flex h-[26px] shrink-0 items-center gap-1 rounded-md bg-actionsoft px-1.5 text-accent"
                                         >
                                             <i className="fa fa-solid fa-wand-magic-sparkles text-[10px]" />
                                         </span>
                                     )}
-                                </div>
-                            )}
-                            {allItems.length > 0 && (
-                                <div className="mt-2 flex min-w-0 items-center gap-1.5">
+                                    {/* 无标签 */}
                                     <button
                                         type="button"
                                         onClick={toggleUntagged}
                                         title={t("commontext:compose.showUntagged")}
                                         className={
-                                            "inline-flex max-w-full shrink-0 items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] leading-none cursor-pointer transition-colors " +
+                                            "inline-flex h-[26px] max-w-full shrink-0 items-center gap-1 rounded-md border px-2 text-[11px] leading-none cursor-pointer transition-colors " +
                                             (state.untaggedOnly
                                                 ? "border-transparent bg-accent/10 text-accent"
                                                 : "border-border bg-surface-soft text-secondary hover:bg-hover hover:text-primary")
                                         }
                                     >
+                                        <i className="fa-regular fa-square text-[10px]" />
                                         <span className="truncate">{t("commontext:compose.untagged")}</span>
                                         <span className="text-[10px] opacity-70">{untaggedCount}</span>
                                     </button>
+                                    {/* 标签条：单行横向滚动 + 右缘渐隐（以前 flex-wrap，标签一多就把
+                                        「无标签」和排序挤到下一排）。 */}
                                     {tagSummaries.length > 0 && (
-                                        <SessionTagChips
-                                            tags={tagSummaries.map((s) => s.tag)}
-                                            selectedTags={state.selectedTags}
-                                            countMap={(() => {
-                                                const m = new Map<string, number>();
-                                                for (const s of tagSummaries) m.set(s.tag.toLowerCase(), s.count);
-                                                return m;
-                                            })()}
-                                            onClick={toggleTag}
-                                            className="min-w-0"
-                                        />
+                                        <div
+                                            className="min-w-0 flex-1 overflow-x-auto overflow-y-hidden"
+                                            style={{
+                                                scrollbarWidth: "none",
+                                                maskImage:
+                                                    "linear-gradient(90deg, #000 calc(100% - 18px), transparent)",
+                                                WebkitMaskImage:
+                                                    "linear-gradient(90deg, #000 calc(100% - 18px), transparent)",
+                                            }}
+                                        >
+                                            <SessionTagChips
+                                                tags={tagSummaries.map((s) => s.tag)}
+                                                selectedTags={state.selectedTags}
+                                                countMap={(() => {
+                                                    const m = new Map<string, number>();
+                                                    for (const s of tagSummaries) m.set(s.tag.toLowerCase(), s.count);
+                                                    return m;
+                                                })()}
+                                                onClick={toggleTag}
+                                                nowrap
+                                                className="min-w-0"
+                                            />
+                                        </div>
+                                    )}
+                                    {/* 有筛选生效时才出现：一次清空创建者 / 机器 / 标签 / 无标签 */}
+                                    {filterBarDirty && (
+                                        <button
+                                            type="button"
+                                            data-commontext-filter-reset=""
+                                            onClick={clearAllFilters}
+                                            title={t("commontext:compose.clearFilters")}
+                                            aria-label={t("commontext:compose.clearFilters")}
+                                            className="inline-flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-md border border-transparent text-secondary transition-colors hover:bg-hover hover:text-primary cursor-pointer"
+                                        >
+                                            <i className="fa-solid fa-xmark text-[11px]" />
+                                        </button>
                                     )}
                                 </div>
                             )}
@@ -2213,7 +2268,7 @@ const CommonTextComposeModal = memo(() => {
                                             className={
                                                 // shrink-0 与窗口化分支同因：同为 flex 列容器的子项，
                                                 // 不加会在行内容超出时被压缩（回滚基线样式必须一致）。
-                                                "shrink-0 group flex items-start gap-1.5 border-l-2 px-3 py-1.5 cursor-pointer transition-colors " +
+                                                "shrink-0 group flex items-start gap-1.5 border-l-2 px-3 py-2 cursor-pointer transition-colors " +
                                                 (state.selectedIndex === index
                                                     ? "border-actionsoftborder bg-actionsoft"
                                                     : "border-transparent hover:bg-hoverbg")
@@ -2231,17 +2286,19 @@ const CommonTextComposeModal = memo(() => {
                                                     <i className="fa fa-solid fa-thumbtack text-[11px]" />
                                                 ) : null}
                                             </div>
-                                            <div className="min-w-0 flex-1">
+                                            <div className="flex min-w-0 flex-1 flex-col gap-0.5">
                                                 <div className="flex min-w-0 items-center gap-1.5">
-                                                    <span className="min-w-0 truncate text-xs font-medium">
-                                                        {item.title}
+                                                    <span className="flex min-w-0 flex-1 items-center gap-1.5">
+                                                        <span className="min-w-0 truncate text-xs font-medium">
+                                                            {item.title}
+                                                        </span>
+                                                        <CommonTextSyncDot item={item} />
                                                     </span>
-                                                    <CommonTextSyncDot item={item} />
                                                     <span
                                                         data-commontext-creator-badge={getCommonTextCreatorKind(item)}
                                                         title={describeCommonTextSource(item)}
                                                         className={
-                                                            "inline-flex shrink-0 items-center gap-1 rounded-sm border px-1 py-px text-[9.5px] leading-none " +
+                                                            "ml-auto inline-flex max-w-[96px] shrink-0 items-center gap-1 rounded-sm border px-1 py-px text-[9.5px] leading-none " +
                                                             (getCommonTextCreatorKind(item) === "agent"
                                                                 ? "border-sky-500/30 bg-sky-500/10 text-sky-300"
                                                                 : "border-orange-400/30 bg-orange-400/10 text-orange-300")
@@ -2254,17 +2311,23 @@ const CommonTextComposeModal = memo(() => {
                                                                     : "fa-solid fa-user text-[8px]"
                                                             }
                                                         />
-                                                        {describeCommonTextCreatorName(item)}
+                                                        <span className="min-w-0 truncate">{describeCommonTextCreatorName(item)}</span>
                                                     </span>
                                                 </div>
-                                                <div className="text-[11px] text-secondary truncate">
-                                                    {makePreview(item.text)}
-                                                </div>
-                                                {(item.tags?.length ?? 0) > 0 && (
-                                                    <div className="mt-0">
-                                                        <SessionTagChips tags={item.tags?.slice(0, 4)} />
+                                                <div className="flex min-w-0 items-center gap-1.5">
+                                                    <div className="min-w-0 flex-1 truncate text-[11px] leading-4 text-secondary">
+                                                        {makePreview(item.text)}
                                                     </div>
-                                                )}
+                                                    {(item.tags?.length ?? 0) > 0 && (
+                                                        <div className="mt-0 min-w-0 max-w-[52%] shrink-0 overflow-hidden">
+                                                            <SessionTagChips
+                                                                tags={item.tags?.slice(0, 4)}
+                                                                nowrap
+                                                                className="justify-end"
+                                                            />
+                                                        </div>
+                                                    )}
+                                                </div>
                                             </div>
                                             {/* 右侧固定宽槽：「次数 + 更新时间」列常显（R4：行内插入按钮已移除）。
                                                 尺寸约束：次数行 10px + gap 2px + 方块 12px = 24px ≤ h-7(28px)。 */}

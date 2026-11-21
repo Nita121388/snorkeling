@@ -46,10 +46,10 @@ const COMPOSER = "[data-commontext-composer]";
 const ADD_BUTTON = `${MODAL} [title="Add new common text item (edit on the right)"]`;
 const SEARCH_INPUT = `${MODAL} input[placeholder^="Search common text"]`;
 
-// 改造前列表行实测高度 41px（title 12px + 摘要 11px + py-1.5）；元信息列是固定 28px 槽，
-// 一旦它开始定行高，行高会掉到 28 或涨到 30+ 之外。
-const ROW_HEIGHT_MIN = 36;
-const ROW_HEIGHT_MAX = 46;
+// 行高 52px（2026-11-21）：标题 16 + gap 2 + 摘要/标签行 18 + py-2 16 = 52。
+// 元信息列仍是固定 28px 槽 —— 一旦它开始定行高，行高会掉到 28 或涨到 30+ 之外。
+const ROW_HEIGHT_MIN = 50;
+const ROW_HEIGHT_MAX = 54;
 const META_SLOT_HEIGHT = 28;
 
 const ITEMS = [
@@ -81,7 +81,9 @@ const SNAPSHOT_FN = `(() => {
     const rows = [...modal.querySelectorAll("[data-common-text-index]")];
     const h = (el) => (el == null ? 0 : Math.round(el.getBoundingClientRect().height));
     const text = (el) => (el == null ? "" : (el.textContent || "").trim());
-    const sortButtons = [...modal.querySelectorAll("[data-commontext-sort]")];
+    // 排序控件 2026-11-21 起是 chip 菜单：data-commontext-sort 落在隐藏原生 select 上
+    // （.value / .options 是既有契约），不再是 5 个图标按钮。
+    const sortSelect = modal.querySelector("[data-commontext-sort]");
     return {
         totalCount: list == null ? rows.length : Number(list.getAttribute("data-commontext-total") ?? rows.length),
         windowRange: list?.getAttribute("data-commontext-window") ?? null,
@@ -97,10 +99,11 @@ const SNAPSHOT_FN = `(() => {
         freshnessTiers: rows.map(
             (row) => row.querySelector("[data-commontext-updated] [data-commontext-freshness]")?.getAttribute("data-commontext-freshness") ?? null
         ),
-        sortKeys: sortButtons.map((b) => b.getAttribute("data-commontext-sort")),
-        sortDisabled: sortButtons.map((b) => b.getAttribute("aria-disabled")),
-        activeSort:
-            modal.querySelector('[data-commontext-sort][aria-pressed="true"]')?.getAttribute("data-commontext-sort") ?? null,
+        sortKeys: sortSelect == null ? [] : [...sortSelect.options].map((o) => o.value),
+        sortDisabled: sortSelect == null ? null : sortSelect.disabled,
+        activeSort: sortSelect?.value ?? null,
+        // 行内容不得被 overflow 裁掉：scrollHeight 超出 clientHeight 就是「行高不够」复发。
+        rowClip: rows.map((row) => Math.max(0, (row.scrollHeight || 0) - (row.clientHeight || 0))),
         relevanceShown: modal.querySelector("[data-commontext-sort-relevance]") != null,
         highlightedIndex: rows.findIndex((row) => row.classList.contains("bg-actionsoft")),
         detailTitle: modal.querySelector("[data-commontext-detail-title]")?.value ?? null,
@@ -133,6 +136,18 @@ async function clickSelector(client, selector) {
   if (rect == null || rect.w === 0 || rect.h === 0) return false;
   await client.click(rect.x, rect.y);
   return true;
+}
+
+/** 切排序：chip 菜单的值通道是隐藏原生 select —— 用原生 setter + change 驱动（等价于点选项）。 */
+async function selectSortKey(client, key) {
+  return client.evaluate(`(() => {
+        const sel = document.querySelector(${JSON.stringify(MODAL + " [data-commontext-sort]")});
+        if (sel == null) return false;
+        const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value").set;
+        setter.call(sel, ${JSON.stringify(key)});
+        sel.dispatchEvent(new Event("change", { bubbles: true }));
+        return true;
+    })()`);
 }
 
 /** 窗口化后目标行可能不在 DOM 里：按行号换算滚动列表，直到标题行渲染进窗口（最多 60 拍）。
@@ -345,6 +360,12 @@ try {
     base?.metaHeights
   );
   // 行高钉绝对值区间：元信息列是 28px 固定槽，绝不能变成行高的决定因素。
+  // 2026-11-21：52px 行高必须装得下「标题 + 摘要 + 行内标签」，scrollHeight 不得超过 clientHeight。
+  reporter.check(
+    "rows-not-clipped",
+    Array.isArray(base?.rowClip) && base.rowClip.every((diff) => diff <= 1),
+    base?.rowClip
+  );
   reporter.check(
     "row-height-unchanged",
     Array.isArray(base?.rowHeights) && base.rowHeights.every((h) => h >= ROW_HEIGHT_MIN && h <= ROW_HEIGHT_MAX),
@@ -353,7 +374,7 @@ try {
   await reporter.shot(client, "01-default-order");
 
   // ── 4. 切 title-asc：真实点击 + 真实重排 + 偏好落盘 ─────────────────────────
-  await clickSelector(client, `${MODAL} [data-commontext-sort="title-asc"]`);
+  await selectSortKey(client, "title-asc");
   const sorted = await waitForProbe(
     client,
     probeSnapshot(),
@@ -389,11 +410,7 @@ try {
     (s) => s?.relevanceShown === true && (s?.rowCount ?? 0) === 2,
     { timeoutMs: 15000 }
   );
-  reporter.check(
-    "search-disables-sort-control",
-    Array.isArray(searching?.sortDisabled) && searching.sortDisabled.every((v) => v === "true"),
-    searching?.sortDisabled
-  );
+  reporter.check("search-disables-sort-control", searching?.sortDisabled === true, searching?.sortDisabled);
   reporter.check("search-shows-relevance-icon", searching?.relevanceShown === true, searching?.relevanceShown);
   reporter.check(
     "search-ranks-relevance-first",
@@ -414,14 +431,10 @@ try {
   const restored = await waitForProbe(
     client,
     probeSnapshot(),
-    (s) => Array.isArray(s?.sortDisabled) && s.sortDisabled.every((v) => v !== "true"),
+    (s) => s?.sortDisabled === false,
     { timeoutMs: 15000 }
   );
-  reporter.check(
-    "clearing-search-restores-sort",
-    Array.isArray(restored?.sortDisabled) && restored.sortDisabled.every((v) => v !== "true"),
-    restored?.sortDisabled
-  );
+  reporter.check("clearing-search-restores-sort", restored?.sortDisabled === false, restored?.sortDisabled);
   reporter.check("sort-preference-survives-search", restored?.activeSort === "title-asc", restored?.activeSort);
 
   // ── 6. 详情页脚元信息 + 详情 Copy 计数（本轮第二个新增写入点） ────────────────

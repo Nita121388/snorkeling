@@ -12,6 +12,7 @@ function SessionTagChips({
     onClick,
     countMap,
     className,
+    nowrap = false,
 }: {
     tags: string[] | null | undefined;
     selectedTags?: string[];
@@ -20,12 +21,20 @@ function SessionTagChips({
     onClick?: (tag: string) => void;
     countMap?: Map<string, number>;
     className?: string;
+    /** nowrap：单行不换行，交给外部滚动容器（筛选条标签带）。默认仍是换行（详情/编辑器）。 */
+    nowrap?: boolean;
 }) {
     const normalizedTags = normalizeSessionTags(tags);
     if (normalizedTags.length === 0) return null;
     const selected = new Set(normalizeSessionTags(selectedTags));
     return (
-        <div className={cn("flex min-w-0 flex-wrap items-center gap-1", className)}>
+        <div
+            className={cn(
+                "flex min-w-0 items-center gap-1",
+                nowrap ? "flex-nowrap" : "flex-wrap",
+                className
+            )}
+        >
             {normalizedTags.map((tag) => {
                 const active = selected.has(tag);
                 const clickable = onClick != null;

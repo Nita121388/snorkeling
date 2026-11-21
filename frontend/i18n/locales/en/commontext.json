@@ -19,6 +19,7 @@
     "filterComputer": "Filter by computer",
     "filterComputerTitle": "Filter by originating computer",
     "anyComputer": "Any computer",
+    "clearFilters": "Clear filters",
     "sortList": "Sort common text list",
     "sortDisabledTitle": "Results are ranked by relevance — clear the search to sort",
     "pinTitle": "Pinned items stay on top",

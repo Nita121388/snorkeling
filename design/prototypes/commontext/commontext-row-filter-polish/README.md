@@ -1,4 +1,4 @@
-> 同步状态：▲ 设计活跃（未实现）
+> 同步状态：● 已落地（2026-11-21，commit 由任务 11-21-commontext-row-filter-polish 落入 `commontext-compose-modal.tsx`；52px 两行 + 徽章居右 + 筛选条单行化 + 排序 chip 菜单）
 > 镜像源：frontend/app/commontext/commontext-compose-modal.tsx, frontend/app/view/aisessions/session-tag-chips.tsx
 > 最后同步：2026-11-21
 
