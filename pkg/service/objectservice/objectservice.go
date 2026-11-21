@@ -195,7 +195,14 @@ func (svc *ObjectService) DeleteBlock(uiContext waveobj.UIContext, blockId strin
 	if err != nil {
 		return nil, fmt.Errorf("error deleting block: %w", err)
 	}
-	return waveobj.ContextGetUpdatesRtn(ctx), nil
+	// 删除必须广播（与 CreateBlockInTab / MoveBlockToTab / CopyBlockToTab 同构）：
+	// updates 只返给调用方 renderer 的话，其它 Tab renderer 的 WOS 收不到
+	// waveobj:update(delete) 与 tab.blockids 变更，Overview 看板/Tab 悬浮卡
+	// 会保留幽灵卡片与错误计数，直到下一个有广播的写操作才自愈。
+	// 广播 + 响应双路径重复 apply 是幂等的（同文件 Create/Move/Copy 已如此）。
+	updates := waveobj.ContextGetUpdatesRtn(ctx)
+	sendUpdateEvents("ObjectService:DeleteBlock", updates)
+	return updates, nil
 }
 
 func (svc *ObjectService) MoveBlockToTab_Meta() tsgenmeta.MethodMeta {
