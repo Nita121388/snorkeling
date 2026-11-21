@@ -96,6 +96,12 @@ export class RpcApiType {
         return client.wshRpcCall("agentprofilelist", null, opts);
     }
 
+    // command "agentresume" [call]
+    AgentResumeCommand(client: WshClient, data: AgentResumeRequest, opts?: RpcOpts): Promise<AgentResumeResult> {
+        if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "agentresume", data, opts);
+        return client.wshRpcCall("agentresume", data, opts);
+    }
+
     // command "agentsend" [call]
     AgentSendCommand(client: WshClient, data: AgentSendRequest, opts?: RpcOpts): Promise<AgentSendResult> {
         if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "agentsend", data, opts);
@@ -1228,6 +1234,12 @@ export class RpcApiType {
     SessionLiveCommand(client: WshClient, data: SessionLiveRequest, opts?: RpcOpts): Promise<SessionLiveResult> {
         if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "sessionlive", data, opts);
         return client.wshRpcCall("sessionlive", data, opts);
+    }
+
+    // command "sessionmark" [call]
+    SessionMarkCommand(client: WshClient, data: SessionMarkRequest, opts?: RpcOpts): Promise<SessionMarkResult> {
+        if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "sessionmark", data, opts);
+        return client.wshRpcCall("sessionmark", data, opts);
     }
 
     // command "sessionturn" [call]

@@ -48,6 +48,8 @@ type Backend interface {
 	AgentCardGet(ctx context.Context, req wshrpc.AgentCardGetRequest) (*wshrpc.AgentCardResult, error)
 	AgentLaunch(ctx context.Context, req wshrpc.AgentLaunchRequest) (*wshrpc.AgentLaunchResult, error)
 	AgentSend(ctx context.Context, req wshrpc.AgentSendRequest) (*wshrpc.AgentSendResult, error)
+	AgentResume(ctx context.Context, req wshrpc.AgentResumeRequest) (*wshrpc.AgentResumeResult, error)
+	SessionMark(ctx context.Context, req wshrpc.SessionMarkRequest) (*wshrpc.SessionMarkResult, error)
 	AgentCardSet(ctx context.Context, req wshrpc.AgentCardSetRequest) (*wshrpc.AgentCardSetResult, error)
 	SessionAnnotate(ctx context.Context, req wshrpc.SessionAnnotateRequest) (*wshrpc.SessionAnnotateResult, error)
 	SessionEmojiGet(ctx context.Context, req wshrpc.SessionEmojiGetRequest) (*wshrpc.SessionEmojiGetResult, error)
@@ -636,6 +638,55 @@ func toolSpecs() []toolSpec {
 					return nil, err
 				}
 				return be.AgentSend(ctx, req)
+			},
+		},
+
+		{
+			Name:        "snorkeling_agent_resume",
+			Description: "Recreate an agent block for an existing session and resume its conversation. The block is a normal visible block whose agent TUI starts with the provider's real resume argument, so history comes back. Only claude/codex/opencode/pi sessions are resumable. Optional send delivers one message after the block exists; a delivery failure never rolls the block back.",
+			Scope:       ScopeLaunch,
+			Annotations: &Annotations{Title: "Agent: resume session", DestructiveHint: true},
+			Schema: obj(map[string]any{
+				"identifier":    str("session key / session id / 'this' (from snorkeling_session_live or snorkeling_session_list)"),
+				"blockid":       str("block id for 'this' resolution"),
+				"tab":           str("active|new|<tabid>"),
+				"workspaceid":   str("workspace id (required with tab=new)"),
+				"cwd":           str("block working directory (overrides the session project path)"),
+				"nofocus":       boolean("do not focus the new block"),
+				"wait":          boolean("wait until the frontend applied the layout"),
+				"waitms":        num("layout wait budget (default 5000)"),
+				"send":          str("text to deliver to the resumed TUI (bracketed paste + enter)"),
+				"sendtext64":    str("base64 of the send text (wins over send)"),
+				"submit":        boolean("press Enter after the paste (default true)"),
+				"sendwait":      boolean("wait for the TUI to be quiet before injecting (default true)"),
+				"sendwaitms":    num("delivery readiness deadline (default 30000, max 120000)"),
+				"quietms":       num("TUI silence window (default 400, range 100-5000)"),
+				"submitdelayms": num("paste to enter delay (default 150)"),
+			}, "identifier"),
+			Invoke: func(ctx context.Context, be Backend, args json.RawMessage) (any, error) {
+				req, err := decode[wshrpc.AgentResumeRequest](args)
+				if err != nil {
+					return nil, err
+				}
+				return be.AgentResume(ctx, req)
+			},
+		},
+		{
+			Name:        "snorkeling_session_mark",
+			Description: "Star (mark) or unstar one session — the GUI's star, as a boolean view state. Idempotent, last-write-wins, no dry-run or precondition. Verify with snorkeling_session_list (marked filter).",
+			Scope:       ScopeData,
+			Annotations: &Annotations{Title: "Sessions: mark", IdempotentHint: true},
+			Schema: obj(map[string]any{
+				"identifier": str("session key / session id / 'this'"),
+				"blockid":    str("block id for 'this' resolution"),
+				"marked":     boolean("true = star, false = unstar"),
+			}, "identifier", "marked"),
+			Invoke: func(ctx context.Context, be Backend, args json.RawMessage) (any, error) {
+				req, err := decode[wshrpc.SessionMarkRequest](args)
+				if err != nil {
+					return nil, err
+				}
+				return be.SessionMark(ctx, req)
 			},
 		},
 

@@ -48,6 +48,9 @@ var (
 	sessionAnnotateDryRun       bool
 	sessionAnnotateYes          bool
 	sessionAnnotateAIModel      string
+
+	sessionMarkBlock  string
+	sessionMarkUnmark bool
 )
 
 var sessionCmd = &cobra.Command{
@@ -140,11 +143,28 @@ human-edited annotation is never overwritten.`,
 	PreRunE: preRunSetupRpcClient,
 }
 
+var sessionMarkCmd = &cobra.Command{
+	Use:   "mark <sessionKey|sessionId|this>",
+	Short: "Star (mark) or unstar one session",
+	Long: `Star (mark) or unstar one session.
+
+Marked is a boolean view state (the GUI star), not session content: this is the
+same Manager.Mark the GUI toggle calls, with no dry-run or hash precondition.
+Toggling is idempotent (last write wins).
+
+  wsh session mark <key>                    # star
+  wsh session mark <key> --unmark           # unstar
+  wsh session list --marked true            # verify`,
+	Args:    cobra.ExactArgs(1),
+	RunE:    sessionMarkRun,
+	PreRunE: preRunSetupRpcClient,
+}
+
 func init() {
 	sessionCmd.PersistentFlags().BoolVar(&sessionJSON, "json", false, "output as JSON")
 	sessionCmd.PersistentFlags().Int64Var(&sessionTimeoutMs, "timeout", 8000, "RPC timeout in milliseconds")
 	sessionCmd.AddCommand(sessionLiveCmd, sessionGetCmd, sessionListCmd, sessionForBlockCmd,
-		sessionInfoCmd, sessionUsersCmd, sessionTurnsCmd, sessionTurnCmd, sessionAnnotateCmd, sessionEmojiCmd)
+		sessionInfoCmd, sessionUsersCmd, sessionTurnsCmd, sessionTurnCmd, sessionAnnotateCmd, sessionMarkCmd, sessionEmojiCmd)
 
 	sessionLiveCmd.Flags().BoolVar(&sessionIncludeIdle, "include-idle", false, "include idle sessions")
 	sessionLiveCmd.Flags().IntVar(&sessionMaxRows, "max-rows", 200, "maximum rows to return")
@@ -186,6 +206,9 @@ func init() {
 	sessionAnnotateCmd.Flags().BoolVar(&sessionAnnotateDryRun, "dry-run", false, "preview the resolved anchor and write without writing")
 	sessionAnnotateCmd.Flags().BoolVar(&sessionAnnotateYes, "yes", false, "confirm the real write")
 	sessionAnnotateCmd.Flags().StringVar(&sessionAnnotateAIModel, "ai-model", "", "model that produced this annotation (stored in ai_model)")
+
+	sessionMarkCmd.Flags().StringVar(&sessionMarkBlock, "block", "", "block id for 'this' resolution (defaults to WAVETERM_BLOCKID)")
+	sessionMarkCmd.Flags().BoolVar(&sessionMarkUnmark, "unmark", false, "clear the star instead of setting it")
 
 	rootCmd.AddCommand(sessionCmd)
 }
@@ -619,6 +642,30 @@ func sessionAnnotateRun(cmd *cobra.Command, args []string) (rtnErr error) {
 		} else {
 			fmt.Fprintf(WrappedStdout, "written: id=%d (replaced id=%d)\n", res.Row.ID, res.Preview.ReplacedID)
 		}
+	}
+	return nil
+}
+
+func sessionMarkRun(cmd *cobra.Command, args []string) (rtnErr error) {
+	defer func() { sendActivity("session mark", rtnErr == nil) }()
+	res, err := wshclient.SessionMarkCommand(RpcClient, wshrpc.SessionMarkRequest{
+		Identifier: args[0],
+		BlockId:    sessionBlockArg(sessionMarkBlock),
+		Marked:     !sessionMarkUnmark,
+	}, sessionRpcOpts())
+	if err != nil {
+		return err
+	}
+	if sessionJSON {
+		return writeJSON(res)
+	}
+	state := "unmarked"
+	if res.Marked {
+		state = "marked"
+	}
+	WriteStdout("%s\t%s\n", res.SessionKey, state)
+	if res.Title != "" {
+		WriteStdout("title\t%s\n", res.Title)
 	}
 	return nil
 }

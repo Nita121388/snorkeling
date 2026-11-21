@@ -1,0 +1,31 @@
+# github.com/wavetermdev/waveterm/pkg/agentcontrol [github.com/wavetermdev/waveterm/pkg/agentcontrol.test]
+pkg\agentcontrol\restore_test.go:19:16: undefined: RestoreContext
+pkg\agentcontrol\restore_test.go:30:8: undefined: RestoreContext
+pkg\agentcontrol\restore_test.go:40:8: undefined: RestoreContext
+pkg\agentcontrol\restore_test.go:49:8: undefined: RestoreContext
+pkg\agentcontrol\restore_test.go:59:8: undefined: RestoreContext
+pkg\agentcontrol\restore_test.go:69:8: undefined: RestoreContext
+pkg\agentcontrol\restore_test.go:85:12: undefined: BuildResumeBlockMeta
+pkg\agentcontrol\restore_test.go:139:9: undefined: RestoreContext
+pkg\agentcontrol\restore_test.go:140:10: undefined: BuildResumeBlockMeta
+pkg\agentcontrol\restore_test.go:153:12: undefined: ResolveRestoreContext
+pkg\agentcontrol\restore_test.go:153:12: too many errors
+FAIL	github.com/wavetermdev/waveterm/pkg/agentcontrol [build failed]
+FAIL
+# github.com/wavetermdev/waveterm/pkg/wshrpc/wshserver [github.com/wavetermdev/waveterm/pkg/wshrpc/wshserver.test]
+pkg\wshrpc\wshserver\agentresume_test.go:18:15: ws.AgentResumeCommand undefined (type *WshServer has no field or method AgentResumeCommand)
+pkg\wshrpc\wshserver\agentresume_test.go:18:63: undefined: wshrpc.AgentResumeRequest
+pkg\wshrpc\wshserver\agentresume_test.go:29:15: ws.AgentResumeCommand undefined (type *WshServer has no field or method AgentResumeCommand)
+pkg\wshrpc\wshserver\agentresume_test.go:29:63: undefined: wshrpc.AgentResumeRequest
+pkg\wshrpc\wshserver\agentresume_test.go:39:15: ws.AgentResumeCommand undefined (type *WshServer has no field or method AgentResumeCommand)
+pkg\wshrpc\wshserver\agentresume_test.go:39:63: undefined: wshrpc.AgentResumeRequest
+pkg\wshrpc\wshserver\agentresume_test.go:50:18: ws.SessionMarkCommand undefined (type *WshServer has no field or method SessionMarkCommand)
+pkg\wshrpc\wshserver\agentresume_test.go:50:66: undefined: wshrpc.SessionMarkRequest
+FAIL	github.com/wavetermdev/waveterm/pkg/wshrpc/wshserver [build failed]
+FAIL
+--- FAIL: TestToolsIncludeResumeAndMark (0.00s)
+    server_test.go:607: missing tool "snorkeling_agent_resume"
+    server_test.go:607: missing tool "snorkeling_session_mark"
+FAIL
+FAIL	github.com/wavetermdev/waveterm/pkg/agentmcp	3.293s
+FAIL

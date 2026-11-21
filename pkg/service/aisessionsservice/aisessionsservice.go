@@ -6,19 +6,19 @@ package aisessionsservice
 import (
 	"context"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"log"
 	"os"
 	"path"
 	"path/filepath"
-	"runtime"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/wavetermdev/waveterm/pkg/agentcontrol"
 	"github.com/wavetermdev/waveterm/pkg/aisessions"
-	"github.com/wavetermdev/waveterm/pkg/ccswitch"
 	"github.com/wavetermdev/waveterm/pkg/hero"
 	"github.com/wavetermdev/waveterm/pkg/remote/conncontroller"
 	"github.com/wavetermdev/waveterm/pkg/remote/fileshare/wshfs"
@@ -403,16 +403,16 @@ type AISessionsApplyPropertiesResponse struct {
 // sort key (seq, id): a cursor returns the entries strictly older than
 // (beforeSeq, beforeId); omitting both keeps the v1 full-list behavior.
 type AISessionsAnnotationsRequest struct {
-	SessionKey string                            `json:"sessionKey"`
-	Connection string                            `json:"connection,omitempty"`
-	Origin     string                            `json:"origin,omitempty"`
-	Anchors    []aisessions.AnnotationAnchor     `json:"anchors,omitempty"`
-	Cursor     *aisessions.AnnotationCursor      `json:"cursor,omitempty"`
-	Limit      int                               `json:"limit,omitempty"`
+	SessionKey string                        `json:"sessionKey"`
+	Connection string                        `json:"connection,omitempty"`
+	Origin     string                        `json:"origin,omitempty"`
+	Anchors    []aisessions.AnnotationAnchor `json:"anchors,omitempty"`
+	Cursor     *aisessions.AnnotationCursor  `json:"cursor,omitempty"`
+	Limit      int                           `json:"limit,omitempty"`
 }
 
 type AISessionsAnnotationsResponse struct {
-	Annotations []aisessions.AnnotationView   `json:"annotations"`
+	Annotations []aisessions.AnnotationView `json:"annotations"`
 	// HasMore reports whether older entries exist beyond the returned page.
 	HasMore bool `json:"hasMore"`
 	// NextCursor is the (seq, id) of the earliest returned entry; request it to
@@ -1369,67 +1369,29 @@ func (svc *AISessionsService) RestoreContext(ctx context.Context, request *AISes
 	if err != nil {
 		return nil, err
 	}
-	response := &AISessionsRestoreContextResponse{
-		SessionID:   summary.ID,
-		Source:      summary.Source,
-		ProjectPath: summary.ProjectPath,
-	}
-	if summary.Source != aisessions.SourceClaude {
-		return response, nil
-	}
-	vendorID, configDir, vendorSession := ccswitch.ResolveClaudeVendorSessionPath(summary.FilePath)
-	if !vendorSession {
-		if summary.VendorID != "" || summary.ConfigDir != "" {
+	// The claude-vendor resolution is shared with the CLI/MCP resume path
+	// (pkg/agentcontrol/restore.go) so the GUI and `wsh agent resume` cannot
+	// drift. This delegates only the vendor half on purpose: the GUI keeps its
+	// historical behavior for sources that are not resumable (the frontend still
+	// falls back to the codex cmd there), while `agent resume` refuses them
+	// (design D4 / F-1121-agent-resume).
+	restoreCtx, err := agentcontrol.ResolveVendorRestoreContext(ctx, &summary)
+	if err != nil {
+		var controlErr *agentcontrol.Error
+		if errors.As(err, &controlErr) && controlErr.Code == agentcontrol.CodeVendorUnavailable {
+			aiSessionsDebugf("RestoreContext vendor unavailable key=%q err=%v", summary.Key, err)
 			return nil, fmt.Errorf(VendorConfigurationUnavailableError)
 		}
-		return response, nil
+		return nil, err
 	}
-	if (summary.VendorID != "" && summary.VendorID != vendorID) ||
-		(summary.ConfigDir != "" && !sameCleanPath(summary.ConfigDir, configDir)) {
-		aiSessionsDebugf("RestoreContext provenance mismatch key=%q vendor=%q file=%q", summary.Key, vendorID, summary.FilePath)
-		return nil, fmt.Errorf(VendorConfigurationUnavailableError)
-	}
-	vendors, err := ccswitch.ListClaudeVendors(ctx)
-	if err != nil || vendors == nil || !vendors.Detected {
-		aiSessionsDebugf("RestoreContext vendor list unavailable key=%q vendor=%q err=%v", summary.Key, vendorID, err)
-		return nil, fmt.Errorf(VendorConfigurationUnavailableError)
-	}
-	for _, vendor := range vendors.Vendors {
-		if vendor.ID != vendorID || vendor.ClaudeConfigDir == "" || !sameCleanPath(vendor.ClaudeConfigDir, configDir) {
-			continue
-		}
-		if !regularVendorSettings(configDir) {
-			break
-		}
-		response.VendorID = vendorID
-		response.VendorName = vendor.Name
-		response.ConfigDir = configDir
-		aiSessionsDebugf("RestoreContext success key=%q vendor=%q configdir=%q", summary.Key, vendorID, configDir)
-		return response, nil
-	}
-	aiSessionsDebugf("RestoreContext stale vendor key=%q vendor=%q file=%q", summary.Key, vendorID, summary.FilePath)
-	return nil, fmt.Errorf(VendorConfigurationUnavailableError)
-}
-
-func sameCleanPath(left string, right string) bool {
-	leftAbs, leftErr := filepath.Abs(filepath.Clean(left))
-	rightAbs, rightErr := filepath.Abs(filepath.Clean(right))
-	if leftErr != nil || rightErr != nil {
-		return false
-	}
-	if runtime.GOOS == "windows" {
-		return strings.EqualFold(leftAbs, rightAbs)
-	}
-	return leftAbs == rightAbs
-}
-
-func regularVendorSettings(configDir string) bool {
-	configInfo, err := os.Lstat(configDir)
-	if err != nil || !configInfo.IsDir() || configInfo.Mode()&os.ModeSymlink != 0 {
-		return false
-	}
-	settingsInfo, err := os.Lstat(filepath.Join(configDir, "settings.json"))
-	return err == nil && settingsInfo.Mode().IsRegular() && settingsInfo.Mode()&os.ModeSymlink == 0
+	return &AISessionsRestoreContextResponse{
+		SessionID:   restoreCtx.SessionId,
+		Source:      restoreCtx.Source,
+		ProjectPath: restoreCtx.ProjectPath,
+		VendorID:    restoreCtx.VendorId,
+		VendorName:  restoreCtx.VendorName,
+		ConfigDir:   restoreCtx.ConfigDir,
+	}, nil
 }
 
 func isKnownAISessionFilePath(filePath string) bool {

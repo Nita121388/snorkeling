@@ -135,3 +135,44 @@ async function createBlockSplitHorizontally(blockDef, targetBlockId, position) {
   的所有调用点都走 `createBlock`。
 - 键盘快捷键拆分（`frontend/app/store/keymodel.ts`）—— 走 `getDefaultNewBlockDef()`，
   产出的是普通 shell 终端（本来就不是 agent 块）。
+
+## 9. 程序化 resume 入口（2026-11-21，`11-21-agent-resume`）
+
+GUI 之外的第二个入口：`wsh agent resume` / MCP `snorkeling_agent_resume`。
+它复用同一套 meta 契约（§3.1），因此**后端 shellcontroller 零改动**。
+
+### 9.1 唯一 meta 构造点是后端函数
+
+```go
+// pkg/agentcontrol/restore.go —— 与前端 restoreMetaForSession 逐字段对齐
+func BuildResumeBlockMeta(ctx RestoreContext, cwdOverride string) waveobj.MetaMapType
+func ResolveRestoreContext(ctx context.Context, summary *aisessions.SessionSummary) (*RestoreContext, error)
+```
+
+- parity 由 `pkg/agentcontrol/restore_test.go` 的五组 golden 锁定（claude+vendor / claude 无 vendor /
+  codex / opencode / pi）。改任何一侧字段都要同步改另一侧，否则测试红。
+- `AgentResumeCmdBySource` 只认 `claude|codex|opencode|pi`。**未知 source（含 gemini）返回 `E_USAGE`**，
+  不要复制前端 `?? "codex"` 的兜底——那对 gemini 必然错。
+- claude vendor 解析只有一份实现：`agentcontrol.ResolveVendorRestoreContext`，
+  `aisessionsservice.RestoreContext` 也调用它（GUI 与 CLI 不分叉）。
+
+### 9.2 入口语义（CLI 与 MCP 一致）
+
+| 行为 | 后果 |
+|---|---|
+| 会话不存在 | `E_NOT_FOUND`（精确 key/id，不做前缀匹配） |
+| remote 连接 | `E_UNSUPPORTED`（同 `validateLaunchConnection`） |
+| `--tab new` 无 `--workspace` | `E_USAGE`（与 launch 的“落当前 workspace”不同，已固化） |
+| `--send` 注入失败 | **不回滚块**，错误带 `blockid`（同 11-18 原子语义） |
+| claude vendor 不可得 | `E_VENDOR_UNAVAILABLE`（与 GUI `VendorConfigurationUnavailableError` 同口径） |
+
+### 9.3 marked 的写路径不在 agentdata
+
+`session mark` 走 `Manager.Mark`（与 GUI `toggleMark` 同一函数），不加 dry-run/hash 门：
+marked 是布尔视图状态，不是人写卡片内容，冲突无害且幂等。别把它接进 `agentdata` patch 门。
+
+### 9.4 读侧归一化（真机踩到的坑）
+
+`session list --marked` 的 CLI 文案是 `true|false`，但索引过滤器只认 `starred|unstarred`。
+归一化收口在 `wshserver.SessionListCommand`（`normalizeMarkedFilter`），CLI 与 MCP 共用；
+**不要在两个入口各写一份**。缺它时过滤静默失效（真机实测 500 行全量通过）。

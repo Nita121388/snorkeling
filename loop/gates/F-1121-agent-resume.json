@@ -1,0 +1,23 @@
+{
+  "g1": {
+    "at": "2026-11-21T16:16:34Z",
+    "by": "nita",
+    "verdict": "confirmed",
+    "prdHash": "6bc6877b7e12"
+  },
+  "g6": {
+    "at": "2026-11-21T15:09:31Z",
+    "by": "nita",
+    "verdict": "confirmed",
+    "planHash": "7226c8e0e74b"
+  },
+  "g2": {
+    "redProof": "loop/red/F-1121-agent-resume.txt",
+    "at": "2026-11-21T15:17:06Z"
+  },
+  "g5": {
+    "ok": true,
+    "executedAt": "2026-11-21T15:17:32Z",
+    "by": "compliance"
+  }
+}

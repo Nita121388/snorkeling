@@ -904,6 +904,39 @@ declare global {
         scope?: string;
     };
 
+    // wshrpc.AgentResumeRequest
+    type AgentResumeRequest = {
+        identifier?: string;
+        blockid?: string;
+        connection?: string;
+        tab?: string;
+        workspaceid?: string;
+        cwd?: string;
+        nofocus?: boolean;
+        wait?: boolean;
+        waitms?: number;
+        send?: string;
+        sendtext64?: string;
+        submit?: boolean;
+        sendwait?: boolean;
+        sendwaitms?: number;
+        quietms?: number;
+        submitdelayms?: number;
+    };
+
+    // wshrpc.AgentResumeResult
+    type AgentResumeResult = {
+        version: number;
+        ok: boolean;
+        blockid: string;
+        sessionid: string;
+        source: string;
+        projectpath?: string;
+        syncstate?: string;
+        warnings?: string[];
+        send?: AgentSendResult;
+    };
+
     // wshrpc.AgentSendRequest
     type AgentSendRequest = {
         blockid?: string;
@@ -3685,6 +3718,26 @@ declare global {
         partial?: boolean;
         records: SessionLiveRecord[];
         warnings?: string[];
+    };
+
+    // wshrpc.SessionMarkRequest
+    type SessionMarkRequest = {
+        identifier?: string;
+        blockid?: string;
+        marked: boolean;
+    };
+
+    // wshrpc.SessionMarkResult
+    type SessionMarkResult = {
+        version: number;
+        sessionkey: string;
+        sessionid: string;
+        source: string;
+        title?: string;
+        titlesource?: string;
+        projectpath?: string;
+        marked: boolean;
+        updatedat?: number;
     };
 
     // aisessions.SessionMessageCursor

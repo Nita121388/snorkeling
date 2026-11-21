@@ -85,6 +85,21 @@ node scripts/dev-isolated.mjs --profile verify-vcs-panel-buttons --vite-port 517
 node scripts/verify/vcs-panel-buttons/verify.mjs --port 9232
 ```
 
+### 外部 `wsh` 的凭据（真机 CLI 断言）
+
+app 外的 `wsh` 没有 token，`--token-file` 是唯一入口。台子里的铸发路径（`agent-resume` 用它）：
+
+1. **首选：renderer 内直铸** —— CDP 里调 `RpcApi.AgentAuthGrantCommand(TabRpcClient, { name, scope:["launch"], ttlseconds, out })`。
+   app 内部调用不受 scope 门限制，server 端按 0600 规则**自己写文件**；
+2. 兜底：建一个 `{view:"term", controller:"shell"}` 块，把 `wsh auth grant --out <abs path>` 打进终端，
+   轮询 token 文件出现（30s）。
+
+拿到 token 后所有断言都是 `child_process.execFile(<repo>/tmp/<area>/wsh.exe, ["--token-file", …])`——
+`wsh.exe` 由台子自己 `go build -o tmp/<area>/wsh.exe ./cmd/wsh`，不用机器上装的那份。
+注意 `commandScopes`（`pkg/agentscope/scope.go`）**不在表里的命令对外部 token 一律拒绝**：
+`getmeta` / `deleteblock` 不能走 CLI，块 meta 读用 renderer 的 `RpcApi.GetMetaCommand`、
+收块用 renderer 的 `RpcApi.DeleteBlockCommand`。
+
 ## 现有 area
 
 | area                   | 入口         | 覆盖什么                                                                                                    | 需要 GUI |
@@ -120,3 +135,4 @@ node scripts/verify/vcs-panel-buttons/verify.mjs --port 9232
 | `tab-collapse-cross-renderer` | `verify.mjs` | 「收起到更多」跨 renderer 一致性：播种 5 Tab → IPC 收起 → 每个 Tab renderer 主栏都不渲染它 → 更多下拉 data-hidden/data-dimmed=true → 点开主栏复现 → 再收起并切 Tab 仍一致（独立 profile + 端口 9246/51840） | — 未跑 |
 | `tab-startup-restore` | `verify.mjs` | 重启恢复：同 profile 杀掉再起后，主栏应恢复上次打开的全部 Tab（数量/顺序/激活一致 + 无 `unopened-this-launch` 灰化），而不是只显示激活那一个（独立 profile + 端口 9236/51830） | ✅       |
 | `tab-info-card-freshness` | `verify.mjs` | Tab 悬浮卡数据新鲜度：播种 2 Tab → 非激活 Tab hover 基线 0 agent 行 → **鼠标不动**走 renderer RPC 写 agent meta → 卡片就地出现 agent 行且 provider=pi（快照读版本会停在旧值，必须移开再 hover）；inline 子块由 dom test 覆盖（独立 profile + 端口 9247/51841） | — 见台账 |
+| `agent-resume` | `verify.mjs` | `wsh agent resume` / `session mark` 真机闭环：找空闲 pi 会话（跳过本进程与 10min 内活跃写入的）→ 建块 meta（agent:autoresume/provider/sessionid 三对）→ `--send` 注入 → turn 读路径回 `RESUME_OK` → mark/`--unmark`（含 `--marked true` vs `starred` 词表对比）→ `E_NOT_FOUND`；凭据 = renderer 直铸 launch-scope token（独立 profile + 端口 9258/51860） | ✅ |

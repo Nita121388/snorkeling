@@ -99,6 +99,12 @@ func AgentProfileListCommand(w *wshutil.WshRpc, opts *wshrpc.RpcOpts) ([]agentca
 	return resp, err
 }
 
+// command "agentresume", wshserver.AgentResumeCommand
+func AgentResumeCommand(w *wshutil.WshRpc, data wshrpc.AgentResumeRequest, opts *wshrpc.RpcOpts) (*wshrpc.AgentResumeResult, error) {
+	resp, err := sendRpcRequestCallHelper[*wshrpc.AgentResumeResult](w, "agentresume", data, opts)
+	return resp, err
+}
+
 // command "agentsend", wshserver.AgentSendCommand
 func AgentSendCommand(w *wshutil.WshRpc, data wshrpc.AgentSendRequest, opts *wshrpc.RpcOpts) (*wshrpc.AgentSendResult, error) {
 	resp, err := sendRpcRequestCallHelper[*wshrpc.AgentSendResult](w, "agentsend", data, opts)
@@ -1225,6 +1231,12 @@ func SessionListCommand(w *wshutil.WshRpc, data wshrpc.SessionListRequest, opts 
 // command "sessionlive", wshserver.SessionLiveCommand
 func SessionLiveCommand(w *wshutil.WshRpc, data wshrpc.SessionLiveRequest, opts *wshrpc.RpcOpts) (*wshrpc.SessionLiveResult, error) {
 	resp, err := sendRpcRequestCallHelper[*wshrpc.SessionLiveResult](w, "sessionlive", data, opts)
+	return resp, err
+}
+
+// command "sessionmark", wshserver.SessionMarkCommand
+func SessionMarkCommand(w *wshutil.WshRpc, data wshrpc.SessionMarkRequest, opts *wshrpc.RpcOpts) (*wshrpc.SessionMarkResult, error) {
+	resp, err := sendRpcRequestCallHelper[*wshrpc.SessionMarkResult](w, "sessionmark", data, opts)
 	return resp, err
 }
 

@@ -164,6 +164,16 @@ func (b rpcBackend) AgentSend(ctx context.Context, req wshrpc.AgentSendRequest) 
 	return wshclient.AgentSendCommand(RpcClient, req, b.opts())
 }
 
+func (b rpcBackend) AgentResume(ctx context.Context, req wshrpc.AgentResumeRequest) (*wshrpc.AgentResumeResult, error) {
+	// Resume with a send rides on the same long delivery windows as agent send
+	// (TUI quiet + submit confirmation); the MCP default would time out.
+	return wshclient.AgentResumeCommand(RpcClient, req, &wshrpc.RpcOpts{Timeout: 300000})
+}
+
+func (b rpcBackend) SessionMark(ctx context.Context, req wshrpc.SessionMarkRequest) (*wshrpc.SessionMarkResult, error) {
+	return wshclient.SessionMarkCommand(RpcClient, req, b.opts())
+}
+
 func (b rpcBackend) ScheduledTaskList(ctx context.Context) ([]wconfig.ScheduledTaskType, error) {
 	return wshclient.ScheduledTaskListCommand(RpcClient, b.opts())
 }

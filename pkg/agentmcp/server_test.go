@@ -29,6 +29,10 @@ type fakeBackend struct {
 	lastLaunchReq wshrpc.AgentLaunchRequest
 	sendCalls     int
 	lastSendReq   wshrpc.AgentSendRequest
+	resumeCalls   int
+	lastResumeReq wshrpc.AgentResumeRequest
+	markCalls     int
+	lastMarkReq   wshrpc.SessionMarkRequest
 
 	schedListCalls   int
 	schedCreateCalls int
@@ -133,6 +137,18 @@ func (f *fakeBackend) AgentSend(ctx context.Context, req wshrpc.AgentSendRequest
 	return &wshrpc.AgentSendResult{Version: 1, Ok: true, BlockId: req.BlockId, Injected: true, Submitted: true}, nil
 }
 
+func (f *fakeBackend) AgentResume(ctx context.Context, req wshrpc.AgentResumeRequest) (*wshrpc.AgentResumeResult, error) {
+	f.resumeCalls++
+	f.lastResumeReq = req
+	return &wshrpc.AgentResumeResult{Version: 1, Ok: true, BlockId: "blk-resume", SessionId: req.Identifier, Source: "pi"}, nil
+}
+
+func (f *fakeBackend) SessionMark(ctx context.Context, req wshrpc.SessionMarkRequest) (*wshrpc.SessionMarkResult, error) {
+	f.markCalls++
+	f.lastMarkReq = req
+	return &wshrpc.SessionMarkResult{Version: 1, SessionKey: req.Identifier, Marked: req.Marked}, nil
+}
+
 func (f *fakeBackend) ScheduledTaskList(ctx context.Context) ([]wconfig.ScheduledTaskType, error) {
 	f.schedListCalls++
 	return []wconfig.ScheduledTaskType{{Id: "t1", Name: "digest", Mode: "headless", CreatedBy: "agent"}}, nil
@@ -203,8 +219,8 @@ func TestToolsListShapeAndScopes(t *testing.T) {
 	s, _ := newServer(nil)
 	res := resultMap(t, mustHandle(t, s, `{"jsonrpc":"2.0","id":2,"method":"tools/list"}`))
 	tools, _ := res["tools"].([]any)
-	if len(tools) != 28 {
-		t.Fatalf("expected 28 tools, got %d", len(tools))
+	if len(tools) != 30 {
+		t.Fatalf("expected 30 tools, got %d", len(tools))
 	}
 	seen := map[string]bool{}
 	for _, raw := range tools {
@@ -592,5 +608,53 @@ func TestScheduledTaskCreateToolScopeGated(t *testing.T) {
 	}
 	if be.schedCreateCalls != 0 {
 		t.Fatal("backend must not be called when data scope is missing")
+	}
+}
+
+// Red-proof prerequisite for F-1121-agent-resume: the resume/mark tools do not
+// exist yet, so this assertion is red until they are registered.
+func TestToolsIncludeResumeAndMark(t *testing.T) {
+	names := map[string]bool{}
+	for _, spec := range toolSpecs() {
+		names[spec.Name] = true
+	}
+	for _, want := range []string{"snorkeling_agent_resume", "snorkeling_session_mark"} {
+		if !names[want] {
+			t.Errorf("missing tool %q", want)
+		}
+	}
+}
+
+// Scope semantics for the resume/mark pair (design §8): a data token may mark
+// (view state) but must not resume (launch creates a block), and a launch
+// token reaches both.
+func TestResumeAndMarkScopes(t *testing.T) {
+	s, _ := newServer([]string{ScopeData})
+	be := s.Backend.(*fakeBackend)
+
+	res := resultMap(t, mustHandle(t, s, `{"jsonrpc":"2.0","id":60,"method":"tools/call","params":{"name":"snorkeling_agent_resume","arguments":{"identifier":"pi:abc"}}}`))
+	if res["isError"] != true {
+		t.Fatalf("data scope must not resume, got %v", res)
+	}
+	if be.resumeCalls != 0 {
+		t.Fatal("backend must not be called when launch scope is missing")
+	}
+
+	res = resultMap(t, mustHandle(t, s, `{"jsonrpc":"2.0","id":61,"method":"tools/call","params":{"name":"snorkeling_session_mark","arguments":{"identifier":"pi:abc","marked":true}}}`))
+	if res["isError"] == true {
+		t.Fatalf("data scope must be allowed to mark: %v", res)
+	}
+	if be.markCalls != 1 || !be.lastMarkReq.Marked {
+		t.Fatalf("mark calls=%d marked=%v, want 1/true", be.markCalls, be.lastMarkReq.Marked)
+	}
+
+	launchSrv, _ := newServer([]string{ScopeLaunch})
+	launchBe := launchSrv.Backend.(*fakeBackend)
+	res = resultMap(t, mustHandle(t, launchSrv, `{"jsonrpc":"2.0","id":62,"method":"tools/call","params":{"name":"snorkeling_agent_resume","arguments":{"identifier":"pi:abc","send":"go on"}}}`))
+	if res["isError"] == true {
+		t.Fatalf("launch scope must be able to resume: %v", res)
+	}
+	if launchBe.resumeCalls != 1 || launchBe.lastResumeReq.Send == nil || *launchBe.lastResumeReq.Send != "go on" {
+		t.Fatalf("resume payload = %+v", launchBe.lastResumeReq)
 	}
 }

@@ -135,6 +135,11 @@ type WshRpcInterface interface {
 	// Send carries the one-shot prompt, non-zero exit -> E_AGENT_FAILED.
 	AgentLaunchHeadlessCommand(ctx context.Context, data AgentLaunchRequest) (*ScheduledTaskRunResult, error)
 	AgentSendCommand(ctx context.Context, data AgentSendRequest) (*AgentSendResult, error)
+	// AgentResumeCommand recreates an agent block for an existing session
+	// (F-1121-agent-resume): resolve -> restore context -> meta -> block (+send).
+	AgentResumeCommand(ctx context.Context, data AgentResumeRequest) (*AgentResumeResult, error)
+	// SessionMarkCommand stars/unstars a session (view state, design D5).
+	SessionMarkCommand(ctx context.Context, data SessionMarkRequest) (*SessionMarkResult, error)
 	// agent dispatch queue (server-held delivery state; consumed by desktop UI,
 	// CLI, MCP and future mobile clients)
 	AgentDispatchListCommand(ctx context.Context, data AgentDispatchListRequest) ([]agentdispatch.Record, error)
@@ -1426,6 +1431,75 @@ type AgentSendResult struct {
 	// delivery runs in the background; read AgentDispatch* for the receipt.
 	Queued     bool   `json:"queued,omitempty"`
 	DispatchId string `json:"dispatchid,omitempty"`
+}
+
+// AgentResumeRequest recreates an agent block for one existing session
+// (`wsh agent resume`, MCP snorkeling_agent_resume). It is the programmatic
+// twin of the GUI restore flow: the meta it builds (agentcontrol.
+// BuildResumeBlockMeta) is field-for-field the frontend restoreMetaForSession
+// contract, and the shellcontroller turns that meta into real resume args.
+//
+// The optional Send group mirrors AgentSendRequest semantics exactly (same
+// defaults, same ranges, same normalizeSendParams); it is flattened here so a
+// single RPC both recreates the block and delivers one message.
+type AgentResumeRequest struct {
+	Identifier  string `json:"identifier,omitempty"`  // session key / session id / "this"
+	BlockId     string `json:"blockid,omitempty"`     // "this" resolution
+	Connection  string `json:"connection,omitempty"`  // non-local is rejected (same as launch)
+	Tab         string `json:"tab,omitempty"`         // active (default) | new | <tabid>
+	WorkspaceId string `json:"workspaceid,omitempty"` // required with --tab new
+	Cwd         string `json:"cwd,omitempty"`         // overrides the session project path
+	NoFocus     bool   `json:"nofocus,omitempty"`
+	Wait        bool   `json:"wait,omitempty"`   // wait for the frontend to apply the layout
+	WaitMs      int    `json:"waitms,omitempty"` // layout wait budget, default 5000
+	// Send, SendText64: the text to deliver after the block exists (Send is
+	// plain text, SendText64 is base64 and wins). Delivery reuses
+	// AgentSendCommand, so injected/submitted and its warnings come back in
+	// Result.Send.
+	Send          *string `json:"send,omitempty"`
+	SendText64    string  `json:"sendtext64,omitempty"`
+	Submit        *bool   `json:"submit,omitempty"`        // default true
+	SendWait      *bool   `json:"sendwait,omitempty"`      // readiness wait, default true
+	SendWaitMs    int     `json:"sendwaitms,omitempty"`    // readiness deadline, default 30000
+	QuietMs       int     `json:"quietms,omitempty"`       // TUI quiet window, default 400
+	SubmitDelayMs int     `json:"submitdelayms,omitempty"` // paste -> enter delay, default 150
+}
+
+// AgentResumeResult reports the recreated block. A delivery failure never
+// rolls the block back (same atomicity as agent launch): the partial result
+// carries BlockId together with the error.
+type AgentResumeResult struct {
+	Version     int              `json:"version"`
+	Ok          bool             `json:"ok"`
+	BlockId     string           `json:"blockid"`
+	SessionId   string           `json:"sessionid"`
+	Source      string           `json:"source"`
+	ProjectPath string           `json:"projectpath,omitempty"`
+	SyncState   string           `json:"syncstate,omitempty"`
+	Warnings    []string         `json:"warnings,omitempty"`
+	Send        *AgentSendResult `json:"send,omitempty"`
+}
+
+// SessionMarkRequest stars (`marked=true`) or unstars one session. BlockId is
+// only used to resolve the `this` identifier.
+type SessionMarkRequest struct {
+	Identifier string `json:"identifier,omitempty"` // session key / session id / "this"
+	BlockId    string `json:"blockid,omitempty"`
+	Marked     bool   `json:"marked"`
+}
+
+// SessionMarkResult is the updated session summary fields a caller can assert
+// on after a mark toggle (a subset of the card/record surface).
+type SessionMarkResult struct {
+	Version     int    `json:"version"`
+	SessionKey  string `json:"sessionkey"`
+	SessionId   string `json:"sessionid"`
+	Source      string `json:"source"`
+	Title       string `json:"title,omitempty"`
+	TitleSource string `json:"titlesource,omitempty"`
+	ProjectPath string `json:"projectpath,omitempty"`
+	Marked      bool   `json:"marked"`
+	UpdatedAt   int64  `json:"updatedat,omitempty"`
 }
 
 // AgentDispatchListRequest lists dispatch records (newest first).

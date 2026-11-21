@@ -5,8 +5,11 @@ package wshserver
 
 import (
 	"context"
+	"fmt"
+	"strings"
 
 	"github.com/wavetermdev/waveterm/pkg/agentcontrol"
+	"github.com/wavetermdev/waveterm/pkg/aisessions"
 	"github.com/wavetermdev/waveterm/pkg/wshrpc"
 )
 
@@ -22,7 +25,41 @@ func (ws *WshServer) SessionGetCommand(ctx context.Context, data wshrpc.SessionG
 
 // SessionListCommand returns indexed sessions (not necessarily live).
 func (ws *WshServer) SessionListCommand(ctx context.Context, data wshrpc.SessionListRequest) (*wshrpc.SessionListResult, error) {
+	// The CLI advertises `--marked true|false` but the index filter only
+	// speaks "starred"/"unstarred" (the GUI's vocabulary). Normalize once
+	// here so both surfaces (CLI flag and MCP `marked` param) filter instead
+	// of silently passing everything through (verify-run 20261121T17220).
+	data.Marked = normalizeMarkedFilter(data.Marked)
 	return agentcontrol.BuildSessionList(ctx, data)
+}
+
+// SessionMarkCommand stars/unstars one session (`wsh session mark`,
+// MCP snorkeling_session_mark). It is a thin wrapper around the same
+// Manager.Mark the GUI's toggleMark calls: marked is a boolean view state, not
+// card content, so it deliberately does NOT go through the agentdata patch
+// pipeline (design D5). Toggling is idempotent and last-write-wins, so no
+// dry-run/hash precondition is needed.
+func (ws *WshServer) SessionMarkCommand(ctx context.Context, data wshrpc.SessionMarkRequest) (*wshrpc.SessionMarkResult, error) {
+	identifier, err := agentcontrol.ResolveSessionIdentifier(ctx, data.Identifier, data.BlockId)
+	if err != nil {
+		return nil, err
+	}
+	manager := aisessions.NewManager("", nil)
+	summary, err := manager.Mark(ctx, identifier, data.Marked)
+	if err != nil {
+		return nil, fmt.Errorf("E_NOT_FOUND: session %q not found", identifier)
+	}
+	return &wshrpc.SessionMarkResult{
+		Version:     wshrpc.AgentControlVersion,
+		SessionKey:  summary.Key,
+		SessionId:   summary.ID,
+		Source:      summary.Source,
+		Title:       summary.Title,
+		TitleSource: summary.TitleSource,
+		ProjectPath: summary.ProjectPath,
+		Marked:      summary.Marked,
+		UpdatedAt:   summary.UpdatedAt,
+	}, nil
 }
 
 // SessionInfoCommand is layer 0 of the progressive session read: a size probe
@@ -111,4 +148,16 @@ func (ws *WshServer) SessionEmojiRecordPickCommand(ctx context.Context, data wsh
 // values into the backend (source=user, if-absent, idempotent).
 func (ws *WshServer) SessionEmojiMigrateCommand(ctx context.Context, data wshrpc.SessionEmojiMigrateRequest) (*wshrpc.SessionEmojiMigrateResult, error) {
 	return agentcontrol.MigrateSessionEmojis(ctx, data)
+}
+
+// normalizeMarkedFilter maps the CLI's true/false spelling onto the index's
+// starred/unstarred vocabulary; everything else passes through unchanged.
+func normalizeMarkedFilter(marked string) string {
+	switch strings.ToLower(strings.TrimSpace(marked)) {
+	case "true", "yes", "1":
+		return "starred"
+	case "false", "no", "0":
+		return "unstarred"
+	}
+	return marked
 }

@@ -276,3 +276,8 @@
 | 2026-11-20 14:45 | tab-info-card-freshness | ❌ 0/1（fatal） | launch+reset | `20261120T14382-tab-info-card-freshness` | 5a65b61e8 |
 | 2026-11-20 23:55 | commontext-compose-polish（副标题/编辑器展开动效/筛选美化+机器筛选/行悬浮插入移除/同步状态视觉/R6 聚焦 bug 防御） | ⛔ 真机 skipped：本机启动器 fatal + 用户明确本机性能不够；R2 动效与 R5 像素居中只能真机看，判据已备 | vitest `frontend/app/commontext` 14 文件 197 例全绿（新增 R1–R5 五条 DOM 断言 + WAAPI 结构断言）+ tsc 58 错（本包 0 新增）+ eslint 无本包新增；R6 诊断证据与待复跑路径见 `.trellis/tasks/11-20-commontext-compose-polish/implement.md` | `frontend/app/commontext/commontext-compose-modal.tsx` + `scripts/verify/commontext-meta-sort/verify.mjs`（行内插入改详情 Insert） | working-tree |
 | 2026-11-21 15:20 | commontext-row-filter-polish（行高 44→52 修裁切 / 徽章居右 / 筛选条单行化 / 排序 chip 菜单） | ⛔ 真机 skipped：本机启动器 fatal + 用户明确本机性能不够；验证台判据已改（行高 50–54、排序改读隐藏 select、新增 rows-not-clipped 行裁切判据），待环境可用再跑 | `npx vitest run frontend/app/commontext frontend/app/view/aisessions` 66 文件 1020 例全绿（新增 R1–R4 五条 DOM 断言）+ tsc 55 错（本包 0 新增）+ eslint 无本包新增 | `frontend/app/commontext/commontext-compose-modal.tsx` + `frontend/app/view/aisessions/session-tag-chips.tsx` + `scripts/verify/commontext-meta-sort/verify.mjs` | working-tree |
+| 2026-11-21 16:46 | agent-resume | ❌ 2/3 | launch+reset | `20261121T16393-agent-resume` | 6cce2b7ec |
+| 2026-11-21 16:56 | agent-resume | ❌ 9/11 | launch+reset | `20261121T16482-agent-resume` | 6cce2b7ec |
+| 2026-11-21 17:19 | agent-resume | ❌ 11/12 | launch+reset | `20261121T17141-agent-resume` | 6cce2b7ec |
+| 2026-11-21 17:27 | agent-resume | ❌ 11/12 | launch+reset | `20261121T17220-agent-resume` | 6cce2b7ec |
+| 2026-11-21 17:40 | agent-resume | ✅ 12/12 | launch+reset | `20261121T17360-agent-resume` | 6cce2b7ec |

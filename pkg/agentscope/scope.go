@@ -85,6 +85,9 @@ var commandScopes = map[string]string{
 
 	"agentlaunch": Launch,
 	"agentsend":   Launch,
+	"agentresume": Launch,
+
+	"sessionmark": Data,
 }
 
 // RequiredForCommand returns the minimum scope for an ACS command.
