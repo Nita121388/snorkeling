@@ -175,8 +175,12 @@
     align-self:flex-start;padding-top:2px}
   .rowmain{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
   .line1{display:flex;align-items:center;gap:6px;min-width:0}
+  /* 标题 + 同步点 = 左侧主区（吃掉所有可用宽度）；创建者徽章靠右，与 meta 列组成右侧信息带。
+     为什么居右：徽章贴标题时位置随标题长度漂移，跨行扫「谁创建的」对不齐；
+     靠右后所有徽章右缘对齐，一竖列扫下来就是创建者分布。 */
+  .l1main{display:flex;align-items:center;gap:6px;flex:1;min-width:0}
   .rtitle{font-size:12px;font-weight:500;line-height:16px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
-  .badge{display:inline-flex;align-items:center;gap:3px;flex-shrink:0;font-size:9.5px;line-height:1;
+  .badge{display:inline-flex;align-items:center;gap:3px;flex-shrink:0;margin-left:auto;font-size:9.5px;line-height:1;
     padding:1px 4px;border-radius:3px;border:1px solid transparent;max-width:96px}
   .badge span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .badge i{font-size:8px}
@@ -332,7 +336,10 @@
           <div class="pin"></div>
           <div class="rowmain">
             <div class="line1">
-              <span class="rtitle">Refund policy reply</span>
+              <span class="l1main">
+                <span class="rtitle">Refund policy reply</span>
+                
+              </span>
               <span class="badge human"><i class="fa-solid fa-user"></i><span>nita</span></span>
             </div>
             <div class="line2">
@@ -350,7 +357,10 @@
           <div class="pin"></div>
           <div class="rowmain">
             <div class="line1">
-              <span class="rtitle">Onboarding checklist</span>
+              <span class="l1main">
+                <span class="rtitle">Onboarding checklist</span>
+                
+              </span>
               <span class="badge agent"><i class="fa-solid fa-robot"></i><span>pi</span></span>
             </div>
             <div class="line2">
@@ -365,8 +375,10 @@
           <div class="pin"></div>
           <div class="rowmain">
             <div class="line1">
-              <span class="rtitle">SQL: weekly cohort</span>
-              <span class="syncdot" title="待上传"></span>
+              <span class="l1main">
+                <span class="rtitle">SQL: weekly cohort</span>
+                <span class="syncdot" title="待上传"></span>
+              </span>
               <span class="badge human"><i class="fa-solid fa-user"></i><span>nita</span></span>
             </div>
             <div class="line2">
@@ -386,7 +398,10 @@
           <div class="pin"></div>
           <div class="rowmain">
             <div class="line1">
-              <span class="rtitle">Code review 模板</span>
+              <span class="l1main">
+                <span class="rtitle">Code review 模板</span>
+                
+              </span>
               <span class="badge agent"><i class="fa-solid fa-robot"></i><span>codex</span></span>
             </div>
             <div class="line2">
@@ -401,7 +416,10 @@
           <div class="pin"><i class="fa-solid fa-thumbtack"></i></div>
           <div class="rowmain">
             <div class="line1">
-              <span class="rtitle">发版说明模板</span>
+              <span class="l1main">
+                <span class="rtitle">发版说明模板</span>
+                
+              </span>
               <span class="badge human"><i class="fa-solid fa-user"></i><span>nita</span></span>
             </div>
             <div class="line2">
@@ -419,7 +437,10 @@
           <div class="pin"></div>
           <div class="rowmain">
             <div class="line1">
-              <span class="rtitle">微信小程序支付回调失败排查步骤与常见错误码对照（长标题截断示例）</span>
+              <span class="l1main">
+                <span class="rtitle">微信小程序支付回调失败排查步骤与常见错误码对照（长标题截断示例）</span>
+                
+              </span>
               <span class="badge agent"><i class="fa-solid fa-robot"></i><span>deepseek</span></span>
             </div>
             <div class="line2">
@@ -434,7 +455,10 @@
           <div class="pin"></div>
           <div class="rowmain">
             <div class="line1">
-              <span class="rtitle">会议纪要骨架</span>
+              <span class="l1main">
+                <span class="rtitle">会议纪要骨架</span>
+                
+              </span>
               <span class="badge human"><i class="fa-solid fa-user"></i><span>nita</span></span>
             </div>
             <div class="line2">
@@ -511,6 +535,9 @@
         对比现状的「搜索 + 创建者行 + 排序行 + 无标签/标签行」四层，省 2 行纵向空间给列表。</li>
     <li><b>窄态自动折两行</b>：宽度 &lt; 约 700px 时筛选行按「创建者+机器 / 排序+无标签+标签」折行，
         标签条独占一整行 —— 切到「窄 700」档查看。</li>
+    <li><b>创建者徽章居右</b>：标题左侧吃掉全部可用宽度（长标题少截一截），徽章贴在行内右缘、
+        与 meta 列组成右侧信息带。徽章原来跟在标题后面，位置随标题长度漂移——跨行扫「谁创建的」
+        对不齐；靠右后所有徽章右缘对齐，一竖列扫下来就是创建者分布。</li>
   </ol>
 </div>
 
