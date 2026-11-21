@@ -810,6 +810,22 @@ declare global {
         hasset?: boolean;
     };
 
+    // wshrpc.AgentDispatchGetRequest
+    type AgentDispatchGetRequest = {
+        dispatchid: string;
+    };
+
+    // wshrpc.AgentDispatchListRequest
+    type AgentDispatchListRequest = {
+        blockid?: string;
+        limit?: number;
+    };
+
+    // wshrpc.AgentDispatchRetryRequest
+    type AgentDispatchRetryRequest = {
+        dispatchid: string;
+    };
+
     // wshrpc.AgentLaunchRequest
     type AgentLaunchRequest = {
         profile: string;
@@ -900,6 +916,8 @@ declare global {
         submitdelayms?: number;
         submitverifyms?: number;
         submitwaitms?: number;
+        async?: boolean;
+        requester?: string;
     };
 
     // wshrpc.AgentSendResult
@@ -916,6 +934,8 @@ declare global {
         submitretries?: number;
         submitconfirmed?: boolean;
         warnings?: string[];
+        queued?: boolean;
+        dispatchid?: string;
     };
 
     // wshrpc.AgentSkillInstallResult
@@ -2885,17 +2905,17 @@ declare global {
         "waveai:maxoutputtokens"?: number;
     };
 
-    // hero.Origin
-    type Origin = {
-        deviceId?: string;
-        deviceName?: string;
-        platform?: string;
-    };
-
     // syncproto.Origin
     type Origin = {
         deviceid?: string;
         devicename?: string;
+        platform?: string;
+    };
+
+    // hero.Origin
+    type Origin = {
+        deviceId?: string;
+        deviceName?: string;
         platform?: string;
     };
 
@@ -3062,6 +3082,24 @@ declare global {
         preqlimit: number;
         resetepoch: number;
         unknown?: boolean;
+    };
+
+    // agentdispatch.Record
+    type Record = {
+        dispatchid: string;
+        blockid: string;
+        tabid?: string;
+        text64?: string;
+        requester?: string;
+        state: string;
+        createdat: number;
+        updatedat: number;
+        acceptedat?: number;
+        submittedat?: number;
+        confirmedat?: number;
+        attempts?: number;
+        submitretries?: number;
+        error?: string;
     };
 
     // wshrpc.RemoteInfo

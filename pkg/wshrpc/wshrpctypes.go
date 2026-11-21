@@ -11,6 +11,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/wavetermdev/waveterm/pkg/agentcatalog"
+	"github.com/wavetermdev/waveterm/pkg/agentdispatch"
 	"github.com/wavetermdev/waveterm/pkg/agentstatus"
 	"github.com/wavetermdev/waveterm/pkg/aiusechat/uctypes"
 	"github.com/wavetermdev/waveterm/pkg/baseds"
@@ -134,6 +135,11 @@ type WshRpcInterface interface {
 	// Send carries the one-shot prompt, non-zero exit -> E_AGENT_FAILED.
 	AgentLaunchHeadlessCommand(ctx context.Context, data AgentLaunchRequest) (*ScheduledTaskRunResult, error)
 	AgentSendCommand(ctx context.Context, data AgentSendRequest) (*AgentSendResult, error)
+	// agent dispatch queue (server-held delivery state; consumed by desktop UI,
+	// CLI, MCP and future mobile clients)
+	AgentDispatchListCommand(ctx context.Context, data AgentDispatchListRequest) ([]agentdispatch.Record, error)
+	AgentDispatchGetCommand(ctx context.Context, data AgentDispatchGetRequest) (*agentdispatch.Record, error)
+	AgentDispatchRetryCommand(ctx context.Context, data AgentDispatchRetryRequest) (*agentdispatch.Record, error)
 	// external agent access: mint a scoped token (in-app only)
 	AgentAuthGrantCommand(ctx context.Context, data AgentAuthGrantRequest) (*AgentAuthGrantResult, error)
 	AgentAuthListCommand(ctx context.Context) (*AgentAuthListResult, error)
@@ -1388,6 +1394,14 @@ type AgentSendRequest struct {
 	// while the TUI stays silent, e.g. pi's 40s+ startup update checks),
 	// default 60000, cap 300000. Independent of the quiet-wait WaitMs.
 	SubmitWaitMs int `json:"submitwaitms,omitempty"`
+	// Async turns the call into a dispatch: the server records it and returns
+	// {queued:true, dispatchid} immediately, then delivers in the background
+	// (readiness gate + submit confirmation, minutes-scale windows are fine).
+	// Any surface that must not block (desktop UI, future mobile client) uses this.
+	Async bool `json:"async,omitempty"`
+	// Requester names the submitting surface (desktop / cli / mcp / mobile) so
+	// dispatch records stay attributable across clients. Empty defaults to desktop.
+	Requester string `json:"requester,omitempty"`
 }
 
 // AgentSendResult reports what actually happened to the text.
@@ -1408,6 +1422,28 @@ type AgentSendResult struct {
 	SubmitRetries   int      `json:"submitretries,omitempty"`
 	SubmitConfirmed bool     `json:"submitconfirmed,omitempty"`
 	Warnings        []string `json:"warnings,omitempty"`
+	// Queued/DispatchId are set when the request carried async:true: the
+	// delivery runs in the background; read AgentDispatch* for the receipt.
+	Queued     bool   `json:"queued,omitempty"`
+	DispatchId string `json:"dispatchid,omitempty"`
+}
+
+// AgentDispatchListRequest lists dispatch records (newest first).
+type AgentDispatchListRequest struct {
+	// BlockId filters to one block; empty lists all.
+	BlockId string `json:"blockid,omitempty"`
+	// Limit caps the result, default 50.
+	Limit int `json:"limit,omitempty"`
+}
+
+// AgentDispatchGetRequest fetches one dispatch record by id.
+type AgentDispatchGetRequest struct {
+	DispatchId string `json:"dispatchid"`
+}
+
+// AgentDispatchRetryRequest re-queues a failed dispatch. Same id, no new record.
+type AgentDispatchRetryRequest struct {
+	DispatchId string `json:"dispatchid"`
 }
 
 // ScheduledTaskRunResult is the synchronous outcome of `wsh scheduledtask run`

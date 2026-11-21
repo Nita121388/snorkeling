@@ -252,6 +252,8 @@ export async function executeCommonTextSend(input: {
                         blockid: blockId,
                         text64: stringToBase64(cleanText),
                         submit: true,
+                        async: true,
+                        requester: "desktop",
                     });
                     if (sendResult?.submitconfirmed === false) {
                         console.warn("[commontext] 消息已放入输入框但未确认提交", { blockId });

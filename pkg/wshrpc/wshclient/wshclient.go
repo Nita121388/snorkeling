@@ -8,6 +8,7 @@ package wshclient
 import (
 	"github.com/wavetermdev/waveterm/pkg/aiusechat/uctypes"
 	"github.com/wavetermdev/waveterm/pkg/agentcatalog"
+	"github.com/wavetermdev/waveterm/pkg/agentdispatch"
 	"github.com/wavetermdev/waveterm/pkg/agentstatus"
 	"github.com/wavetermdev/waveterm/pkg/baseds"
 	"github.com/wavetermdev/waveterm/pkg/ccswitch"
@@ -53,6 +54,24 @@ func AgentCardGetCommand(w *wshutil.WshRpc, data wshrpc.AgentCardGetRequest, opt
 // command "agentcardset", wshserver.AgentCardSetCommand
 func AgentCardSetCommand(w *wshutil.WshRpc, data wshrpc.AgentCardSetRequest, opts *wshrpc.RpcOpts) (*wshrpc.AgentCardSetResult, error) {
 	resp, err := sendRpcRequestCallHelper[*wshrpc.AgentCardSetResult](w, "agentcardset", data, opts)
+	return resp, err
+}
+
+// command "agentdispatchget", wshserver.AgentDispatchGetCommand
+func AgentDispatchGetCommand(w *wshutil.WshRpc, data wshrpc.AgentDispatchGetRequest, opts *wshrpc.RpcOpts) (*agentdispatch.Record, error) {
+	resp, err := sendRpcRequestCallHelper[*agentdispatch.Record](w, "agentdispatchget", data, opts)
+	return resp, err
+}
+
+// command "agentdispatchlist", wshserver.AgentDispatchListCommand
+func AgentDispatchListCommand(w *wshutil.WshRpc, data wshrpc.AgentDispatchListRequest, opts *wshrpc.RpcOpts) ([]agentdispatch.Record, error) {
+	resp, err := sendRpcRequestCallHelper[[]agentdispatch.Record](w, "agentdispatchlist", data, opts)
+	return resp, err
+}
+
+// command "agentdispatchretry", wshserver.AgentDispatchRetryCommand
+func AgentDispatchRetryCommand(w *wshutil.WshRpc, data wshrpc.AgentDispatchRetryRequest, opts *wshrpc.RpcOpts) (*agentdispatch.Record, error) {
+	resp, err := sendRpcRequestCallHelper[*agentdispatch.Record](w, "agentdispatchretry", data, opts)
 	return resp, err
 }
 

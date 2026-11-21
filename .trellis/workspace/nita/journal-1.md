@@ -450,3 +450,35 @@ merge 后 go build ./... 通过、四包测试全绿、`task generate` 无 diff�
 - **真机 skipped**：用户明确本机性能不够、不要真机验证；`scripts/verify/overview-board/verify.mjs` 已扩阶段 1a
   五条判据（真实指针点标题开弹窗 / 点 emoji 头像开 picker 且不开弹窗 / avatar-btn 计数），有环境直接跑；台账已记 skipped。
 - **spec**：`quality-guidelines.md` 新增「卡片点击 = 热区白名单，不是 target === currentTarget」（含探针契约与 Enter 双触发坑）。
+
+## 2026-11-21 12:15 · v2 事故根因闭合 + 修复（d4c699c81）
+
+- **用户三连报障**：本地 Tab 弹窗提示「远端 Tab」、编辑不了消息；新建 agent 后消息从未送达；
+  CommonText 发送也不正常（待复核——见下）。
+- **排查手段**（全只读探针，未污染用户会话）：`%APPDATA%` asar 字符串核对版本归属 →
+  DB（waveterm.db 块 meta connection 分布：8×preview+vcs 都是 "local"）→ CDP 动态 import
+  实跑纯函数与 `executeCommonTextSend` 本体 → filestore.db term 文件核对注入原文。
+- **根因**：`isLocal = connection == null` 语义错（"local" 是本机规范值）→ 本地 preview 块全被判远端
+  → 弹窗 `isRemotePath` 误判 → 消息框锁死 + submit 静默丢消息。
+- **修复**（d4c699c81）：`isLocalTargetConnection` 收口 + 路径行行级 isLocal + fallback 行带 Tab 连接
+  + 远端+已写消息显式拦下（红提示+禁用创建，绝不静默丢）。
+- **真机复核**：用户真实 tab-01 数据 9/9 targets、9/9 rows 全部 isLocal=true；
+  后端 agentsend（后台 Tab 新块 injected/submitted=true，term 文件含探针文本）与
+  CommonText existing（`发送中… → 已发送` + term 注入确认）都正常——失败不在这两条链。
+- **遗留待用户确认**：① CommonText「发送也不正常」在哪个实例复现（安装版 0.0.133 是旧
+  paste 链路，无 R10；dev 实例已实测正常）②「以前发送失败右上角显示复制信息给agent」具体指什么
+  （词表里没有这个串，疑为已复制（无插入目标）/notReady 状态的旧记忆，下次出现请截图）。
+
+## 2026-11-21 夜 · 方案 A 收口 + A+ 派发队列落地
+
+- **方案 A（c0b7fe080）**：派发不等待（弹窗建块即关）+ 后端两阶段就绪门（启动标记期不打回车；
+  标记消失后投 CR，ack 优先 agentstatus hook；窗口 60s→180s）。真机：pi 新建+立即发送 → retries=5
+  → confirmed，模型真实回答。
+- **A+（11-21-agent-dispatch-queue）**：服务端派发队列 `pkg/agentdispatch` + `agentsend async:true`
+  + `agentdispatchlist|get|retry` RPC + CLI（`wsh agent send --async`、`wsh agent dispatch *`）
+  + 前端改 async。真机：提交 421~866ms 返回 dispatchid → 后台投递 → confirmed（三段回执全 true）→
+  模型真实回答（term 有回答与 token 计数）。
+- **真机两次误判的教训（已写进代码注释与 PRD）**：agent 块的提交确认**只认 hook**（agent_start→working）；
+  「输出增长」在 pi 启动期同样发生（banner 渲染），绝不能用它当 agent 的 ack。非 agent（shell）块才允许。
+- 生成器坑：新增被 RPC 引用的包必须在 `cmd/generatego` 导入表加上，否则 `task generate` 重写
+  wshclient.go 会丢 import 导致全仓编译失败（并且 generate 自己也会因此失败，被卡成鸡生蛋）。

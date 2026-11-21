@@ -42,6 +42,7 @@ var (
 	agentSendQuietMs       int
 	agentSendSubmitDelayMs int
 	agentSendJSON          bool
+	agentSendAsync         bool
 )
 
 var agentLaunchCmd = &cobra.Command{
@@ -109,6 +110,7 @@ func init() {
 	agentSendCmd.Flags().IntVar(&agentSendQuietMs, "quiet-ms", 0, "how long the TUI must be silent (default 400)")
 	agentSendCmd.Flags().IntVar(&agentSendSubmitDelayMs, "submit-delay-ms", 0, "paste -> enter delay in ms (default 150)")
 	agentSendCmd.Flags().BoolVar(&agentSendJSON, "json", false, "output the result as JSON")
+	agentSendCmd.Flags().BoolVar(&agentSendAsync, "async", false, "queue the dispatch and return its id immediately (delivery runs in the background)")
 	agentCmd.AddCommand(agentSendCmd)
 }
 
@@ -256,6 +258,8 @@ func agentSendRun(cmd *cobra.Command, args []string) (rtnErr error) {
 		WaitMs:        agentSendWaitMs,
 		QuietMs:       agentSendQuietMs,
 		SubmitDelayMs: agentSendSubmitDelayMs,
+		Async:         agentSendAsync,
+		Requester:     "cli",
 	}, &wshrpc.RpcOpts{Timeout: 90000})
 	if err != nil {
 		return err

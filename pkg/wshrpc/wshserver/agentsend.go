@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/wavetermdev/waveterm/pkg/agentdispatch"
 	"github.com/wavetermdev/waveterm/pkg/agentstatus"
 	"github.com/wavetermdev/waveterm/pkg/blockcontroller"
 	"github.com/wavetermdev/waveterm/pkg/filestore"
@@ -96,66 +97,38 @@ func (ws *WshServer) AgentSendCommand(ctx context.Context, data wshrpc.AgentSend
 		return nil, fmt.Errorf("E_UNSUPPORTED: block %q runs on connection %q (local only for now)", blockId, conn)
 	}
 
-	// A term block only has a live PTY once its controller is running. A block in a
-	// background tab may have never been mounted by the frontend, so start the
-	// controller here instead of failing: the launch+send path depends on it, and
-	// the term file keeps the output for whenever the user looks at the block.
-	if err := ensureSendBlockController(ctx, blockId, blockObj); err != nil {
-		return nil, err
-	}
-	log.Printf("[agentsend] %s controller ready", blockId)
-
-	rtn := &wshrpc.AgentSendResult{
-		Version:       wshrpc.AgentControlVersion,
-		Ok:            true,
-		BlockId:       blockId,
-		View:          view,
-		QuietMs:       params.QuietMs,
-		SubmitDelayMs: params.SubmitDelayMs,
-	}
-
-	if params.Wait {
-		waitedMs, err := waitForTermQuiet(ctx, blockId, params.WaitMs, params.QuietMs)
-		rtn.WaitedMs = waitedMs
-		log.Printf("[agentsend] %s quiet wait done waitedms=%d err=%v", blockId, waitedMs, err)
-		if err != nil {
-			return rtn, err
+	// async：写入派发队列后立即返回。投递在后台做（就绪门可以等几分钟），
+	// 任何端（桌面 UI / CLI / MCP / 手机端）都只做「提交 + 读回执」。
+	if data.Async {
+		requester := strings.TrimSpace(data.Requester)
+		if requester == "" {
+			requester = "desktop"
 		}
-	} else {
-		rtn.Warnings = append(rtn.Warnings, "wait-skipped")
+		tabId, _ := findTabIdForBlock(ctx, blockId)
+		rec := agentdispatch.DefaultStore.Create(blockId, tabId, data.Text64, requester)
+		go runAgentDispatch(*rec, text, params)
+		return &wshrpc.AgentSendResult{
+			Version:    wshrpc.AgentControlVersion,
+			Ok:         true,
+			BlockId:    blockId,
+			View:       view,
+			Queued:     true,
+			DispatchId: rec.DispatchId,
+			QuietMs:    params.QuietMs,
+		}, nil
 	}
 
-	// One bracketed paste for the whole text: multi-line text must stay one paste,
-	// otherwise the TUI would treat every line as a separate submission.
-	if err := sendInputReady(ctx, blockId, buildInjectBytes(text)); err != nil {
-		return rtn, fmt.Errorf("E_BLOCK_NOT_READY: write to pty failed: %w", err)
-	}
-	rtn.Injected = true
-	log.Printf("[agentsend] %s injected %d bytes", blockId, len(text))
-
-	if params.Submit {
-		// The TUI needs the bracketed paste consumed before CR means "submit".
-		time.Sleep(time.Duration(params.SubmitDelayMs) * time.Millisecond)
-		if err := sendInputReady(ctx, blockId, []byte("\r")); err != nil {
-			return rtn, fmt.Errorf("E_BLOCK_NOT_READY: submit (enter) failed: %w", err)
-		}
-		rtn.Submitted = true
-		// 提交确认（真机事故 2026-11-21）：pi 启动期（"Startup is still in progress"）会
-		// 吞掉回车 —— 文字进了输入框但没提交，用户看到「文字在输入框里、没发出去」。
-		// 输出继续增长 = TUI 真的接了；静默不动 = 补发回车。
-		submitStart := time.Now()
-		isAgentBlock := strings.TrimSpace(blockObj.Meta.GetString("agent:provider", "")) != ""
-		rtn.SubmitRetries, rtn.SubmitConfirmed = confirmSubmit(ctx, blockId, params, isAgentBlock)
-		log.Printf(
-			"[agentsend] %s submit confirm retries=%d confirmed=%v elapsedms=%d",
-			blockId, rtn.SubmitRetries, rtn.SubmitConfirmed, time.Since(submitStart).Milliseconds(),
-		)
-		if !rtn.SubmitConfirmed {
-			rtn.Warnings = append(rtn.Warnings, "submit-unconfirmed")
-		}
-	}
-	return rtn, nil
+	return deliverAgentSend(ctx, blockId, blockObj, text, params, nil)
 }
+
+// deliveryProgress 把投递里程碑回调给派发队列（落三段回执）。nil = 不需要。
+type deliveryProgress struct {
+	OnAccepted  func()
+	OnSubmitted func(retries int, confirmed bool)
+}
+
+// deliverAgentSend 是同步与异步共用的投递内核：确保 controller → 就绪门 → 一次
+// bracketed paste → 回车 → 提交确认（agentstatus hook 优先）。
 
 // confirmSubmit 确认这次提交真的被 TUI 接住：以 term 输出文件是否继续增长为信号。
 // 没长就补发 CR（有界：params.SubmitWaitMs 截止 + MaxSubmitRetries 硬上限，间隔退避），
@@ -175,21 +148,20 @@ func confirmSubmit(ctx context.Context, blockId string, params sendParams, isAge
 	deadline := time.Now().Add(time.Duration(submitWaitMs) * time.Millisecond)
 	ackWindowMs := params.SubmitVerifyMs
 	baselineSeq := agentStatusSeq(blockId)
-	statusAckUsable := isAgentBlock
 	retries := 0
-	// 阶段一：等 TUI 真的就绪（屏上没有「还在启动」标记）——期间**不打回车**，
-	// 启动期的回车必被吞（实测 pi 会冻结几十秒到几分钟），打了也是白发。
-	// 阶段二：就绪后投回车，并用 agent status hook（agent_start → working）确认；
-	// 没有 hook 时退回「输出继续增长」判定。没确认就再补一次回车。
+	// 规则（2026-11-21 真机两次误判后定稿）：
+	//   1. 屏上还有「还在启动」标记时只等，不打回车（启动期回车必被吞）。
+	//   2. agent 块的提交确认**只认 hook**（agent_start → working）。
+	//      绝不用「输出增长」：pi 启动期自己在渲染 banner，输出动 ≠ 提交成功。
+	//   3. 普通 term 块（shell/REPL，没有 agent status）才允许用输出增长当 ack。
 	for retries <= MaxSubmitRetries {
 		if ctx.Err() != nil {
 			return retries, false
 		}
-		if statusAckUsable && agentStatusSeq(blockId) > baselineSeq {
+		if isAgentBlock && agentStatusConfirmsSubmit(blockId, baselineSeq) {
 			return retries, true
 		}
 		if termTailShowsStartup(blockId) {
-			// 还在启动：只等，不打 CR
 			if time.Now().After(deadline) {
 				return retries, false
 			}
@@ -201,26 +173,19 @@ func confirmSubmit(ctx context.Context, blockId string, params sendParams, isAge
 			continue
 		}
 		// 就绪：投一次回车
-		if err := sendInputReady(ctx, blockId, []byte("\r")); err != nil {
+		if err := sendInputReady(ctx, blockId, []byte("")); err != nil {
 			return retries, false
 		}
 		retries++
-		// 等 ack：状态 hook 优先，没有则看输出是否继续增长
+		// 等 ack
 		ackDeadline := time.Now().Add(time.Duration(ackWindowMs) * time.Millisecond)
-		moved := false
 		for time.Now().Before(ackDeadline) {
-			if statusAckUsable {
-				if agentStatusSeq(blockId) > baselineSeq {
+			if isAgentBlock {
+				if agentStatusConfirmsSubmit(blockId, baselineSeq) {
 					return retries, true
 				}
-				if !moved {
-					moved = termOutputMoved(ctx, blockId, submitStartupPollMs)
-				}
-				if retries >= 2 && !moved {
-					// 两轮都没有 hook 报告：该 agent 没装 hook，退回输出判定
-					statusAckUsable = false
-				}
 			} else if termOutputMoved(ctx, blockId, submitStartupPollMs) {
+				// 非 agent 块（shell）：输出增长就是执行证据
 				return retries, true
 			}
 			if ctx.Err() != nil {
@@ -494,6 +459,21 @@ func waitForTermQuiet(ctx context.Context, blockId string, waitMs int, quietMs i
 	}
 }
 
+// agentStatusConfirmsSubmit 判断 agent 状态是否**确认了这次提交**。
+// 只看 seq 变化是不够的：启动期 agent 扩展也会报状态（例如 idle / release），
+// 那会把「文字还在输入框」误判成已提交（真机 2026-11-21 踩到）。
+// 所以要求：出现新报告，且状态是 working（pi/codex/claude 的 agent_start → working）。
+func agentStatusConfirmsSubmit(blockId string, baselineSeq int64) bool {
+	st := agentstatus.Get(blockId)
+	if st == nil {
+		return false
+	}
+	if st.Seq <= baselineSeq {
+		return false
+	}
+	return st.State == agentstatus.StateWorking
+}
+
 // agentStatusSeq 返回该块当前 agent 状态的 seq；没有 hook / 没状态时返回 -1。
 // seq 是 agentstatus 管理器里每次新报告都会加的计数器，用它做“提交后是否真的有新报告”。
 func agentStatusSeq(blockId string) int64 {
@@ -528,4 +508,80 @@ func findTabIdForBlock(ctx context.Context, blockId string) (string, error) {
 		return "", fmt.Errorf("E_NOT_FOUND: block %q is not in any tab: %v", blockId, err)
 	}
 	return tabId, nil
+}
+
+func deliverAgentSend(
+	ctx context.Context,
+	blockId string,
+	blockObj *waveobj.Block,
+	text string,
+	params sendParams,
+	progress *deliveryProgress,
+) (*wshrpc.AgentSendResult, error) {
+	view := blockObj.Meta.GetString(waveobj.MetaKey_View, "")
+	// A term block only has a live PTY once its controller is running. A block in a
+	// background tab may have never been mounted by the frontend, so start the
+	// controller here instead of failing: the launch+send path depends on it, and
+	// the term file keeps the output for whenever the user looks at the block.
+	if err := ensureSendBlockController(ctx, blockId, blockObj); err != nil {
+		return nil, err
+	}
+	log.Printf("[agentsend] %s controller ready", blockId)
+
+	rtn := &wshrpc.AgentSendResult{
+		Version:       wshrpc.AgentControlVersion,
+		Ok:            true,
+		BlockId:       blockId,
+		View:          view,
+		QuietMs:       params.QuietMs,
+		SubmitDelayMs: params.SubmitDelayMs,
+	}
+
+	if params.Wait {
+		waitedMs, err := waitForTermQuiet(ctx, blockId, params.WaitMs, params.QuietMs)
+		rtn.WaitedMs = waitedMs
+		log.Printf("[agentsend] %s quiet wait done waitedms=%d err=%v", blockId, waitedMs, err)
+		if err != nil {
+			return rtn, err
+		}
+	} else {
+		rtn.Warnings = append(rtn.Warnings, "wait-skipped")
+	}
+
+	// One bracketed paste for the whole text: multi-line text must stay one paste,
+	// otherwise the TUI would treat every line as a separate submission.
+	if err := sendInputReady(ctx, blockId, buildInjectBytes(text)); err != nil {
+		return rtn, fmt.Errorf("E_BLOCK_NOT_READY: write to pty failed: %w", err)
+	}
+	rtn.Injected = true
+	log.Printf("[agentsend] %s injected %d bytes", blockId, len(text))
+	if progress != nil && progress.OnAccepted != nil {
+		progress.OnAccepted()
+	}
+
+	if params.Submit {
+		// The TUI needs the bracketed paste consumed before CR means "submit".
+		time.Sleep(time.Duration(params.SubmitDelayMs) * time.Millisecond)
+		if err := sendInputReady(ctx, blockId, []byte("\r")); err != nil {
+			return rtn, fmt.Errorf("E_BLOCK_NOT_READY: submit (enter) failed: %w", err)
+		}
+		rtn.Submitted = true
+		// 提交确认（真机事故 2026-11-21）：pi 启动期（"Startup is still in progress"）会
+		// 吞掉回车 —— 文字进了输入框但没提交，用户看到「文字在输入框里、没发出去」。
+		// 输出继续增长 = TUI 真的接了；静默不动 = 补发回车。
+		submitStart := time.Now()
+		isAgentBlock := strings.TrimSpace(blockObj.Meta.GetString("agent:provider", "")) != ""
+		rtn.SubmitRetries, rtn.SubmitConfirmed = confirmSubmit(ctx, blockId, params, isAgentBlock)
+		if progress != nil && progress.OnSubmitted != nil {
+			progress.OnSubmitted(rtn.SubmitRetries, rtn.SubmitConfirmed)
+		}
+		log.Printf(
+			"[agentsend] %s submit confirm retries=%d confirmed=%v elapsedms=%d",
+			blockId, rtn.SubmitRetries, rtn.SubmitConfirmed, time.Since(submitStart).Milliseconds(),
+		)
+		if !rtn.SubmitConfirmed {
+			rtn.Warnings = append(rtn.Warnings, "submit-unconfirmed")
+		}
+	}
+	return rtn, nil
 }

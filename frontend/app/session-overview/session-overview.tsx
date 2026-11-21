@@ -2774,6 +2774,9 @@ function SessionOverviewPanel({ blockId, model }: ViewComponentProps<SessionOver
                         blockid: blockId,
                         text64: stringToBase64(text),
                         submit: true,
+                        // 派发队列：服务端持有投递状态，桌面只提交 + 记回执（手机端/CLI 同一契约）
+                        async: true,
+                        requester: "desktop",
                     });
                     if (sendResult?.submitconfirmed === false) {
                         console.warn("[overview-add-agent] 消息已放入输入框但未确认提交", { blockId });
