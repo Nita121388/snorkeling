@@ -38,6 +38,14 @@ const (
 	// either be truncated by the TUI or take minutes to render.
 	MaxSendTextBytes = 64 * 1024
 	sendPollInterval = 100 * time.Millisecond
+	// 提交确认：agent TUI（实测 pi）在启动期会在输出里留 >quiet 的间歇，
+	// 就绪判定就会误以为可以发 —— paste 成功但 CR 被吞（文字睡在输入框里不提交）。
+	// 对策：提交后看 term 输出是否继续增长；没动就补发 CR（文字已在输入框，重复 CR 安全）。
+	DefaultSubmitVerifyMs = 700
+	MinSubmitVerifyMs     = 200
+	MaxSubmitVerifyMs     = 5000
+	// 补回车的最多次数（硬上限，真正的截止时间还是 params.WaitMs）。
+	MaxSubmitRetries = 30
 )
 
 // AgentSendCommand writes text into a term block's PTY. It is the backend twin of
@@ -112,8 +120,70 @@ func (ws *WshServer) AgentSendCommand(ctx context.Context, data wshrpc.AgentSend
 			return rtn, fmt.Errorf("E_BLOCK_NOT_READY: submit (enter) failed: %w", err)
 		}
 		rtn.Submitted = true
+		// 提交确认（真机事故 2026-11-21）：pi 启动期（"Startup is still in progress"）会
+		// 吞掉回车 —— 文字进了输入框但没提交，用户看到「文字在输入框里、没发出去」。
+		// 输出继续增长 = TUI 真的接了；静默不动 = 补发回车。
+		rtn.SubmitRetries, rtn.SubmitConfirmed = confirmSubmit(ctx, blockId, params)
+		if !rtn.SubmitConfirmed {
+			rtn.Warnings = append(rtn.Warnings, "submit-unconfirmed")
+		}
 	}
 	return rtn, nil
+}
+
+// confirmSubmit 确认这次提交真的被 TUI 接住：以 term 输出文件是否继续增长为信号。
+// 没长就补发 CR（有界：params.WaitMs 截止 + MaxSubmitRetries 硬上限），返回补发次数。
+//
+// 为什么“补发”是安全的：文字已经在 TUI 的输入缓冲区里（paste 已成功），此时多按几次回车
+// 最多是空提交（agent TUI 忽略空输入 / 命令行多一个空提示符），比默默丢消息好得多。
+func confirmSubmit(ctx context.Context, blockId string, params sendParams) (int, bool) {
+	verifyMs := params.SubmitVerifyMs
+	deadline := time.Now().Add(time.Duration(params.WaitMs) * time.Millisecond)
+	retries := 0
+	for retries <= MaxSubmitRetries {
+		if termOutputMoved(ctx, blockId, verifyMs) {
+			// 输出有变化 = TUI 接住了这次提交（开始渲染回复/状态行）
+			return retries, true
+		}
+		if time.Now().After(deadline) {
+			return retries, false
+		}
+		if err := sendInputReady(ctx, blockId, []byte("\r")); err != nil {
+			return retries, false
+		}
+		retries++
+	}
+	return retries, false
+}
+
+// termOutputMoved 在 windowMs 内轮询 term 输出文件，只要出现 size/modts 变化就返回 true。
+// 文件不存在（刚启动的块）也算“未动”，交给上层补发/超时。
+func termOutputMoved(ctx context.Context, blockId string, windowMs int) bool {
+	start := time.Now()
+	deadline := start.Add(time.Duration(windowMs) * time.Millisecond)
+	var lastSize int64 = -1
+	var lastMod int64 = -1
+	haveBaseline := false
+	for {
+		wfile, statErr := filestore.WFS.Stat(ctx, blockId, wavebase.BlockFile_Term)
+		if statErr == nil && wfile != nil {
+			if !haveBaseline {
+				lastSize = wfile.Size
+				lastMod = wfile.ModTs
+				haveBaseline = true
+			} else if wfile.Size != lastSize || wfile.ModTs != lastMod {
+				return true
+			}
+		}
+		if time.Now().After(deadline) {
+			return false
+		}
+		select {
+		case <-ctx.Done():
+			return false
+		case <-time.After(sendPollInterval):
+		}
+	}
 }
 
 // sendInputReady writes bytes through the single PTY path, tolerating the narrow
@@ -190,22 +260,24 @@ func buildInjectBytes(text string) []byte {
 }
 
 type sendParams struct {
-	Wait          bool
-	WaitMs        int
-	QuietMs       int
-	Submit        bool
-	SubmitDelayMs int
+	Wait           bool
+	WaitMs         int
+	QuietMs        int
+	Submit         bool
+	SubmitDelayMs  int
+	SubmitVerifyMs int
 }
 
 func normalizeSendParams(data wshrpc.AgentSendRequest) (sendParams, error) {
 	// Submit/Wait are pointers so an explicit false survives the wire; unset
 	// defaults to the documented behaviour (wait + submit).
 	params := sendParams{
-		Wait:          data.Wait == nil || *data.Wait,
-		WaitMs:        data.WaitMs,
-		QuietMs:       data.QuietMs,
-		Submit:        data.Submit == nil || *data.Submit,
-		SubmitDelayMs: data.SubmitDelayMs,
+		Wait:           data.Wait == nil || *data.Wait,
+		WaitMs:         data.WaitMs,
+		QuietMs:        data.QuietMs,
+		Submit:         data.Submit == nil || *data.Submit,
+		SubmitDelayMs:  data.SubmitDelayMs,
+		SubmitVerifyMs: data.SubmitVerifyMs,
 	}
 	if params.WaitMs <= 0 {
 		params.WaitMs = DefaultSendWaitMs
@@ -227,6 +299,15 @@ func normalizeSendParams(data wshrpc.AgentSendRequest) (sendParams, error) {
 	}
 	if params.SubmitDelayMs > MaxSubmitDelayMs {
 		return params, fmt.Errorf("E_USAGE: submitdelayms %d over the %d ms cap", params.SubmitDelayMs, MaxSubmitDelayMs)
+	}
+	if params.SubmitVerifyMs <= 0 {
+		params.SubmitVerifyMs = DefaultSubmitVerifyMs
+	}
+	if params.SubmitVerifyMs < MinSubmitVerifyMs || params.SubmitVerifyMs > MaxSubmitVerifyMs {
+		return params, fmt.Errorf(
+			"E_USAGE: submitverifyms %d out of range [%d,%d]",
+			params.SubmitVerifyMs, MinSubmitVerifyMs, MaxSubmitVerifyMs,
+		)
 	}
 	return params, nil
 }

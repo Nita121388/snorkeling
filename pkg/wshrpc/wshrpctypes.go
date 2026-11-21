@@ -1380,20 +1380,30 @@ type AgentSendRequest struct {
 	QuietMs int   `json:"quietms,omitempty"` // output-quiet threshold, default 400, range [100,5000]
 	// SubmitDelayMs is the paste→enter delay, default 150, range [0,2000].
 	SubmitDelayMs int `json:"submitdelayms,omitempty"`
+	// SubmitVerifyMs bounds each "did the TUI take the submit?" poll window,
+	// default 700, range [200,5000]. While the poll sees no new output the CR
+	// is re-sent (the pasted text is still in the input buffer).
+	SubmitVerifyMs int `json:"submitverifyms,omitempty"`
 }
 
 // AgentSendResult reports what actually happened to the text.
 type AgentSendResult struct {
-	Version       int      `json:"version"`
-	Ok            bool     `json:"ok"`
-	BlockId       string   `json:"blockid"`
-	View          string   `json:"view"`
-	Injected      bool     `json:"injected"`
-	Submitted     bool     `json:"submitted"`
-	WaitedMs      int      `json:"waitedms,omitempty"`
-	QuietMs       int      `json:"quietms"`
-	SubmitDelayMs int      `json:"submitdelayms"`
-	Warnings      []string `json:"warnings,omitempty"`
+	Version       int    `json:"version"`
+	Ok            bool   `json:"ok"`
+	BlockId       string `json:"blockid"`
+	View          string `json:"view"`
+	Injected      bool   `json:"injected"`
+	Submitted     bool   `json:"submitted"`
+	WaitedMs      int    `json:"waitedms,omitempty"`
+	QuietMs       int    `json:"quietms"`
+	SubmitDelayMs int    `json:"submitdelayms"`
+	// SubmitRetries counts re-sent CRs while the TUI stayed silent after the first
+	// submit (agent TUIs swallow Enter during startup, e.g. pi "Startup is still in
+	// progress"). SubmitConfirmed reports whether the term output finally moved,
+	// i.e. the TUI actually took the submit.
+	SubmitRetries   int      `json:"submitretries,omitempty"`
+	SubmitConfirmed bool     `json:"submitconfirmed,omitempty"`
+	Warnings        []string `json:"warnings,omitempty"`
 }
 
 // ScheduledTaskRunResult is the synchronous outcome of `wsh scheduledtask run`

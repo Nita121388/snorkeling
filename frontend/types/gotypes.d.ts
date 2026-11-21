@@ -898,6 +898,7 @@ declare global {
         waitms?: number;
         quietms?: number;
         submitdelayms?: number;
+        submitverifyms?: number;
     };
 
     // wshrpc.AgentSendResult
@@ -911,6 +912,8 @@ declare global {
         waitedms?: number;
         quietms: number;
         submitdelayms: number;
+        submitretries?: number;
+        submitconfirmed?: boolean;
         warnings?: string[];
     };
 
