@@ -281,3 +281,12 @@
 | 2026-11-21 17:19 | agent-resume | ❌ 11/12 | launch+reset | `20261121T17141-agent-resume` | 6cce2b7ec |
 | 2026-11-21 17:27 | agent-resume | ❌ 11/12 | launch+reset | `20261121T17220-agent-resume` | 6cce2b7ec |
 | 2026-11-21 17:40 | agent-resume | ✅ 12/12 | launch+reset | `20261121T17360-agent-resume` | 6cce2b7ec |
+| 2026-11-21 18:45 | agent-roundtrip | ❌ 2/3 | launch+reset | `20261121T18374-agent-roundtrip` | 05ba66388 |
+| 2026-11-21 18:56 | agent-roundtrip | ❌ 2/3 | launch+reset | `20261121T18491-agent-roundtrip` | 05ba66388 |
+| 2026-11-21 19:04 | agent-roundtrip | ❌ 11/12 | launch+reset | `20261121T18581-agent-roundtrip` | 05ba66388 |
+| 2026-11-21 19:15 | agent-roundtrip | ❌ 11/12 | launch+reset | `20261121T19090-agent-roundtrip` | 05ba66388 |
+| 2026-11-21 19:23 | agent-roundtrip | ❌ 11/12 | launch+reset | `20261121T19170-agent-roundtrip` | 05ba66388 |
+| 2026-11-21 19:31 | agent-roundtrip | ❌ 11/12 | launch+reset | `20261121T19245-agent-roundtrip` | 05ba66388 |
+| 2026-11-21 19:55 | agent-roundtrip | ❌ 11/12 | launch+reset | `20261121T19474-agent-roundtrip` | 05ba66388 |
+| 2026-11-21 20:05 | agent-roundtrip | ❌ 11/12 | launch+reset | `20261121T19573-agent-roundtrip` | 05ba66388 |
+| 2026-11-21 20:22 | agent-roundtrip | ✅ 12/12 | launch+reset | `20261121T20160-agent-roundtrip` | 05ba66388 |

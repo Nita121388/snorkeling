@@ -69,6 +69,7 @@ var commandScopes = map[string]string{
 	"sessionusers":    Observe,
 	"sessionturns":    Observe,
 	"sessionturn":     Observe,
+	"sessionwait":     Observe,
 	"sessionforblock": Observe,
 	"agentcardget":    Observe,
 	"uiactive":        Observe,

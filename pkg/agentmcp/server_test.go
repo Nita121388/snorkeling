@@ -62,6 +62,9 @@ func (f *fakeBackend) SessionTurns(ctx context.Context, req wshrpc.SessionTurnsR
 func (f *fakeBackend) SessionTurn(ctx context.Context, req wshrpc.SessionTurnRequest) (*wshrpc.SessionTurnResult, error) {
 	return &wshrpc.SessionTurnResult{Turn: req.Turn, TotalChars: req.Chars}, nil
 }
+func (f *fakeBackend) SessionWait(ctx context.Context, req wshrpc.SessionWaitRequest) (*wshrpc.SessionWaitResult, error) {
+	return &wshrpc.SessionWaitResult{Version: 1, Matched: true, State: "idle", Until: req.Until, SessionKey: req.Identifier}, nil
+}
 func (f *fakeBackend) UIActive(ctx context.Context, req wshrpc.UIActiveRequest) (*wshrpc.UIActiveSnapshot, error) {
 	return &wshrpc.UIActiveSnapshot{Version: 1, Self: wshrpc.UIActiveSelf{TabId: req.TabId}}, nil
 }
@@ -219,8 +222,8 @@ func TestToolsListShapeAndScopes(t *testing.T) {
 	s, _ := newServer(nil)
 	res := resultMap(t, mustHandle(t, s, `{"jsonrpc":"2.0","id":2,"method":"tools/list"}`))
 	tools, _ := res["tools"].([]any)
-	if len(tools) != 30 {
-		t.Fatalf("expected 30 tools, got %d", len(tools))
+	if len(tools) != 31 {
+		t.Fatalf("expected 31 tools, got %d", len(tools))
 	}
 	seen := map[string]bool{}
 	for _, raw := range tools {
@@ -656,5 +659,17 @@ func TestResumeAndMarkScopes(t *testing.T) {
 	}
 	if launchBe.resumeCalls != 1 || launchBe.lastResumeReq.Send == nil || *launchBe.lastResumeReq.Send != "go on" {
 		t.Fatalf("resume payload = %+v", launchBe.lastResumeReq)
+	}
+}
+
+// Red-proof prerequisite for F-1121-agent-roundtrip: the wait tool does not
+// exist yet, so this assertion is red until it is registered.
+func TestToolsIncludeSessionWait(t *testing.T) {
+	names := map[string]bool{}
+	for _, spec := range toolSpecs() {
+		names[spec.Name] = true
+	}
+	if !names["snorkeling_session_wait"] {
+		t.Errorf("missing tool %q", "snorkeling_session_wait")
 	}
 }

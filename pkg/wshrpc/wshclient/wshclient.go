@@ -1258,6 +1258,12 @@ func SessionUsersCommand(w *wshutil.WshRpc, data wshrpc.SessionUsersRequest, opt
 	return resp, err
 }
 
+// command "sessionwait", wshserver.SessionWaitCommand
+func SessionWaitCommand(w *wshutil.WshRpc, data wshrpc.SessionWaitRequest, opts *wshrpc.RpcOpts) (*wshrpc.SessionWaitResult, error) {
+	resp, err := sendRpcRequestCallHelper[*wshrpc.SessionWaitResult](w, "sessionwait", data, opts)
+	return resp, err
+}
+
 // command "setblockfocus", wshserver.SetBlockFocusCommand
 func SetBlockFocusCommand(w *wshutil.WshRpc, data string, opts *wshrpc.RpcOpts) error {
 	_, err := sendRpcRequestCallHelper[any](w, "setblockfocus", data, opts)

@@ -310,6 +310,12 @@ type sendParams struct {
 	SubmitDelayMs  int
 	SubmitVerifyMs int
 	SubmitWaitMs   int
+	// roundtrip (F-1121): wait for the turn to finish and read the reply back.
+	WaitReply   bool
+	NoWait      bool
+	ReplyWaitMs int
+	ReplyChars  int
+	ReplyPollMs int
 }
 
 func normalizeSendParams(data wshrpc.AgentSendRequest) (sendParams, error) {
@@ -360,7 +366,47 @@ func normalizeSendParams(data wshrpc.AgentSendRequest) (sendParams, error) {
 	if params.SubmitWaitMs > MaxSubmitWaitMs {
 		return params, fmt.Errorf("E_USAGE: submitwaitms %d over the %d ms cap", params.SubmitWaitMs, MaxSubmitWaitMs)
 	}
+	// roundtrip (F-1121): wait-reply is a synchronous roundtrip. Async dispatch
+	// is fire-and-forget (its delivery runs in the background minutes later) and
+	// NoWait means "return the cursor and poll yourself", so neither can be
+	// combined with a blocking wait.
+	params.WaitReply = data.WaitReply != nil && *data.WaitReply
+	params.NoWait = data.NoWait
+	if params.WaitReply && data.Async {
+		return params, fmt.Errorf("E_USAGE: waitreply and async are mutually exclusive (an async dispatch is delivered in the background and cannot be waited on)")
+	}
+	if params.WaitReply && params.NoWait {
+		return params, fmt.Errorf("E_USAGE: waitreply and nowait are mutually exclusive (wait for the reply, or return the cursor)")
+	}
+	if params.WaitReply {
+		params.ReplyWaitMs = data.ReplyWaitMs
+		if params.ReplyWaitMs <= 0 {
+			params.ReplyWaitMs = DefaultReplyWaitMs
+		}
+		if params.ReplyWaitMs > MaxReplyWaitMs {
+			return params, fmt.Errorf("E_USAGE: replywaitms %d over the %d ms cap", params.ReplyWaitMs, MaxReplyWaitMs)
+		}
+		// Budgets are clamped, not rejected: a caller asking for more than the
+		// read path can deliver gets the maximum instead of a failed send.
+		params.ReplyChars = clampInt(data.ReplyChars, DefaultReplyChars, 1, MaxReplyChars)
+		params.ReplyPollMs = clampInt(data.ReplyPollMs, DefaultReplyPollMs, MinReplyPollMs, MaxReplyPollMs)
+	}
 	return params, nil
+}
+
+// clampInt applies def when value is unset (<=0) and otherwise clamps into
+// [lo,hi].
+func clampInt(value int, def int, lo int, hi int) int {
+	if value <= 0 {
+		value = def
+	}
+	if value < lo {
+		return lo
+	}
+	if value > hi {
+		return hi
+	}
+	return value
 }
 
 // resolveSendTargetBlock turns "this" into the calling block id. `this` comes from
@@ -548,6 +594,26 @@ func deliverAgentSend(
 		rtn.Warnings = append(rtn.Warnings, "wait-skipped")
 	}
 
+	// Roundtrip baseline (F-1121): sample the three completion signals right
+	// before the paste. Sampling before the quiet wait would let a turn that
+	// finished during the wait look like "no growth at all", and sampling after
+	// injection would miss a very fast reply. It is also the cursor returned to
+	// a --no-wait caller.
+	var replyBase replyBaseline
+	if params.WaitReply || params.NoWait {
+		replyBase = collectReplySignal(ctx, blockId, "")
+		rtn.ReplyCursor = replyBase.turnCount
+		log.Printf(
+			"[agentsend] %s reply baseline seq=%d state=%q size=%d mtime=%d turns=%d session=%s",
+			blockId, replyBase.agentSeq, replyBase.state, replyBase.fileSize, replyBase.fileMtime, replyBase.turnCount, replyBase.sessionId,
+		)
+		if params.WaitReply {
+			// Only the wait path cares about the baseline's blind spots; a plain
+			// --no-wait send must not grow reply warnings of its own.
+			rtn.Warnings = append(rtn.Warnings, collectWarnings(replyBase)...)
+		}
+	}
+
 	// One bracketed paste for the whole text: multi-line text must stay one paste,
 	// otherwise the TUI would treat every line as a separate submission.
 	if err := sendInputReady(ctx, blockId, buildInjectBytes(text)); err != nil {
@@ -583,5 +649,145 @@ func deliverAgentSend(
 			rtn.Warnings = append(rtn.Warnings, "submit-unconfirmed")
 		}
 	}
+
+	// Roundtrip window: only after a successful submit does "the agent is
+	// working on it" mean anything. A wait timeout is not an error (the send
+	// itself succeeded); the caller reads replied/warnings from the JSON.
+	if params.WaitReply {
+		waitForReply(ctx, blockId, replyBase, params, rtn)
+	}
 	return rtn, nil
+}
+
+// collectWarnings surfaces the baseline's own blind spots instead of hiding
+// them: no agent status hook or no session means the three-signal predicate can
+// only time out.
+func collectWarnings(base replyBaseline) []string {
+	var warnings []string
+	if base.agentSeq < 0 {
+		warnings = append(warnings, "reply-no-agentstatus")
+	}
+	if base.sessionId == "" {
+		warnings = append(warnings, "reply-no-session-yet")
+	} else if base.turnCount < 0 {
+		warnings = append(warnings, "reply-turn-count-unavailable")
+	}
+	return warnings
+}
+
+// waitForReply polls until the turn completes or the window closes. It never
+// returns an error: a timeout lands as replied=false plus the "reply-timeout"
+// warning so a caller can distinguish "send failed" from "the agent has not
+// answered yet".
+//
+// 两档采样（真机 2026-11-21）：廉价档每 poll 只读 agentstatus + os.Stat；只有
+// 廉价档显示「已收口（idle/done）且文件长过基线」才付昂贵档（会话索引 turn
+// 计数 + turn 正文）。之前每 poll 都做一次全会话读，实测 7-19s/次，既慢又让
+// 250ms 的轮询间隔变成摆设。
+func waitForReply(ctx context.Context, blockId string, base replyBaseline, params sendParams, rtn *wshrpc.AgentSendResult) {
+	start := time.Now()
+	defer func() {
+		rtn.ReplyWaitedMs = int(time.Since(start).Milliseconds())
+		rtn.WaitedMs += rtn.ReplyWaitedMs
+	}()
+	deadline := start.Add(time.Duration(params.ReplyWaitMs) * time.Millisecond)
+	poll := time.Duration(params.ReplyPollMs) * time.Millisecond
+	sampler := newReplySampler(blockId, base.sessionId)
+	blockedWarned := false
+	last := base
+	// emptyTurn 记住最近一次「四信号全齐但正文读不回」的 turn。它只在 deadline
+	// 时生效：答复确实存在，只是正文读不回来（索引没跟上 / 半截 JSON），所以
+	// 报 replied=true + replyText="" + reply-empty，而不是谎称超时。
+	emptyTurn := 0
+	for {
+		now := sampler.cheap(ctx)
+		if replySettled(now.state) && now.fileSize > base.fileSize {
+			now.turnCount = sampler.turnCount(ctx)
+			if replyComplete(base, now) {
+				read := readReplyText(ctx, now.sessionId, now.turnCount, params.ReplyChars)
+				if read.HasText {
+					rtn.Replied = true
+					rtn.Turn = now.turnCount
+					read.apply(rtn)
+					log.Printf(
+						"[agentsend] %s reply complete turn=%d chars=%d waitedms=%d",
+						blockId, now.turnCount, rtn.TotalChars, rtn.ReplyWaitedMs,
+					)
+					return
+				}
+				// 回合已收口但正文还没落盘：不算完成，继续轮询（半截回复比多等一轮贵）。
+				emptyTurn = now.turnCount
+				log.Printf("[agentsend] %s turn %d settled but has no assistant text yet, keep polling", blockId, now.turnCount)
+			}
+		}
+		last = now
+		// A blocked agent (approval prompt) can resume on its own: warn once and
+		// keep waiting instead of treating it as completion or as failure.
+		if now.state == agentstatus.StateBlocked && !blockedWarned {
+			blockedWarned = true
+			rtn.Warnings = append(rtn.Warnings, "reply-agent-blocked")
+		}
+		if time.Now().After(deadline) {
+			if emptyTurn > 0 {
+				rtn.Replied = true
+				rtn.Turn = emptyTurn
+				rtn.Warnings = append(rtn.Warnings, "reply-empty")
+				log.Printf(
+					"[agentsend] %s reply-empty: turn %d settled but no assistant text within %d ms",
+					blockId, emptyTurn, rtn.ReplyWaitedMs,
+				)
+				return
+			}
+			rtn.Replied = false
+			rtn.Warnings = append(rtn.Warnings, "reply-timeout")
+			rtn.Warnings = append(rtn.Warnings, incompleteSignalWarnings(base, last)...)
+			log.Printf(
+				"[agentsend] %s reply timeout after %d ms (seq %d->%d size %d->%d mtime %d->%d turns %d->%d state %q->%q)",
+				blockId, rtn.ReplyWaitedMs, base.agentSeq, last.agentSeq, base.fileSize, last.fileSize,
+				base.fileMtime, last.fileMtime, base.turnCount, last.turnCount, base.state, last.state,
+			)
+			return
+		}
+		if !sleepCtx(ctx, poll) {
+			// The RPC deadline fired first: report it as a timeout, not as a
+			// broken send. The CLI/MCP must keep the RPC timeout above the wait
+			// window; seeing this warning means they did not.
+			rtn.Warnings = append(rtn.Warnings, "reply-timeout", "reply-rpc-deadline")
+			rtn.Warnings = append(rtn.Warnings, incompleteSignalWarnings(base, last)...)
+			return
+		}
+	}
+}
+
+// incompleteSignalWarnings names which of the four signals never lined up, so
+// a timeout is diagnosable without re-running the send. The state is reported
+// as "base->last" on every timeout (the 真机 defect was invisible without it:
+// three start-of-turn signals all looked healthy while the turn was still
+// running).
+func incompleteSignalWarnings(base replyBaseline, last replyBaseline) []string {
+	var warnings []string
+	if last.agentSeq <= base.agentSeq {
+		warnings = append(warnings, "reply-signal-agentstatus-stale")
+	}
+	if last.fileSize <= base.fileSize {
+		warnings = append(warnings, "reply-signal-file-unchanged")
+	}
+	if last.turnCount <= base.turnCount {
+		warnings = append(warnings, "reply-signal-turn-unchanged")
+	}
+	if !replySettled(last.state) {
+		warnings = append(warnings, "reply-signal-state-not-settled")
+	}
+	warnings = append(warnings, "reply-signal-state "+replyStateLabel(base.state)+"->"+replyStateLabel(last.state))
+	return warnings
+}
+
+// replyStateLabel keeps the state warning readable when there was no status
+// hook at all (empty state would render as "->idle").
+func replyStateLabel(state string) string {
+	state = strings.ToLower(strings.TrimSpace(state))
+	if state == "" {
+		return agentstatus.StateUnknown
+	}
+	return state
 }

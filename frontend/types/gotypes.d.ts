@@ -951,6 +951,11 @@ declare global {
         submitwaitms?: number;
         async?: boolean;
         requester?: string;
+        waitreply?: boolean;
+        replywaitms?: number;
+        replychars?: number;
+        replypollms?: number;
+        nowait?: boolean;
     };
 
     // wshrpc.AgentSendResult
@@ -969,6 +974,13 @@ declare global {
         warnings?: string[];
         queued?: boolean;
         dispatchid?: string;
+        replied?: boolean;
+        turn?: number;
+        replytext?: string;
+        truncated?: boolean;
+        totalchars?: number;
+        replycursor?: number;
+        replywaitedms?: number;
     };
 
     // wshrpc.AgentSkillInstallResult
@@ -3923,6 +3935,29 @@ declare global {
         nextBeforeSeq?: number;
         hasMore: boolean;
         stale?: boolean;
+    };
+
+    // wshrpc.SessionWaitRequest
+    type SessionWaitRequest = {
+        identifier: string;
+        blockid?: string;
+        until: string;
+        timeoutms?: number;
+        pollms?: number;
+    };
+
+    // wshrpc.SessionWaitResult
+    type SessionWaitResult = {
+        version: number;
+        matched: boolean;
+        state: string;
+        until: string;
+        sessionkey?: string;
+        sessionid?: string;
+        blockid?: string;
+        waitedms: number;
+        polls: number;
+        warnings?: string[];
     };
 
     // aisessions.SessionsChangedEvent

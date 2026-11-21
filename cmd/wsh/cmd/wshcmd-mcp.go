@@ -88,6 +88,17 @@ func (b rpcBackend) SessionTurn(ctx context.Context, req wshrpc.SessionTurnReque
 	return wshclient.SessionTurnCommand(RpcClient, req, b.opts())
 }
 
+func (b rpcBackend) SessionWait(ctx context.Context, req wshrpc.SessionWaitRequest) (*wshrpc.SessionWaitResult, error) {
+	// The wait window (default 60s, up to 300s) is far above the MCP default
+	// (15s): without a per-call timeout every non-instant wait would come back
+	// as a transport error instead of matched=false.
+	waitMs := req.TimeoutMs
+	if waitMs <= 0 {
+		waitMs = 60000
+	}
+	return wshclient.SessionWaitCommand(RpcClient, req, &wshrpc.RpcOpts{Timeout: rpcWaitTimeout(waitMs)})
+}
+
 func (b rpcBackend) UIActive(ctx context.Context, req wshrpc.UIActiveRequest) (*wshrpc.UIActiveSnapshot, error) {
 	return wshclient.UIActiveCommand(RpcClient, req, b.opts())
 }
@@ -161,7 +172,33 @@ func (b rpcBackend) AgentLaunch(ctx context.Context, req wshrpc.AgentLaunchReque
 }
 
 func (b rpcBackend) AgentSend(ctx context.Context, req wshrpc.AgentSendRequest) (*wshrpc.AgentSendResult, error) {
+	// A wait-reply roundtrip blocks for the whole reply window; the MCP default
+	// (15s) would time it out. Mirror the CLI sizing: wait + 15s, floor 90s
+	// (readiness + submit confirmation), cap 320s (server-side cap + slack).
+	if req.WaitReply != nil && *req.WaitReply {
+		waitMs := req.ReplyWaitMs
+		if waitMs <= 0 {
+			waitMs = 60000
+		}
+		return wshclient.AgentSendCommand(RpcClient, req, &wshrpc.RpcOpts{Timeout: rpcWaitTimeout(waitMs)})
+	}
 	return wshclient.AgentSendCommand(RpcClient, req, b.opts())
+}
+
+// rpcWaitTimeout sizes an RPC deadline above a server-side wait window.
+func rpcWaitTimeout(waitMs int) int64 {
+	const baseTimeoutMs = 90000
+	if waitMs > 300000 {
+		waitMs = 300000
+	}
+	timeoutMs := int64(waitMs) + 15000
+	if timeoutMs < baseTimeoutMs {
+		timeoutMs = baseTimeoutMs
+	}
+	if timeoutMs > 320000 {
+		timeoutMs = 320000
+	}
+	return timeoutMs
 }
 
 func (b rpcBackend) AgentResume(ctx context.Context, req wshrpc.AgentResumeRequest) (*wshrpc.AgentResumeResult, error) {

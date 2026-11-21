@@ -43,6 +43,10 @@ var (
 	agentSendSubmitDelayMs int
 	agentSendJSON          bool
 	agentSendAsync         bool
+	agentSendWaitReply     bool
+	agentSendReplyWaitMs   int
+	agentSendReplyChars    int
+	agentSendReplyPollMs   int
 )
 
 var agentLaunchCmd = &cobra.Command{
@@ -74,9 +78,18 @@ text stays one paste) and then submitted with a real Enter. The command waits
 for the TUI to stop producing output first, so text does not land while a
 screen is still painting.
 
+--wait-reply turns send into a roundtrip: after the paste is submitted the
+command blocks until the target agent's turn completes and returns the reply
+summary. A finished turn is detected by three signals together (agent status,
+session file growth, turn count), so a half-written or half-read reply cannot
+be mistaken for a done turn. A timeout is not an error: replied=false plus a
+"reply-timeout" warning, exit code 0 — the send itself succeeded.
+
   wsh agent send --block this --text "run the tests"
   printf 'line1\nline2' | wsh agent send --block <id> --stdin
-  wsh agent send --block <id> --text "draft only" --no-submit`,
+  wsh agent send --block <id> --text "draft only" --no-submit
+  wsh agent send --block <id> --text "reply with exactly: OK" --wait-reply --json
+  wsh agent send --block <id> --text "go on" --no-wait --json   # later: session turns --limit 1`,
 	RunE:    agentSendRun,
 	Args:    cobra.NoArgs,
 	PreRunE: preRunSetupRpcClient,
@@ -111,6 +124,10 @@ func init() {
 	agentSendCmd.Flags().IntVar(&agentSendSubmitDelayMs, "submit-delay-ms", 0, "paste -> enter delay in ms (default 150)")
 	agentSendCmd.Flags().BoolVar(&agentSendJSON, "json", false, "output the result as JSON")
 	agentSendCmd.Flags().BoolVar(&agentSendAsync, "async", false, "queue the dispatch and return its id immediately (delivery runs in the background)")
+	agentSendCmd.Flags().BoolVar(&agentSendWaitReply, "wait-reply", false, "wait for the agent's turn to finish and return the reply summary (fire-and-forget otherwise)")
+	agentSendCmd.Flags().IntVar(&agentSendReplyWaitMs, "reply-wait-ms", 0, "reply wait budget in ms (default 60000, max 300000)")
+	agentSendCmd.Flags().IntVar(&agentSendReplyChars, "reply-chars", 0, "reply text budget in characters (default 2000, max 8000)")
+	agentSendCmd.Flags().IntVar(&agentSendReplyPollMs, "reply-poll-ms", 0, "reply poll interval in ms (default 250, range 100-2000)")
 	agentCmd.AddCommand(agentSendCmd)
 }
 
@@ -248,8 +265,22 @@ func agentSendRun(cmd *cobra.Command, args []string) (rtnErr error) {
 		return fmt.Errorf("--text or --stdin is required")
 	}
 
+	// Mutual exclusions are validated here (better error) and again server-side
+	// (normalizeSendParams) so MCP and other clients cannot sneak past them.
+	if agentSendWaitReply && agentSendAsync {
+		return fmt.Errorf("E_USAGE: --wait-reply and --async are mutually exclusive (an async dispatch is delivered in the background and cannot be waited on)")
+	}
+	if agentSendWaitReply && agentSendNoWait {
+		return fmt.Errorf("E_USAGE: --wait-reply and --no-wait are mutually exclusive (wait for the reply, or take the cursor)")
+	}
+
 	submit := !agentSendNoSubmit
 	wait := !agentSendNoWait
+	var waitReply *bool
+	if agentSendWaitReply {
+		requested := true
+		waitReply = &requested
+	}
 	res, err := wshclient.AgentSendCommand(RpcClient, wshrpc.AgentSendRequest{
 		BlockId:       agentSendBlock,
 		Text64:        base64.StdEncoding.EncodeToString([]byte(text)),
@@ -260,7 +291,16 @@ func agentSendRun(cmd *cobra.Command, args []string) (rtnErr error) {
 		SubmitDelayMs: agentSendSubmitDelayMs,
 		Async:         agentSendAsync,
 		Requester:     "cli",
-	}, &wshrpc.RpcOpts{Timeout: 90000})
+		// --no-wait already meant "skip the readiness wait"; the roundtrip
+		// package extends it coherently: do not wait for a reply either, take
+		// the cursor instead. With --wait-reply the two flags contradict each
+		// (see the check above).
+		NoWait:      agentSendNoWait,
+		WaitReply:   waitReply,
+		ReplyWaitMs: agentSendReplyWaitMs,
+		ReplyChars:  agentSendReplyChars,
+		ReplyPollMs: agentSendReplyPollMs,
+	}, agentSendRpcOpts())
 	if err != nil {
 		return err
 	}
@@ -270,7 +310,23 @@ func agentSendRun(cmd *cobra.Command, args []string) (rtnErr error) {
 	WriteStdout("block\t%s\n", res.BlockId)
 	WriteStdout("injected\t%v\n", res.Injected)
 	WriteStdout("submitted\t%v\n", res.Submitted)
-	if res.WaitedMs > 0 {
+	if res.Replied || res.ReplyCursor != 0 {
+		WriteStdout("replied\t%v\n", res.Replied)
+		if res.Replied {
+			WriteStdout("turn\t%d\n", res.Turn)
+			WriteStdout("totalchars\t%d\n", res.TotalChars)
+			WriteStdout("truncated\t%v\n", res.Truncated)
+		}
+		if res.ReplyCursor != 0 {
+			WriteStdout("replycursor\t%d\n", res.ReplyCursor)
+		}
+		if res.ReplyText != "" {
+			WriteStdout("replytext\t%s\n", strings.ReplaceAll(res.ReplyText, "\n", " "))
+		}
+		if res.ReplyWaitedMs > 0 {
+			WriteStdout("replywaitedms\t%d\n", res.ReplyWaitedMs)
+		}
+	} else if res.WaitedMs > 0 {
 		WriteStdout("waitedms\t%d\n", res.WaitedMs)
 	}
 	for _, warn := range res.Warnings {
@@ -278,6 +334,40 @@ func agentSendRun(cmd *cobra.Command, args []string) (rtnErr error) {
 	}
 	return nil
 }
+
+// agentSendRpcOpts sizes the RPC timeout for the actual server-side windows.
+// The known pitfall of the roundtrip package (implement.md rollback point):
+// the wait window (default 60s, up to 300s) dwarfs the 5s wsh default, so every
+// synchronous --wait-reply would fail with a fake E_TIMEOUT unless the timeout
+// is raised above the wait budget (wait + 15s, capped at the 320s server cap).
+func agentSendRpcOpts() *wshrpc.RpcOpts {
+	const baseTimeoutMs = 90000
+	if !agentSendWaitReply {
+		return &wshrpc.RpcOpts{Timeout: baseTimeoutMs}
+	}
+	waitMs := agentSendReplyWaitMs
+	if waitMs <= 0 {
+		waitMs = agentDefaultReplyWaitMs
+	}
+	if waitMs > agentMaxReplyWaitMs {
+		waitMs = agentMaxReplyWaitMs
+	}
+	timeoutMs := int64(waitMs) + 15000
+	if timeoutMs < baseTimeoutMs {
+		timeoutMs = baseTimeoutMs
+	}
+	if timeoutMs > 320000 {
+		timeoutMs = 320000
+	}
+	return &wshrpc.RpcOpts{Timeout: timeoutMs}
+}
+
+// Mirrors of wshserver.DefaultReplyWaitMs / MaxReplyWaitMs. Duplicated because
+// cmd must not import the server package; when one changes, change both.
+const (
+	agentDefaultReplyWaitMs = 60000
+	agentMaxReplyWaitMs     = 300000
+)
 
 // readStdinText reads the whole of stdin; usage errors surface instead of an
 // empty injection that would look successful.

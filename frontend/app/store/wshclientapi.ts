@@ -1260,6 +1260,12 @@ export class RpcApiType {
         return client.wshRpcCall("sessionusers", data, opts);
     }
 
+    // command "sessionwait" [call]
+    SessionWaitCommand(client: WshClient, data: SessionWaitRequest, opts?: RpcOpts): Promise<SessionWaitResult> {
+        if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "sessionwait", data, opts);
+        return client.wshRpcCall("sessionwait", data, opts);
+    }
+
     // command "setblockfocus" [call]
     SetBlockFocusCommand(client: WshClient, data: string, opts?: RpcOpts): Promise<void> {
         if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "setblockfocus", data, opts);

@@ -37,6 +37,9 @@ var (
 	sessionTurnChars   int
 	sessionReadRefresh bool
 
+	sessionWaitUntil     string
+	sessionWaitTimeoutMs int
+
 	sessionAnnotateAnchor       string
 	sessionAnnotateKind         string
 	sessionAnnotateTitle        string
@@ -143,6 +146,27 @@ human-edited annotation is never overwritten.`,
 	PreRunE: preRunSetupRpcClient,
 }
 
+var sessionWaitCmd = &cobra.Command{
+	Use:   "wait <sessionKey|sessionId|blockId|this>",
+	Short: "Block until one live session reaches a state",
+	Long: `Block until one live session reaches a state (idle|blocked|done|working).
+
+This is the control surface's generic "wait for a state" primitive: it polls
+the same live-record merge 'session live' uses, so the CLI and the GUI can
+never disagree about what "idle" means. 'done' is the same state as 'idle'
+(the agents' own 'done' report normalizes to idle).
+
+A timeout is NOT an error: matched=false comes back as JSON and the command
+exits with code 3, so a caller can tell "still working" from "broken". An
+unknown session fails immediately with E_NOT_FOUND.
+
+  wsh session wait <blockId> --until idle --timeout-ms 120000
+  wsh session wait this --until blocked --json`,
+	Args:    cobra.ExactArgs(1),
+	RunE:    sessionWaitRun,
+	PreRunE: preRunSetupRpcClient,
+}
+
 var sessionMarkCmd = &cobra.Command{
 	Use:   "mark <sessionKey|sessionId|this>",
 	Short: "Star (mark) or unstar one session",
@@ -164,7 +188,8 @@ func init() {
 	sessionCmd.PersistentFlags().BoolVar(&sessionJSON, "json", false, "output as JSON")
 	sessionCmd.PersistentFlags().Int64Var(&sessionTimeoutMs, "timeout", 8000, "RPC timeout in milliseconds")
 	sessionCmd.AddCommand(sessionLiveCmd, sessionGetCmd, sessionListCmd, sessionForBlockCmd,
-		sessionInfoCmd, sessionUsersCmd, sessionTurnsCmd, sessionTurnCmd, sessionAnnotateCmd, sessionMarkCmd, sessionEmojiCmd)
+		sessionInfoCmd, sessionUsersCmd, sessionTurnsCmd, sessionTurnCmd, sessionWaitCmd,
+		sessionAnnotateCmd, sessionMarkCmd, sessionEmojiCmd)
 
 	sessionLiveCmd.Flags().BoolVar(&sessionIncludeIdle, "include-idle", false, "include idle sessions")
 	sessionLiveCmd.Flags().IntVar(&sessionMaxRows, "max-rows", 200, "maximum rows to return")
@@ -209,6 +234,9 @@ func init() {
 
 	sessionMarkCmd.Flags().StringVar(&sessionMarkBlock, "block", "", "block id for 'this' resolution (defaults to WAVETERM_BLOCKID)")
 	sessionMarkCmd.Flags().BoolVar(&sessionMarkUnmark, "unmark", false, "clear the star instead of setting it")
+
+	sessionWaitCmd.Flags().StringVar(&sessionWaitUntil, "until", "", "target state: idle | blocked | done | working (required; done = idle)")
+	sessionWaitCmd.Flags().IntVar(&sessionWaitTimeoutMs, "timeout-ms", 0, "wait budget in ms (default 60000, max 300000)")
 
 	rootCmd.AddCommand(sessionCmd)
 }
@@ -598,6 +626,62 @@ func boolMark(flag bool, label string) string {
 	}
 	return ""
 }
+
+func sessionWaitRun(cmd *cobra.Command, args []string) (rtnErr error) {
+	defer func() { sendActivity("session wait", rtnErr == nil) }()
+	if strings.TrimSpace(sessionWaitUntil) == "" {
+		return fmt.Errorf("E_USAGE: --until is required (idle|blocked|done|working)")
+	}
+	timeoutMs := sessionWaitTimeoutMs
+	if timeoutMs <= 0 {
+		timeoutMs = sessionWaitDefaultTimeoutMs
+	}
+	if timeoutMs > sessionWaitMaxTimeoutMs {
+		return fmt.Errorf("E_USAGE: --timeout-ms %d over the %d ms cap", timeoutMs, sessionWaitMaxTimeoutMs)
+	}
+	// The RPC socket deadline must outlive the wait window, otherwise a slow
+	// wait comes back as a transport error instead of matched=false (the same
+	// pitfall as agent send --wait-reply).
+	rpcTimeout := int64(timeoutMs) + 15000
+	if rpcTimeout < sessionTimeoutMs {
+		rpcTimeout = sessionTimeoutMs
+	}
+	if rpcTimeout > 320000 {
+		rpcTimeout = 320000
+	}
+	res, err := wshclient.SessionWaitCommand(RpcClient, wshrpc.SessionWaitRequest{
+		Identifier: args[0],
+		BlockId:    sessionBlockArg(sessionBlockId),
+		Until:      sessionWaitUntil,
+		TimeoutMs:  timeoutMs,
+	}, &wshrpc.RpcOpts{Timeout: rpcTimeout})
+	if err != nil {
+		return err
+	}
+	if sessionJSON {
+		if err := writeJSON(res); err != nil {
+			return err
+		}
+	} else {
+		fmt.Fprintf(WrappedStdout, "matched\t%v\n", res.Matched)
+		fmt.Fprintf(WrappedStdout, "state\t%s\n", res.State)
+		fmt.Fprintf(WrappedStdout, "waitedms\t%d\n", res.WaitedMs)
+		for _, warn := range res.Warnings {
+			fmt.Fprintf(WrappedStdout, "warning\t%s\n", warn)
+		}
+	}
+	if !res.Matched {
+		// Exit 3 is the "timed out, nothing broken" code: distinguishable from
+		// exit 1 (error) without parsing stderr.
+		WshExitCode = 3
+	}
+	return nil
+}
+
+const (
+	sessionWaitDefaultTimeoutMs = 60000
+	sessionWaitMaxTimeoutMs     = 300000
+)
 
 func sessionAnnotateRun(cmd *cobra.Command, args []string) (rtnErr error) {
 	defer func() { sendActivity("session annotate", rtnErr == nil) }()

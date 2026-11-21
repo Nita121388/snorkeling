@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/wavetermdev/waveterm/pkg/agentcontrol"
 	"github.com/wavetermdev/waveterm/pkg/aisessions"
@@ -83,6 +84,110 @@ func (ws *WshServer) SessionTurnsCommand(ctx context.Context, data wshrpc.Sessio
 // budget. Read-only. Chars is mandatory (1-8000).
 func (ws *WshServer) SessionTurnCommand(ctx context.Context, data wshrpc.SessionTurnRequest) (*wshrpc.SessionTurnResult, error) {
 	return agentcontrol.GetSessionTurn(ctx, data)
+}
+
+const (
+	sessionWaitDefaultTimeoutMs = 60000
+	sessionWaitMaxTimeoutMs     = 300000
+	sessionWaitDefaultPollMs    = 250
+	sessionWaitMinPollMs        = 100
+	sessionWaitMaxPollMs        = 2000
+)
+
+// SessionWaitCommand blocks until one live session reaches a state
+// (`wsh session wait`, MCP snorkeling_session_wait) — the generic "wait for a
+// state" primitive of the control surface (Herdr `agent wait --until`).
+//
+// It polls the same live-record merge `session live`/`session get` use, so the
+// CLI and the GUI can never disagree about what "idle" means. A timeout is NOT
+// an error: matched=false comes back (CLI exit code 3) with the last observed
+// state so the caller can tell "never worked" from "still working".
+func (ws *WshServer) SessionWaitCommand(ctx context.Context, data wshrpc.SessionWaitRequest) (*wshrpc.SessionWaitResult, error) {
+	until, err := normalizeSessionWaitUntil(data.Until)
+	if err != nil {
+		return nil, err
+	}
+	timeoutMs := data.TimeoutMs
+	if timeoutMs <= 0 {
+		timeoutMs = sessionWaitDefaultTimeoutMs
+	}
+	if timeoutMs > sessionWaitMaxTimeoutMs {
+		return nil, fmt.Errorf("E_USAGE: timeoutms %d over the %d ms cap", timeoutMs, sessionWaitMaxTimeoutMs)
+	}
+	pollMs := data.PollMs
+	if pollMs <= 0 {
+		pollMs = sessionWaitDefaultPollMs
+	}
+	if pollMs < sessionWaitMinPollMs {
+		pollMs = sessionWaitMinPollMs
+	}
+	if pollMs > sessionWaitMaxPollMs {
+		pollMs = sessionWaitMaxPollMs
+	}
+	identifier := strings.TrimSpace(data.Identifier)
+	if identifier == "" {
+		identifier = "this"
+	}
+
+	start := time.Now()
+	deadline := start.Add(time.Duration(timeoutMs) * time.Millisecond)
+	result := &wshrpc.SessionWaitResult{Version: wshrpc.AgentControlVersion, Until: until}
+	for {
+		rec, err := agentcontrol.GetSessionRecord(ctx, identifier, data.BlockId)
+		if err != nil {
+			// E_NOT_FOUND (unknown session) must surface immediately: waiting on
+			// a session that does not exist can never succeed.
+			return nil, err
+		}
+		result.Polls++
+		result.State = replyStateOf(rec)
+		result.SessionKey = rec.SessionKey
+		result.SessionId = rec.SessionId
+		result.BlockId = rec.BlockId
+		if sessionWaitMatches(result.State, until) {
+			result.Matched = true
+			result.WaitedMs = int(time.Since(start).Milliseconds())
+			return result, nil
+		}
+		if time.Now().After(deadline) {
+			result.Matched = false
+			result.WaitedMs = int(time.Since(start).Milliseconds())
+			result.Warnings = append(result.Warnings, "wait-timeout")
+			return result, nil
+		}
+		if !sleepCtx(ctx, time.Duration(pollMs)*time.Millisecond) {
+			// RPC deadline first (the CLI must pass timeoutms+slack).
+			result.Matched = false
+			result.WaitedMs = int(time.Since(start).Milliseconds())
+			result.Warnings = append(result.Warnings, "wait-timeout", "wait-rpc-deadline")
+			return result, nil
+		}
+	}
+}
+
+// normalizeSessionWaitUntil validates and lowercases the until state. "done" is
+// accepted as a synonym of idle because agentstatus normalizes the agents' own
+// "done" report to idle; the wait matches the normalized state.
+func normalizeSessionWaitUntil(until string) (string, error) {
+	normalized := strings.ToLower(strings.TrimSpace(until))
+	switch normalized {
+	case "idle", "done", "blocked", "working":
+		return normalized, nil
+	case "":
+		return "", fmt.Errorf("E_USAGE: --until is required (idle|blocked|done|working)")
+	}
+	return "", fmt.Errorf("E_USAGE: unknown --until %q (idle|blocked|done|working)", until)
+}
+
+// sessionWaitMatches compares an observed agent state with the requested one.
+// idle and done are the same state (see normalizeSessionWaitUntil); every other
+// state is exact, and "unknown"/"stale" never match.
+func sessionWaitMatches(state string, until string) bool {
+	state = strings.ToLower(strings.TrimSpace(state))
+	if until == "done" || until == "idle" {
+		return state == "idle" || state == "done"
+	}
+	return state == until
 }
 
 // AgentCardGetCommand reads one session card (read-only).

@@ -1,0 +1,23 @@
+{
+  "g1": {
+    "at": "2026-11-21T15:07:22Z",
+    "by": "nita",
+    "verdict": "confirmed",
+    "prdHash": "94128c4e8f0f"
+  },
+  "g6": {
+    "at": "2026-11-21T15:09:32Z",
+    "by": "nita",
+    "verdict": "confirmed",
+    "planHash": "9c6dcb9f6461"
+  },
+  "g2": {
+    "redProof": "loop/red/F-1121-agent-roundtrip.txt",
+    "at": "2026-11-21T18:01:16Z"
+  },
+  "g5": {
+    "ok": true,
+    "executedAt": "2026-11-21T18:01:16Z",
+    "by": "compliance"
+  }
+}

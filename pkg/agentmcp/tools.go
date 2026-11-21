@@ -38,6 +38,7 @@ type Backend interface {
 	SessionUsers(ctx context.Context, req wshrpc.SessionUsersRequest) (*wshrpc.SessionUsersResult, error)
 	SessionTurns(ctx context.Context, req wshrpc.SessionTurnsRequest) (*wshrpc.SessionTurnsResult, error)
 	SessionTurn(ctx context.Context, req wshrpc.SessionTurnRequest) (*wshrpc.SessionTurnResult, error)
+	SessionWait(ctx context.Context, req wshrpc.SessionWaitRequest) (*wshrpc.SessionWaitResult, error)
 	UIActive(ctx context.Context, req wshrpc.UIActiveRequest) (*wshrpc.UIActiveSnapshot, error)
 	UIState(ctx context.Context, req wshrpc.UIStateRequest) (*wshrpc.UIStateSnapshot, error)
 	BlockRead(ctx context.Context, req wshrpc.BlockReadRequest) (*wshrpc.BlockReadResult, error)
@@ -306,6 +307,26 @@ func toolSpecs() []toolSpec {
 					return nil, err
 				}
 				return be.SessionTurn(ctx, req)
+			},
+		},
+		{
+			Name:        "snorkeling_session_wait",
+			Description: "Block until one live session reaches a state (idle|blocked|done|working). Polls the same live merge as session_live. A timeout is matched=false (not an error); an unknown session is E_NOT_FOUND.",
+			Scope:       ScopeObserve,
+			Annotations: readOnly("Sessions: wait for state"),
+			Schema: obj(map[string]any{
+				"identifier": str("session key / session id / block id / 'this'"),
+				"blockid":    str("block id for 'this' resolution"),
+				"until":      str("target state: idle | blocked | done | working (REQUIRED; done = idle)"),
+				"timeoutms":  num("wait budget (default 60000, max 300000)"),
+				"pollms":     num("poll interval (default 250, range 100-2000)"),
+			}, "identifier", "until"),
+			Invoke: func(ctx context.Context, be Backend, args json.RawMessage) (any, error) {
+				req, err := decode[wshrpc.SessionWaitRequest](args)
+				if err != nil {
+					return nil, err
+				}
+				return be.SessionWait(ctx, req)
 			},
 		},
 		{
@@ -619,7 +640,7 @@ func toolSpecs() []toolSpec {
 		},
 		{
 			Name:        "snorkeling_agent_send",
-			Description: "Send text to an existing term/agent block: one bracketed paste (multi-line safe) plus a real Enter, after the TUI goes quiet. Check injected/submitted in the result.",
+			Description: "Send text to an existing term/agent block: one bracketed paste (multi-line safe) plus a real Enter, after the TUI goes quiet. Check injected/submitted in the result. With waitreply the call blocks until the agent's turn completes and returns replytext/turn (a timeout is replied=false + warnings, not an error).",
 			Scope:       ScopeLaunch,
 			Annotations: &Annotations{Title: "Agent: send text", DestructiveHint: true},
 			Schema: obj(map[string]any{
@@ -631,6 +652,11 @@ func toolSpecs() []toolSpec {
 				"waitms":        num("readiness deadline (default 30000, max 120000)"),
 				"quietms":       num("TUI silence window (default 400, range 100-5000)"),
 				"submitdelayms": num("paste to enter delay (default 150)"),
+				"waitreply":     boolean("wait for the agent's turn to finish and return the reply (mutually exclusive with async/nowait)"),
+				"replywaitms":   num("reply wait budget (default 60000, max 300000)"),
+				"replychars":    num("reply text budget in characters (default 2000, max 8000)"),
+				"replypollms":   num("reply poll interval (default 250, range 100-2000)"),
+				"nowait":        boolean("return immediately with replycursor instead of waiting for the reply"),
 			}, "blockid"),
 			Invoke: func(ctx context.Context, be Backend, args json.RawMessage) (any, error) {
 				req, err := decode[wshrpc.AgentSendRequest](args)

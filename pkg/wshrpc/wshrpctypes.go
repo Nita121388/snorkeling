@@ -103,6 +103,8 @@ type WshRpcInterface interface {
 	SessionUsersCommand(ctx context.Context, data SessionUsersRequest) (*SessionUsersResult, error)
 	SessionTurnsCommand(ctx context.Context, data SessionTurnsRequest) (*SessionTurnsResult, error)
 	SessionTurnCommand(ctx context.Context, data SessionTurnRequest) (*SessionTurnResult, error)
+	// SessionWaitCommand polls one session until it reaches a state (F-1121).
+	SessionWaitCommand(ctx context.Context, data SessionWaitRequest) (*SessionWaitResult, error)
 	// agent control surface (session card read/write, used by wsh agent card *)
 	AgentCardGetCommand(ctx context.Context, data AgentCardGetRequest) (*AgentCardResult, error)
 	AgentCardSetCommand(ctx context.Context, data AgentCardSetRequest) (*AgentCardSetResult, error)
@@ -885,6 +887,38 @@ type SessionTurnResult struct {
 	Stale      bool                      `json:"stale,omitempty"`
 }
 
+// SessionWaitRequest blocks until one session reaches a state
+// (`wsh session wait`, MCP snorkeling_session_wait). It is the generic
+// "wait for a state" primitive of the control surface (the roundtrip package
+// uses the same collector internally for send --wait-reply).
+type SessionWaitRequest struct {
+	Identifier string `json:"identifier"` // session key / session id / block id / "this"
+	BlockId    string `json:"blockid,omitempty"`
+	// Until is Required: idle | done | blocked | working. "done" is the same
+	// agentstate as idle (agentstatus normalizes done -> idle).
+	Until string `json:"until"`
+	// TimeoutMs bounds the wait (default 60000, cap 300000). A timeout is not
+	// an error: matched=false comes back and the CLI exits 3.
+	TimeoutMs int `json:"timeoutms,omitempty"`
+	// PollMs is the poll interval (default 250, clamped to [100,2000]).
+	PollMs int `json:"pollms,omitempty"`
+}
+
+// SessionWaitResult reports the state that was hit (matched=true) or the last
+// observed state on timeout (matched=false).
+type SessionWaitResult struct {
+	Version    int      `json:"version"`
+	Matched    bool     `json:"matched"`
+	State      string   `json:"state"` // state observed when matched / at timeout
+	Until      string   `json:"until"`
+	SessionKey string   `json:"sessionkey,omitempty"`
+	SessionId  string   `json:"sessionid,omitempty"`
+	BlockId    string   `json:"blockid,omitempty"`
+	WaitedMs   int      `json:"waitedms"`
+	Polls      int      `json:"polls"`
+	Warnings   []string `json:"warnings,omitempty"`
+}
+
 // ---- Agent Control Surface: session card DTOs ----
 
 // AgentCardGetRequest identifies the session whose card should be read. `this`
@@ -1407,6 +1441,25 @@ type AgentSendRequest struct {
 	// Requester names the submitting surface (desktop / cli / mcp / mobile) so
 	// dispatch records stay attributable across clients. Empty defaults to desktop.
 	Requester string `json:"requester,omitempty"`
+	// WaitReply turns send into a roundtrip (F-1121-agent-roundtrip): after the
+	// text is injected and submitted, the call blocks until the target agent's
+	// turn completes and returns the reply summary. Completion needs all three
+	// signals (agentstatus seq, session file growth, turn count growth) because
+	// any single one alone lies (see prd "数据不全"). A timeout is NOT an error:
+	// the result carries replied=false plus warnings=["reply-timeout"].
+	// Mutually exclusive with Async and NoWait (E_USAGE).
+	WaitReply *bool `json:"waitreply,omitempty"`
+	// ReplyWaitMs bounds the reply wait window (default 60000, cap 300000).
+	ReplyWaitMs int `json:"replywaitms,omitempty"`
+	// ReplyChars is the reply text budget (default 2000, clamped to [1,8000]);
+	// a longer reply comes back truncated with totalchars intact.
+	ReplyChars int `json:"replychars,omitempty"`
+	// ReplyPollMs is the reply poll interval (default 250, clamped to [100,2000]).
+	ReplyPollMs int `json:"replypollms,omitempty"`
+	// NoWait is the escape hatch: return immediately with the reply cursor
+	// (the turn count at injection time) instead of waiting. The caller then
+	// reads the reply itself with `session turns --before-turn=<cursor+1>`.
+	NoWait bool `json:"nowait,omitempty"`
 }
 
 // AgentSendResult reports what actually happened to the text.
@@ -1431,6 +1484,19 @@ type AgentSendResult struct {
 	// delivery runs in the background; read AgentDispatch* for the receipt.
 	Queued     bool   `json:"queued,omitempty"`
 	DispatchId string `json:"dispatchid,omitempty"`
+	// Roundtrip fields (waitreply / nowait). All optional and zero-valued for
+	// a plain fire-and-forget send, so existing callers are unaffected.
+	// Replied reports that the turn completed and the reply was read back.
+	Replied    bool   `json:"replied,omitempty"`
+	Turn       int    `json:"turn,omitempty"`
+	ReplyText  string `json:"replytext,omitempty"`
+	Truncated  bool   `json:"truncated,omitempty"`
+	TotalChars int    `json:"totalchars,omitempty"`
+	// ReplyCursor is the turn count at injection time (also set for nowait).
+	ReplyCursor int `json:"replycursor,omitempty"`
+	// ReplyWaitedMs is the time spent in the reply wait window alone;
+	// WaitedMs is the total server-side wait (quiet wait + submit + reply).
+	ReplyWaitedMs int `json:"replywaitedms,omitempty"`
 }
 
 // AgentResumeRequest recreates an agent block for one existing session
