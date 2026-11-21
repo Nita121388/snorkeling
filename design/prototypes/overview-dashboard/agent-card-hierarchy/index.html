@@ -1,0 +1,1008 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="dark">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Overview Agent Card · 属性紧凑化 + 卡面层次原型</title>
+        <!--
+            原型：Overview 看板卡（BoardCard）
+            议题：
+              1. 属性行去名字前缀（select/status 胶囊、单 emoji 文本直显）
+              2. 卡片脱离面板底色 + 卡内四段层次
+
+            主题 token 全部从 frontend/app/theme.scss 原样搬运（dark / light 两套）：
+              --main-bg-color / --panel-bg-color / --surface-* / --border-color / --accent-color
+              --agent-working-color / --agent-done-color / --agent-stale-color / --warning-color
+            卡片几何全部从 frontend/app/session-overview/session-overview.scss 搬运：
+              .session-overview-board-card (1591) / -card-meta (1747) / -view-label (1768)
+              .session-overview-board-chip (1857) / .session-metrics (1970) / -card-mini (1900)
+              .session-overview-board-card-prop (1812) / .property-chip (property-list.scss:116)
+            镜像源：overview-board.tsx / overview-board-model.ts / session-overview.scss
+        -->
+        <style>
+            /* ================= 真实主题 token（theme.scss 原样） ================= */
+            :root,
+            [data-theme="dark"] {
+                --main-text-color: #f7f7f7;
+                --secondary-text-color: rgb(195, 200, 194);
+                --grey-text-color: #666;
+                --main-bg-color: rgb(34, 34, 34);
+                --surface-shadow-color: #000000;
+                --surface-soft-color: rgba(255, 255, 255, 0.04);
+                --surface-color: rgba(255, 255, 255, 0.06);
+                --surface-strong-color: rgba(255, 255, 255, 0.08);
+                --border-color: rgba(255, 255, 255, 0.16);
+                --accent-color: rgb(88, 193, 66);
+                --accent-bg-color: rgba(88, 193, 66, 0.5);
+                --panel-bg-color: rgba(31, 33, 31, 0.5);
+                --error-color: rgb(229, 77, 46);
+                --warning-color: rgb(224, 185, 86);
+                --agent-working-color: #3b82f6;
+                --agent-done-color: rgb(78, 154, 6);
+                --agent-stale-color: #a855f7;
+                --hover-bg-color: rgba(255, 255, 255, 0.1);
+                --hover-bg-color-strong: rgba(255, 255, 255, 0.2);
+                --overlay-bg-color: #212121;
+            }
+            [data-theme="light"] {
+                --main-text-color: #3a3227;
+                --secondary-text-color: #635c52;
+                --grey-text-color: #78726a;
+                --main-bg-color: #f2eee5;
+                --surface-shadow-color: #ddd5c5;
+                --surface-soft-color: #fdfbf6;
+                --surface-color: #fffdf8;
+                --surface-strong-color: #f2eee5;
+                --border-color: #dcd6c9;
+                --accent-color: #9e60c5;
+                --accent-bg-color: rgba(158, 96, 197, 0.24);
+                --panel-bg-color: rgba(250, 247, 241, 0.72);
+                --error-color: #d32f2f;
+                --warning-color: #e65100;
+                --agent-working-color: #2563eb;
+                --agent-done-color: #2e7d32;
+                --agent-stale-color: #a855f7;
+                --hover-bg-color: rgba(158, 96, 197, 0.1);
+                --hover-bg-color-strong: rgba(58, 50, 39, 0.09);
+                --overlay-bg-color: #faf7f1;
+            }
+
+            * {
+                box-sizing: border-box;
+            }
+            body {
+                margin: 0;
+                background: var(--main-bg-color);
+                color: var(--main-text-color);
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter", "Microsoft YaHei", sans-serif;
+                -webkit-font-smoothing: antialiased;
+            }
+            code {
+                padding: 1px 4px;
+                border-radius: 4px;
+                background: var(--surface-soft-color);
+                font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+                font-size: 11px;
+            }
+
+            /* ================= 页头 ================= */
+            header {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 16px;
+                align-items: flex-start;
+                padding: 22px 28px 4px;
+            }
+            header h1 {
+                margin: 0 0 6px;
+                font-size: 17px;
+            }
+            header p {
+                max-width: 880px;
+                margin: 0;
+                color: var(--secondary-text-color);
+                font-size: 12px;
+                line-height: 1.75;
+            }
+            .controls {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 8px;
+                align-items: center;
+                margin-left: auto;
+            }
+            .control-label {
+                color: var(--secondary-text-color);
+                font-size: 10px;
+                font-weight: 700;
+                letter-spacing: 0.06em;
+                text-transform: uppercase;
+            }
+            .seg {
+                display: inline-flex;
+                border: 1px solid var(--border-color);
+                border-radius: 7px;
+                overflow: hidden;
+            }
+            .seg button {
+                padding: 6px 10px;
+                border: none;
+                background: transparent;
+                color: var(--secondary-text-color);
+                font-size: 11px;
+                cursor: pointer;
+            }
+            .seg button.is-on {
+                background: rgb(from var(--accent-color) r g b / 0.16);
+                color: var(--main-text-color);
+                font-weight: 600;
+            }
+
+            /* ================= 版面 ================= */
+            .board {
+                display: grid;
+                /* 列宽跟真实看板同一刻度（.session-overview-board: grid-auto-columns minmax(220px,1fr)），
+                   默认 280px 是常见档，可切 220 / 280 / 360 做卡高对比。 */
+                grid-template-columns: auto auto;
+                justify-content: start;
+                gap: 18px;
+                padding: 14px 28px 8px;
+                max-width: 1060px;
+            }
+            .col-frame {
+                display: flex;
+                flex-direction: column;
+                gap: 6px;
+                min-width: 0;
+            }
+            .col-caption {
+                display: flex;
+                align-items: baseline;
+                gap: 8px;
+            }
+            .col-caption b {
+                font-size: 12px;
+            }
+            .col-caption span {
+                color: var(--secondary-text-color);
+                font-size: 10px;
+            }
+            /* 真实面板底：.session-overview-panel { background: var(--panel-bg-color) } */
+            .panel {
+                display: flex;
+                gap: 10px;
+                padding: 10px;
+                border-radius: 8px;
+                background: var(--panel-bg-color);
+            }
+            /* 真实看板列：无底色、无边框，只有 gap（session-overview.scss:1440） */
+            .col {
+                display: flex;
+                width: var(--col-w, 280px);
+                min-width: 0;
+                flex: 0 0 auto;
+                flex-direction: column;
+                gap: 8px;
+            }
+
+            /* ================= 卡片（现状） ================= */
+            .card {
+                display: flex;
+                flex-direction: column;
+                /* 间距由变体注入：现状 10/6，方案 12~14 / 9~10 */
+                gap: var(--card-gap, 6px);
+                padding: var(--card-pad, 10px);
+                border: 1px solid var(--border-color);
+                border-radius: 8px;
+                background: transparent;
+                color: var(--main-text-color);
+                cursor: pointer;
+                transition:
+                    background-color 120ms ease,
+                    border-color 120ms ease,
+                    box-shadow 120ms ease,
+                    transform 120ms ease;
+            }
+            .variant-current .card:hover {
+                background: var(--hover-bg-color-strong);
+            }
+
+            /* ================= 卡片（方案 A 宽松 / B 分区 / C 分区+左轨） =================
+               间距刻度（配合字号层级一起用，不能只加缝不改字号）：
+                 卡内 padding  10 → 13
+                 段间 gap      6  → 10（head / meta / 正文 / 脚注 四段）
+                 正文内 gap    6（preview / note / props 一组）
+                 脚注上分割线  padding-top 6 → 9，线色 main 8% → 10% */
+            .variant-a,
+            .variant-b,
+            .variant-c {
+                --card-pad: 13px;
+                --card-gap: 10px;
+            }
+            .variant-a .card,
+            .variant-b .card,
+            .variant-c .card {
+                position: relative;
+                /* 暗色 surface-strong（白 8% 叠面板）/ 亮色 surface #fffdf8 */
+                background: var(--surface-strong-color);
+                border-color: rgb(from var(--border-color) r g b / 0.85);
+                border-radius: 10px;
+                box-shadow:
+                    0 1px 2px rgb(from var(--surface-shadow-color) r g b / 0.5),
+                    0 0 0 1px rgb(from var(--main-text-color) r g b / 0.02) inset;
+            }
+            [data-theme="light"] .variant-a .card,
+            [data-theme="light"] .variant-b .card,
+            [data-theme="light"] .variant-c .card {
+                background: var(--surface-color);
+                border-color: var(--border-color);
+                box-shadow: 0 1px 2px rgb(from var(--surface-shadow-color) r g b / 0.55);
+            }
+            .variant-a .card:hover,
+            .variant-b .card:hover,
+            .variant-c .card:hover {
+                /* 抬一档 + accent 描边 + 更深光影，仍复用 hover-bg 词汇 */
+                background: var(--hover-bg-color);
+                border-color: rgb(from var(--accent-color) r g b / 0.38);
+                box-shadow: 0 4px 12px rgb(from var(--surface-shadow-color) r g b / 0.6);
+                transform: translateY(-1px);
+            }
+            /* 方案 C：状态色左轨（inset，不占布局） */
+            .variant-c .card::before {
+                content: "";
+                position: absolute;
+                left: 0;
+                top: 11px;
+                bottom: 11px;
+                width: 3px;
+                border-radius: 2px;
+                background: var(--status-color, var(--secondary-text-color));
+            }
+
+            /* ================= 卡头 ================= */
+            .card-head {
+                display: flex;
+                align-items: center;
+                gap: 6px;
+                min-width: 0;
+            }
+            .avatar {
+                display: inline-flex;
+                width: 18px;
+                height: 18px;
+                flex: 0 0 auto;
+                align-items: center;
+                justify-content: center;
+                border-radius: 5px;
+                background: rgb(from var(--main-text-color) r g b / 0.06);
+                font-size: 12px;
+                line-height: 1;
+            }
+            .variant-a .avatar,
+            .variant-b .avatar,
+            .variant-c .avatar {
+                width: 20px;
+                height: 20px;
+                border-radius: 6px;
+                font-size: 14px;
+            }
+            .card-title {
+                flex: 1;
+                min-width: 0;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+                font-size: 12px;
+                font-weight: 600;
+                line-height: 1.3;
+            }
+            /* 层级第 1 梯：标题是卡内唯一 13px 行，其余全部 ≤11.5px */
+            .variant-a .card-title,
+            .variant-b .card-title,
+            .variant-c .card-title {
+                font-size: 13px;
+                line-height: 1.35;
+            }
+            .card-age {
+                flex: 0 0 auto;
+                color: var(--secondary-text-color);
+                font-size: 10px;
+                white-space: nowrap;
+            }
+
+            /* ================= 状态 / meta（真实 chip 几何） ================= */
+            .card-meta {
+                display: flex;
+                flex-wrap: wrap;
+                align-items: center;
+                gap: 4px;
+                min-width: 0;
+            }
+            .status-chip {
+                display: inline-flex;
+                height: 16px;
+                max-width: 100%;
+                align-items: center;
+                gap: 4px;
+                padding: 0 5px;
+                border: 1px solid rgb(from var(--status-color) r g b / 0.28);
+                border-radius: 6px;
+                background: rgb(from var(--status-color) r g b / 0.1);
+                color: var(--status-color);
+                font-size: 9px;
+                font-weight: 600;
+                line-height: 1;
+                white-space: nowrap;
+            }
+            .status-chip .dot {
+                width: 4px;
+                height: 4px;
+                flex: 0 0 auto;
+                border-radius: 50%;
+                background: currentColor;
+            }
+            .status-chip .age {
+                color: rgb(from var(--status-color) r g b / 0.82);
+                font-variant-numeric: tabular-nums;
+            }
+            .status-chip.is-blocked {
+                border-color: rgb(245 158 11 / 0.64);
+            }
+            /* .session-overview-board-chip：radius 999 胶囊、无描边 */
+            .board-chip {
+                max-width: 120px;
+                overflow: hidden;
+                padding: 1px 8px;
+                border: 1px solid transparent;
+                border-radius: 999px;
+                background: rgb(from var(--main-text-color) r g b / 0.035);
+                color: rgb(from var(--main-text-color) r g b / 0.78);
+                font-size: 10px;
+                font-weight: 600;
+                line-height: 1.25;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+            }
+            .board-chip.is-tag {
+                max-width: 84px;
+                background: rgb(from var(--main-text-color) r g b / 0.075);
+                color: var(--main-text-color);
+                font-weight: 500;
+                opacity: 0.82;
+            }
+            /* .session-overview-board-card-view-label：这一档才有描边 */
+            .view-label {
+                padding: 1px 6px;
+                border: 1px solid var(--border-color);
+                border-radius: 5px;
+                color: var(--secondary-text-color);
+                font-size: 9px;
+                font-weight: 600;
+                line-height: 1.4;
+            }
+
+            /* ================= 正文 ================= */
+            .card-preview {
+                display: -webkit-box;
+                overflow: hidden;
+                color: var(--secondary-text-color);
+                font-size: 11px;
+                line-height: 1.4;
+                -webkit-box-orient: vertical;
+                -webkit-line-clamp: 2;
+                line-clamp: 2;
+            }
+            /* 层级第 3 梯：正文独立行高，与 9~10px 的 chip 行拉开 */
+            .variant-a .card-preview,
+            .variant-b .card-preview,
+            .variant-c .card-preview {
+                font-size: 11.5px;
+                line-height: 1.55;
+            }
+            .card-note {
+                display: flex;
+                align-items: center;
+                gap: 4px;
+                overflow: hidden;
+                white-space: nowrap;
+                text-overflow: ellipsis;
+                color: var(--secondary-text-color);
+                font-size: 10px;
+                line-height: 1.4;
+                opacity: 0.9;
+            }
+            /* 层级第 4 梯：note 是正文的附注，比 preview 再晚一档（字号不变、降不透明度） */
+            .variant-a .card-note,
+            .variant-b .card-note,
+            .variant-c .card-note {
+                font-size: 10.5px;
+                line-height: 1.45;
+                opacity: 0.78;
+            }
+            .card-note-mark {
+                flex: 0 0 auto;
+                opacity: 0.7;
+            }
+
+            /* ================= 属性行 ================= */
+            .card-props {
+                display: flex;
+                flex-wrap: nowrap;
+                align-items: center;
+                gap: 6px;
+                overflow: hidden;
+                white-space: nowrap;
+                color: var(--secondary-text-color);
+                font-size: 10px;
+                line-height: 1.4;
+            }
+            /* 属性行是最弱一档：与正文/脚注都留空，chip 间隙 4→6 */
+            .variant-a .card-props,
+            .variant-b .card-props,
+            .variant-c .card-props {
+                margin-top: 1px;
+                opacity: 0.92;
+            }
+            .card-prop {
+                display: inline-flex;
+                align-items: center;
+                gap: 4px;
+                min-width: 0;
+            }
+            .prop-name {
+                max-width: 80px;
+                overflow: hidden;
+                text-overflow: ellipsis;
+            }
+            .prop-text {
+                max-width: 140px;
+                overflow: hidden;
+                text-overflow: ellipsis;
+            }
+            .prop-emoji {
+                font-size: 13px;
+                line-height: 1;
+            }
+            /* .property-chip：固定浅色 Notion 色板（不随主题变）+ 看板卡缩放档 */
+            .property-chip {
+                display: inline-flex;
+                height: 16px;
+                align-items: center;
+                padding: 0 5px;
+                border-radius: 3px;
+                font-size: 9px;
+                line-height: 16px;
+                max-width: 100%;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+                background: var(--surface-soft-color);
+                color: var(--main-text-color);
+            }
+            .property-chip--blue {
+                background: #d3e5ef;
+                color: #183347;
+            }
+            .property-chip--green {
+                background: #dbeddb;
+                color: #1c3829;
+            }
+            .property-chip--orange {
+                background: #fadec9;
+                color: #854a2e;
+            }
+            .property-chip--gray {
+                background: #e3e2e0;
+                color: #32302c;
+            }
+
+            /* ================= 脚注：度量轨 + mini timeline =================
+               .session-metrics 已有 border-top（main 8%）+ padding-top 6px；
+               方案把这条线加宽一档（8%→10%）、脚注上方留白 8px，
+               脚注与正文的分隔从“有一条线”变成“有一段空气 + 一条线”。 */
+            .card-data {
+                display: flex;
+                min-width: 0;
+                flex-direction: column;
+                gap: 4px;
+            }
+            .variant-a .card-data,
+            .variant-b .card-data,
+            .variant-c .card-data {
+                gap: 5px;
+            }
+            .metrics {
+                display: flex;
+                min-width: 0;
+                overflow: hidden;
+                align-items: center;
+                gap: 8px;
+                padding-top: 6px;
+                border-top: 1px solid rgb(from var(--main-text-color) r g b / 0.08);
+                color: var(--secondary-text-color);
+                font-size: 10px;
+                font-variant-numeric: tabular-nums;
+                line-height: 1;
+            }
+            .variant-a .metrics,
+            .variant-b .metrics,
+            .variant-c .metrics {
+                padding-top: 9px;
+                border-top-color: rgb(from var(--main-text-color) r g b / 0.1);
+                font-size: 9.5px;
+                opacity: 0.85;
+            }
+            .metric {
+                display: inline-flex;
+                min-width: 0;
+                flex: 0 1 auto;
+                align-items: center;
+                gap: 3px;
+            }
+            .metric.is-span {
+                flex: 1 1 auto;
+            }
+            .heat {
+                position: relative;
+                display: inline-flex;
+                width: 10px;
+                height: 10px;
+                flex: 0 0 auto;
+                align-items: flex-end;
+                justify-content: center;
+                overflow: hidden;
+                border-radius: 2px;
+                background: rgb(from var(--main-text-color) r g b / 0.1);
+            }
+            .heat i {
+                display: block;
+                width: 100%;
+                border-radius: 1px;
+                background: var(--accent-color);
+                opacity: 0.35;
+            }
+            .bar {
+                display: block;
+                width: 24px;
+                height: 4px;
+                flex: 0 0 auto;
+                overflow: hidden;
+                border-radius: 2px;
+                background: rgb(from var(--main-text-color) r g b / 0.1);
+            }
+            .bar i {
+                display: block;
+                height: 100%;
+                min-width: 1px;
+                border-radius: 2px;
+                background: var(--accent-color);
+                opacity: 0.8;
+            }
+            .metric-mark {
+                margin-right: 1px;
+                opacity: 0.75;
+            }
+            .mini {
+                display: flex;
+                height: 3px;
+                gap: 1px;
+                margin-top: 1px;
+                overflow: hidden;
+                border-radius: 2px;
+                background: rgb(from var(--main-text-color) r g b / 0.06);
+            }
+            .mini-seg {
+                height: 100%;
+                min-width: 1px;
+                border-radius: 2px;
+            }
+            .mini-seg.is-working {
+                background: var(--agent-working-color);
+            }
+            .mini-seg.is-blocked {
+                background: var(--warning-color);
+            }
+            .mini-seg.is-done {
+                background: var(--agent-done-color);
+            }
+            .mini-seg.is-idle {
+                background: var(--secondary-text-color);
+                opacity: 0.45;
+            }
+
+            /* 正文分组（preview + note + props 同组，组内缝隙 6px）；
+               B/C 再加一口“内容井”：surface-soft 底 + 内边距，正文从 chip 行里独立出来 */
+            .variant-a .card-body,
+            .variant-b .card-body,
+            .variant-c .card-body {
+                display: flex;
+                flex-direction: column;
+                gap: 6px;
+            }
+            .variant-b .card-body,
+            .variant-c .card-body {
+                padding: 8px 9px;
+                border-radius: 7px;
+                background: var(--surface-soft-color);
+            }
+            [data-theme="light"] .variant-b .card-body,
+            [data-theme="light"] .variant-c .card-body {
+                background: rgb(from var(--main-text-color) r g b / 0.035);
+            }
+
+            /* ================= 说明区 ================= */
+            .measure {
+                max-width: 1060px;
+                padding: 4px 28px 0;
+                color: var(--secondary-text-color);
+                font-size: 10px;
+                font-variant-numeric: tabular-nums;
+                opacity: 0.8;
+            }
+            .notes {
+                max-width: 1060px;
+                padding: 16px 28px 44px;
+            }
+            .notes h2 {
+                font-size: 13px;
+                margin: 22px 0 8px;
+            }
+            .notes p {
+                max-width: 880px;
+                margin: 0 0 8px;
+                color: var(--secondary-text-color);
+                font-size: 12px;
+                line-height: 1.8;
+            }
+            .notes table {
+                margin: 6px 0 14px;
+                border-collapse: collapse;
+                font-size: 11px;
+            }
+            .notes th,
+            .notes td {
+                padding: 5px 12px 5px 0;
+                border-bottom: 1px solid rgb(from var(--main-text-color) r g b / 0.08);
+                color: var(--secondary-text-color);
+                text-align: left;
+                vertical-align: top;
+            }
+            .notes th {
+                color: var(--main-text-color);
+                font-weight: 600;
+            }
+            .notes td:first-child {
+                white-space: nowrap;
+            }
+        </style>
+    </head>
+    <body>
+        <header>
+            <div>
+                <h1>Overview Agent Card · 属性紧凑化 + 卡面层次</h1>
+                <p>
+                    两列同在一个 <code>--panel-bg-color</code> 面板上，<b>左列现状</b>（卡 <code>background: transparent</code> + 1px 边框，
+                    与面板同色）、<b>右列方案</b>。主题 token 全部取 <code>frontend/app/theme.scss</code>（暗/亮各一套，accent 暗色为绿、亮色为紫），
+                    chip / 属性胶囊 / 度量轨几何取 <code>session-overview.scss</code> 与 <code>property-list.scss</code>。
+                </p>
+            </div>
+            <div class="controls">
+                <span class="control-label">方案</span>
+                <div class="seg" id="variant-seg">
+                    <button data-variant="a" class="is-on">A 宽松</button>
+                    <button data-variant="b">B 内容井</button>
+                    <button data-variant="c">C +状态左轨</button>
+                </div>
+                <span class="control-label">列宽</span>
+                <div class="seg" id="width-seg">
+                    <button data-w="220">220</button>
+                    <button data-w="280" class="is-on">280</button>
+                    <button data-w="360">360</button>
+                </div>
+                <span class="control-label">主题</span>
+                <div class="seg" id="theme-seg">
+                    <button data-theme="dark" class="is-on">暗</button>
+                    <button data-theme="light">亮</button>
+                </div>
+            </div>
+        </header>
+
+        <div class="board">
+            <div class="col-frame">
+                <div class="col-caption"><b>现状</b><span>transparent 卡底 · 属性行带名字前缀</span></div>
+                <div class="panel">
+                    <div class="col variant-current" id="col-current"></div>
+                </div>
+            </div>
+            <div class="col-frame">
+                <div class="col-caption"><b>方案</b><span id="proposal-caption">A · 卡面浮起 + 属性紧凑化</span></div>
+                <div class="panel">
+                    <div class="col variant-a" id="col-proposal"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="measure" id="measure-line"></div>
+
+        <div class="notes">
+            <h2>属性行渲染规则（紧凑化）</h2>
+            <p>
+                数据层不动（<code>resolveBoardPropRows</code> 已按类型归一 select/multi/checkbox/text），只改渲染层：
+                自解释的值不再带属性名前缀，名字降级进 <code>title="name: value"</code>，hover 与无障碍信息不丢。
+            </p>
+            <table>
+                <tr>
+                    <th>属性类型</th>
+                    <th>现状渲染</th>
+                    <th>方案渲染</th>
+                    <th>规则</th>
+                </tr>
+                <tr>
+                    <td><code>status</code> / <code>select</code> 单值</td>
+                    <td>名字 + 色胶囊：<code>Status</code> <span class="property-chip property-chip--green">In Progress</span></td>
+                    <td>仅色胶囊：<span class="property-chip property-chip--green">In Progress</span></td>
+                    <td>有色胶囊自解释（Notion 9 色板，固定浅色，不随主题变）</td>
+                </tr>
+                <tr>
+                    <td>单 emoji 文本（`emoji` 属性）</td>
+                    <td><code>emoji</code> 🦊（与左上头像同一 emoji 并排）</td>
+                    <td><b>整条不渲染</b>（左上头像已表达同一信息）</td>
+                    <td>与头像重复（2026-11-22 截图确认）</td>
+                </tr>
+                <tr>
+                    <td><code>person</code> / <code>multi_select</code></td>
+                    <td>名字 + chips</td>
+                    <td>仅 chips</td>
+                    <td>chips 自解释</td>
+                </tr>
+                <tr>
+                    <td><code>text</code> / <code>number</code> / <code>url</code></td>
+                    <td>名字 + 值</td>
+                    <td><b>不变</b></td>
+                    <td>纯文本值不自解释</td>
+                </tr>
+                <tr>
+                    <td><code>checkbox</code></td>
+                    <td>名字 + ✓</td>
+                    <td><b>不变</b></td>
+                    <td>值只有 ✓</td>
+                </tr>
+            </table>
+
+            <h2>卡面层次</h2>
+            <p>
+                <b>问题 1「卡与面板融为一体」</b>：现状 <code>background: transparent</code>，卡片与 <code>--panel-bg-color</code> 同色，
+                只靠 1px <code>--border-color</code>（白 16%/暗）撑轮廓。方案给卡一个真实表面层：暗色 <code>--surface-strong-color</code>（白 8% 叠面板）/
+                亮色 <code>--surface-color</code>（<code>#fffdf8</code>），配 <code>--surface-shadow-color</code> 的微阴影；hover 抬 1px + accent 38% 描边 + 阴影加深。
+            </p>
+            <p>
+                <b>问题 2「卡内缺乏层次」</b>：现状 head / meta / preview / note / props / metrics 六行同权重平铺（<code>gap: 6px</code>，
+                字号 9–12px 混排）。方案分四段：
+                ① 头部（头像 18→20px + 标题 600/12px + age）→ ② 状态/meta（chip 一族，16px 高/9–10px）→
+                ③ 正文（preview + note + 属性行，统一 secondary）→ ④ 脚注（度量轨 + mini timeline）。
+            </p>
+            <p>
+                <b>注意</b>：<code>.session-metrics</code> 本身已有 <code>border-top: main/8%</code> + <code>padding-top: 6px</code>，
+                所以「度量上分割线」不是新增项，方案重点是把这条线之上的层级拉开（正文分组、行距、字重），而不是再画一条线。
+            </p>
+            <p>
+                <b>变体 B 状态左轨</b>：滚动后列头不可见，左轨让单卡自证状态。代价是与卡头状态 chip 双通道重复、窄列压缩内容 —— 推荐先落 A。
+            </p>
+        </div>
+
+        <script>
+            const CARDS = [
+                {
+                    avatar: "🦊",
+                    title: "commontext 行高与筛选条打磨",
+                    age: "1d",
+                    status: { label: "Working", age: "12m", color: "var(--agent-working-color)", cls: "is-working" },
+                    kindLabel: "Agent",
+                    metaChips: ["codex", "snorkeling"],
+                    tags: ["#frontend", "#ui"],
+                    props: [
+                        { type: "emoji", name: "emoji", value: "🦊" },
+                        { type: "select", name: "Status", value: "In Progress", pill: "green" },
+                        { type: "select", name: "优先级", value: "P2", pill: "orange" },
+                        { type: "person", name: "负责人", value: "nita" },
+                    ],
+                    preview: "行高 44→52 修裁切已验；筛选条单行化与排序 chip 菜单待复核，徽章居右与 meta 列同缘对齐。",
+                    note: "行高已验，徽章居右待复核",
+                    metrics: { msg: "128", msgFill: "40%", size: "2.4MB", sizeFill: "80%", span: "↔3d", spanFill: "60%", created: "11-19" },
+                    mini: [
+                        ["is-idle", 3],
+                        ["is-working", 7],
+                        ["is-blocked", 2],
+                        ["is-working", 5],
+                    ],
+                },
+                {
+                    avatar: "🤖",
+                    title: "opencode 会话扫描 schema 漂移",
+                    age: "1d",
+                    status: { label: "Blocked", age: "26m", color: "var(--warning-color)", cls: "is-blocked" },
+                    kindLabel: "Agent",
+                    metaChips: ["opencode"],
+                    tags: ["#schema"],
+                    props: [
+                        { type: "emoji", name: "emoji", value: "🤖" },
+                        { type: "select", name: "Status", value: "Blocked", pill: "orange" },
+                        { type: "select", name: "优先级", value: "P0", pill: "gray" },
+                    ],
+                    preview: "会话恢复厂商复隔离；agent-status 钩子装完仍不上报，需要真机验证。",
+                    note: "等真机 hook 验证",
+                    metrics: { msg: "64", msgFill: "20%", size: "940KB", sizeFill: "40%", span: "↔2d", spanFill: "40%", created: "11-20" },
+                    mini: [
+                        ["is-working", 4],
+                        ["is-blocked", 6],
+                        ["is-idle", 4],
+                    ],
+                },
+                {
+                    avatar: "🐚",
+                    title: "agentdata 备份粒度降级",
+                    age: "3d",
+                    status: { label: "Done", color: "var(--agent-done-color)", cls: "is-done" },
+                    kindLabel: "Agent",
+                    metaChips: ["pi", "snorkeling"],
+                    tags: [],
+                    props: [
+                        { type: "emoji", name: "emoji", value: "🐚" },
+                        { type: "select", name: "Status", value: "Done", pill: "blue" },
+                        { type: "checkbox", name: "已入库", value: "✓" },
+                    ],
+                    preview: "消除整库 VACUUM INTO，按操作范围降级备份粒度。",
+                    note: "",
+                    metrics: { msg: "212", msgFill: "60%", size: "5.1MB", sizeFill: "100%", span: "↔5d", spanFill: "100%", created: "11-16" },
+                    mini: [["is-working", 9]],
+                },
+            ];
+
+            // 属性行：current 一律 名字 + 值；compact 按类型省名
+            function renderProp(p, compact) {
+                const name = `<span class="prop-name">${p.name}</span>`;
+                let value;
+                if (p.type === "select") value = `<span class="property-chip property-chip--${p.pill}">${p.value}</span>`;
+                else if (p.type === "emoji") value = `<span class="prop-emoji">${p.value}</span>`;
+                else if (p.type === "person") value = `<span class="property-chip property-chip--gray">${p.value}</span>`;
+                else if (p.type === "checkbox") value = `<span class="property-chip property-chip--green">${p.value}</span>`;
+                else value = `<span class="prop-text">${p.value}</span>`;
+                const dropName = compact && ["select", "emoji", "person"].includes(p.type);
+                return `<span class="card-prop" title="${p.name}: ${p.value}">${dropName ? "" : name}${value}</span>`;
+            }
+
+            function renderCard(c, compact) {
+                const statusChip =
+                    `<span class="status-chip ${c.status.cls}" style="--status-color: ${c.status.color}">` +
+                    `<span class="dot"></span>${c.status.label}` +
+                    (c.status.age ? ` <span class="age">${c.status.age}</span>` : "") +
+                    `</span>`;
+                const metaChips =
+                    `<span class="view-label">${c.kindLabel}</span>` +
+                    c.metaChips.map((m) => `<span class="board-chip">${m}</span>`).join("");
+                const tags = c.tags.map((t) => `<span class="board-chip is-tag">${t}</span>`).join("");
+                // 属性行：compact（方案）下 emoji 属性整条不渲染 —— 左上头像已经表达同一信息，
+                // 用户 2026-11-22 截图确认两张 emoji 并排是重复。current 保留以对照现状。
+                const props = compact ? c.props.filter((p) => p.type !== "emoji") : c.props;
+                const propRows = props.map((p) => renderProp(p, compact)).join("");
+                const m = c.metrics;
+
+                const head = `
+                    <span class="card-head">
+                        <span class="avatar">${c.avatar}</span>
+                        <span class="card-title">${c.title}</span>
+                        <span class="card-age">${c.age}</span>
+                    </span>`;
+                const meta = `<span class="card-meta">${statusChip}${metaChips}${tags}</span>`;
+                const body = compact
+                    ? `<span class="card-body">
+                           <span class="card-preview">${c.preview}</span>
+                           ${c.note ? `<span class="card-note"><span class="card-note-mark">✎</span>${c.note}</span>` : ""}
+                           ${propRows ? `<span class="card-props">${propRows}</span>` : ""}
+                       </span>`
+                    : `<span class="card-preview">${c.preview}</span>
+                       ${c.note ? `<span class="card-note"><span class="card-note-mark">✎</span>${c.note}</span>` : ""}
+                       ${propRows ? `<span class="card-props">${propRows}</span>` : ""}`;
+                const data = `
+                    <span class="card-data">
+                        <span class="metrics">
+                            <span class="metric" title="消息数"><span class="heat"><i style="height:${m.msgFill}"></i></span>${m.msg}</span>
+                            <span class="metric" title="体积"><span class="heat"><i style="height:${m.sizeFill}"></i></span>${m.size}</span>
+                            <span class="metric is-span" title="活跃跨度"><span class="bar"><i style="width:${m.spanFill}"></i></span><span class="metric-mark">↔</span>${m.span.slice(1)}</span>
+                            <span class="metric" title="创建时间">${m.created}</span>
+                        </span>
+                        <span class="mini">${c.mini
+                            .map(([cls, grow]) => `<span class="mini-seg ${cls}" style="flex-grow:${grow}"></span>`)
+                            .join("")}</span>
+                    </span>`;
+
+                return `<div class="card">${head}${meta}${body}${data}</div>`;
+            }
+
+            function renderColumn(el, variant) {
+                const compact = variant !== "current";
+                el.innerHTML = CARDS.map((c) => renderCard(c, compact)).join("");
+            }
+
+            const colCurrent = document.getElementById("col-current");
+            const colProposal = document.getElementById("col-proposal");
+            const captions = {
+                a: "A · 卡面浮起 + 间距/字号分级",
+                b: "B · A + 正文内容井（surface-soft）",
+                c: "C · B + 状态色左轨",
+            };
+
+            function setVariant(variant) {
+                colProposal.className = `col variant-${variant}`;
+                document.getElementById("proposal-caption").textContent = captions[variant] ?? "";
+                renderColumn(colCurrent, "current");
+                renderColumn(colProposal, variant);
+                measureCards();
+            }
+
+            // 实测卡高（与 agent-card-metrics 原型同一验证手法）：每列三张卡的
+            // getBoundingClientRect().height 写进列标题，供“卡高漂了多少”对比。
+            function measureCards() {
+                requestAnimationFrame(() => {
+                    const lines = [];
+                    for (const [label, el] of [
+                        ["现状", colCurrent],
+                        ["方案", colProposal],
+                    ]) {
+                        const heights = [...el.querySelectorAll(":scope > .card")].map(
+                            (c) => Math.round(c.getBoundingClientRect().height)
+                        );
+                        lines.push(`${label} ${heights.join("/")}px`);
+                    }
+                    const w = getComputedStyle(document.documentElement).getPropertyValue("--col-w").trim() || "280px";
+                    document.getElementById("measure-line").textContent =
+                        `列宽 ${w} · 卡高（上/中/下）：${lines.join(" · ")}`;
+                });
+            }
+
+            document.getElementById("variant-seg").addEventListener("click", (event) => {
+                const btn = event.target.closest("button[data-variant]");
+                if (!btn) return;
+                document.querySelectorAll("#variant-seg button").forEach((b) => b.classList.toggle("is-on", b === btn));
+                setVariant(btn.dataset.variant);
+            });
+            document.getElementById("width-seg").addEventListener("click", (event) => {
+                const btn = event.target.closest("button[data-w]");
+                if (!btn) return;
+                document.documentElement.style.setProperty("--col-w", `${btn.dataset.w}px`);
+                document
+                    .querySelectorAll("#width-seg button")
+                    .forEach((b) => b.classList.toggle("is-on", b === btn));
+                measureCards();
+            });
+            document.getElementById("theme-seg").addEventListener("click", (event) => {
+                const btn = event.target.closest("button[data-theme]");
+                if (!btn) return;
+                document.documentElement.dataset.theme = btn.dataset.theme;
+                document.querySelectorAll("#theme-seg button").forEach((b) => b.classList.toggle("is-on", b === btn));
+            });
+
+            // 直链定态：?variant=a|b|c&theme=dark|light
+            const params = new URLSearchParams(location.search);
+            const theme = params.get("theme");
+            if (theme === "light" || theme === "dark") {
+                document.documentElement.dataset.theme = theme;
+                document
+                    .querySelectorAll("#theme-seg button")
+                    .forEach((b) => b.classList.toggle("is-on", b.dataset.theme === theme));
+            }
+            const w = params.get("w");
+            if (["220", "280", "360"].includes(w)) {
+                document.documentElement.style.setProperty("--col-w", `${w}px`);
+                document
+                    .querySelectorAll("#width-seg button")
+                    .forEach((b) => b.classList.toggle("is-on", b.dataset.w === w));
+            }
+            const startVariant = ["a", "b", "c"].includes(params.get("variant")) ? params.get("variant") : "a";
+            document
+                .querySelectorAll("#variant-seg button")
+                .forEach((b) => b.classList.toggle("is-on", b.dataset.variant === startVariant));
+            setVariant(startVariant);
+        </script>
+    </body>
+</html>

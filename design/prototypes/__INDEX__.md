@@ -71,6 +71,7 @@
 - `overview-dashboard/combine-dashboard-legacy.html` — （单文件原型）
 - `overview-dashboard/overview-board-v2/` — 
 - `overview-dashboard/overview-card-click/` — 同步状态：（待确认）
+- `overview-dashboard/agent-card-hierarchy/` — 同步状态：▲ 设计活跃（2026-11-22）｜属性行去名字前缀（select/status 胶囊、单 emoji 直显）+ 卡面浮起（表面色/阴影/hover 抬升）+ 卡内四段层次（度量轨上抬分割线）｜变体 A 卡面浮起 / B + 状态左轨，暗/亮双主题｜镜像源：overview-board.tsx, overview-board-model.ts, session-overview.scss
 - `overview-dashboard/overview-add-agent-card/` — 同步状态：● 已落地（2026-11-20，overview-add-agent{,-modal} + board/panel 接线）｜Tab 分组看板底部「＋ 新建」占位卡 → 居中弹窗（chrome 与 New Agent 弹窗同款：profile chip 行 + 模型框 + 可滚动路径候选列表）→ 建块入该 Tab｜镜像源：frontend/app/session-overview/overview-board.tsx, session-overview.tsx, commontext-send-button.tsx
 - `overview-dashboard/overview-group-views/` — 同步状态：（待确认）
 - `overview-dashboard/overview-kanban/` — 
