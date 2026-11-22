@@ -97,7 +97,12 @@
         "viewTimeline": "Timeline",
         "viewListTitle": "List view",
         "viewBoardTitle": "Board view",
-        "viewTimelineTitle": "Timeline view"
+        "viewTimelineTitle": "Timeline view",
+        "tabUnopened": "Unopened",
+        "tabBlockCount": "{{n}} blocks",
+        "tabAgentsCount": "{{n}} agents",
+        "tabSummary": "{{tabs}} tabs ({{shown}} shown) · {{agents}} agents",
+        "tabLoading": "Loading"
     },
     "dialog": {
         "badgeNotification": "Notification",

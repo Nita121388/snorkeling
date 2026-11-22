@@ -284,6 +284,76 @@
     &.is-collapsed {
         margin-bottom: 6px;
     }
+
+    // 未打开（本次启动未激活且非当前 Tab）：灰化组头，视觉语言对齐 Tab 栏的
+    // `.unopened-this-launch`（opacity + grayscale），不隐藏组、不隐藏跳转按钮。
+    &.is-unopened {
+        > .session-overview-tab-title {
+            > .session-overview-tab-toggle {
+                > .session-overview-tab-name,
+                > strong,
+                > .session-overview-badge-icon {
+                    opacity: 0.42;
+                    filter: grayscale(1);
+                }
+            }
+        }
+    }
+}
+
+.session-overview-tab-status-badge {
+    flex: 0 0 auto;
+    padding: 0 5px;
+    border: 1px solid var(--border-color);
+    border-radius: 999px;
+    color: var(--secondary-text-color);
+    font-size: 10px;
+    font-weight: 500;
+    line-height: 16px;
+    white-space: nowrap;
+
+    &.is-agents,
+    &.is-loading {
+        border-color: transparent;
+        background: rgb(from var(--main-text-color) r g b / 0.06);
+    }
+}
+
+// 加载中的组：3 行骨架（不做位移动画，避免与虚拟列表/滚动抖动）。
+.session-overview-tab-skeleton {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 6px 0 0 18px;
+}
+
+.session-overview-tab-skeleton-row {
+    height: 34px;
+    border-radius: 8px;
+    background: linear-gradient(
+        90deg,
+        rgb(from var(--main-text-color) r g b / 0.04) 0%,
+        rgb(from var(--main-text-color) r g b / 0.09) 50%,
+        rgb(from var(--main-text-color) r g b / 0.04) 100%
+    );
+    background-size: 200% 100%;
+    animation: session-overview-skeleton-sweep 1.6s ease-in-out infinite;
+}
+
+@keyframes session-overview-skeleton-sweep {
+    0% {
+        background-position: 120% 0;
+    }
+    100% {
+        background-position: -20% 0;
+    }
+}
+
+// 列表底部汇总行：`共 N Tab（显示 M）· K 个 agent`。
+.session-overview-tab-summary {
+    padding: 6px 2px 2px;
+    color: var(--secondary-text-color);
+    font-size: 10px;
 }
 
 .session-overview-tab-title {
@@ -1588,15 +1658,20 @@
     padding-right: 2px;
 }
 
+/* 卡片表面层 + 间距/字号分级（2026-11-22 overview-agent-card-hierarchy）。
+   之前：`background: transparent` + gap 6px平铺 —— 卡与面板同色、六行同权重。
+   现在：真实表面层（暗 = surface 白 6% 叠面板 / 亮 = #fffdf8 抬起）+ 微阴影；
+   纵向间距改为“段落 margin”而不是统一 gap，让 头 / 状态 / 正文 / 脚注 四段分开。 */
 .session-overview-board-card {
     display: flex;
     width: 100%;
     flex-direction: column;
-    gap: 6px;
-    padding: 10px;
+    gap: 0;
+    padding: 13px;
     border: 1px solid var(--border-color);
-    border-radius: 8px;
-    background: transparent;
+    border-radius: 10px;
+    background: var(--surface-color);
+    box-shadow: 0 1px 2px rgb(from var(--surface-shadow-color) r g b / 0.5);
     box-sizing: border-box;
     color: var(--main-text-color);
     cursor: pointer;
@@ -1604,11 +1679,15 @@
     text-align: left;
     transition:
         background-color 120ms ease,
-        border-color 120ms ease;
+        border-color 120ms ease,
+        box-shadow 120ms ease,
+        transform 120ms ease;
 
     &:hover {
         border-color: rgb(from var(--accent-color) r g b / 0.38);
-        background: var(--hover-bg-color-strong);
+        background: var(--hover-bg-color);
+        box-shadow: 0 4px 12px rgb(from var(--surface-shadow-color) r g b / 0.6);
+        transform: translateY(-1px);
     }
 
     &:focus-visible {
@@ -1623,6 +1702,7 @@
     min-width: 0;
     align-items: center;
     gap: 6px;
+    margin-bottom: 6px;
 }
 
 /* 动作组默认零占位：标题吃满整行宽度。hover / focus-within 时 max-width 展开，
@@ -1687,14 +1767,15 @@
 /* 定宽头像：emoji 只放大字形（盒子仍 13px，同 agent-persona 契约），logo 用品牌色，缺失时 robot 兜底。 */
 .session-overview-board-card-avatar {
     display: inline-flex;
-    width: 18px;
-    height: 18px;
+    /* 20px（原 18）：与 13px 标题形成第 1 层级的“卡头块”，头像不至于被正文压住 */
+    width: 20px;
+    height: 20px;
     flex: 0 0 auto;
     align-items: center;
     justify-content: center;
-    border-radius: 5px;
+    border-radius: 6px;
     background: rgb(from var(--main-text-color) r g b / 0.06);
-    font-size: 12px;
+    font-size: 14px;
     line-height: 1;
 
     .agent-emoji-icon {
@@ -1729,9 +1810,10 @@
     min-width: 0;
     flex: 1;
     overflow: hidden;
-    font-size: 12px;
+    /* 卡内唯一 13px 行：标题独占第 1 层级，其余全部 ≤11.5px */
+    font-size: 13px;
     font-weight: 600;
-    line-height: 1.3;
+    line-height: 1.35;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
@@ -1743,13 +1825,92 @@
     white-space: nowrap;
 }
 
-/* 状态 chip + provider/项目 chip 同行；chip 来自共享 AgentStatusChip，这里只做紧凑化。 */
+/* meta 行（第 2 层级）：组间 7px、组内 3px。
+   三类信息三种形状词汇（2026-11-22 M4）：状态 = 唯一胶囊（唯一彩色）；
+   agent 类型 = 品牌标 + 名称；项目 = folder 图标 + 名称；标签 = 迷你方片。 */
 .session-overview-board-card-meta {
     display: flex;
     min-width: 0;
     flex-wrap: wrap;
     align-items: center;
-    gap: 4px;
+    gap: 7px;
+    margin-bottom: 9px;
+}
+
+.session-overview-board-card-meta-group {
+    display: inline-flex;
+    min-width: 0;
+    align-items: center;
+    gap: 3px;
+    white-space: nowrap;
+    color: var(--secondary-text-color);
+    font-size: 9.5px;
+    line-height: 1.2;
+}
+
+/* 品牌色只上图标（`getAgentLogoByProvider` 的 iconColor 走内联 style）：
+   文字保持 secondary，状态色仍是 meta 行唯一彩色信号。 */
+.session-overview-board-card-meta-logo {
+    display: inline-flex;
+    width: 10px;
+    height: 10px;
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    line-height: 1;
+}
+
+.session-overview-board-card-meta-agent {
+    max-width: 84px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-weight: 600;
+}
+
+.session-overview-board-card-meta-folder {
+    max-width: 96px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-weight: 500;
+}
+
+.session-overview-board-card-meta-group > i {
+    flex: 0 0 auto;
+    font-size: 9px;
+    opacity: 0.85;
+}
+
+/* 标签：迷你方片（radius 4、无描边、极淡底）—— 比纯文本有形，比胶囊轻一档。 */
+.session-overview-board-tag {
+    display: inline-flex;
+    height: 15px;
+    max-width: 84px;
+    align-items: center;
+    padding: 0 6px;
+    border-radius: 4px;
+    background: rgb(from var(--main-text-color) r g b / 0.06);
+    color: rgb(from var(--main-text-color) r g b / 0.72);
+    font-size: 9.5px;
+    font-weight: 500;
+    line-height: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.session-overview-board-tag-hash {
+    margin-right: 1px;
+    opacity: 0.5;
+}
+
+.session-overview-board-tag-more {
+    flex: 0 0 auto;
+    padding: 0 2px;
+    color: var(--secondary-text-color);
+    font-size: 9.5px;
+    font-weight: 600;
+    opacity: 0.85;
 }
 
 .session-overview-board-card {
@@ -1778,9 +1939,11 @@
 .session-overview-board-card-preview {
     display: -webkit-box;
     overflow: hidden;
+    margin-bottom: 6px;
     color: var(--secondary-text-color);
-    font-size: 11px;
-    line-height: 1.4;
+    /* 第 3 层级：正文独立行高（1.55），与 9~10px 的 chip 行拉开 */
+    font-size: 11.5px;
+    line-height: 1.55;
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 2;
     line-clamp: 2;
@@ -1792,19 +1955,23 @@
     align-items: center;
     gap: 4px;
     overflow: hidden;
+    margin-bottom: 6px;
     color: var(--secondary-text-color);
-    font-size: 10px;
-    line-height: 1.4;
+    /* 第 4 层级：附注比正文晚一档（字号 +0.5、不透明度 .78） */
+    font-size: 10.5px;
+    line-height: 1.45;
+    opacity: 0.78;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
 
-/* 看板卡自定义属性行：单行不换（卡高不跳），超出 ellipsis。 */
+/* 看板卡自定义属性行：单行不换（卡高不跳），超出 ellipsis。
+   隐藏属性名（hideName）后只剩色胶囊/chips，行距 6px 区别于 meta 行的 7px 组距。 */
 .session-overview-board-card-props {
     display: flex;
     flex-wrap: nowrap;
     align-items: center;
-    gap: 4px;
+    gap: 6px;
     overflow: hidden;
     white-space: nowrap;
 }
@@ -1956,11 +2123,21 @@
    暗色主题 5 档灰阶、单色主题下都能分辨（同 aisessions HeatCell 的理由）。
    占比条一律中性 accent，**不借状态色** —— 否则卡片会多出第二个「状态指示器」。
    --------------------------------------------------------------------------- */
+/* 脚注区（第 5 层级）：上抬 11px 空气 + `--surface-soft` 的段落感 —— 度量/mini timeline
+   是“页脚”，不再紧贴正文。分割线本身来自 `.session-metrics` 的 border-top（已有）。 */
 .session-overview-board-card-data {
     display: flex;
     min-width: 0;
     flex-direction: column;
     gap: 4px;
+    margin-top: 11px;
+}
+
+/* 看板卡的度量轨比列表行更“背景”：9.5px + 降透明度 + 更大的线上留白 */
+.session-overview-board-card .session-metrics {
+    padding-top: 9px;
+    font-size: 9.5px;
+    opacity: 0.85;
 }
 
 .session-metrics {

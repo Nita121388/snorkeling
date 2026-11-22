@@ -394,6 +394,63 @@ function updateWaveObjects(vals: WaveObjUpdate[]) {
     }
 }
 
+// 单批 oref 上限：19 Tab × ~10 块 ≈ 190 → 首屏一次批量即可；超大 workspace 才分批。
+const PrimeWaveObjectsBatchSize = 400;
+
+/**
+ * 批量预热 wov cache（读路径的旁路，不改变任何服务端状态）。
+ *
+ * 动机（2026-11-22 真机）：Overview 首屏对每个 tab/block 各发一次 `GetObject`，
+ * 19 Tab ≈ 190 次单件 RPC，首帧全是 null → 组被「空组过滤」删掉，用户看到
+ * "没打开过的 Tab 不显示"。这里用 `ObjectService.GetObjects` 一次拉一批。
+ *
+ * 契约：
+ * - 已解析（loading === false 且有对象）的 oref 跳过 —— 幂等，切换 workspace/重开不重复拉；
+ * - 按 400/批调 `GetObjects`，超出分批 await；
+ * - 每个返回对象走 `updateWaveObject`（复用 version guard，不回退新版本）；
+ * - 服务端 null 的对象跳过（不写缓存）；失败静默 —— prime 只是旁路，单件懒加载仍是兜底。
+ */
+async function primeWaveObjects(orefs: string[]): Promise<void> {
+    if (orefs == null || orefs.length === 0) {
+        return;
+    }
+    const pendingOrefs: string[] = [];
+    const seen = new Set<string>();
+    for (const oref of orefs) {
+        if (typeof oref !== "string" || oref === "" || seen.has(oref)) {
+            continue;
+        }
+        seen.add(oref);
+        const wov = getWaveObjectValue(oref, false);
+        if (wov != null) {
+            const curData: WaveObjectDataItemType<WaveObj> = globalStore.get(wov.dataAtom);
+            if (curData.loading === false && curData.value != null) {
+                continue;
+            }
+        }
+        pendingOrefs.push(oref);
+    }
+    for (let i = 0; i < pendingOrefs.length; i += PrimeWaveObjectsBatchSize) {
+        const batch = pendingOrefs.slice(i, i + PrimeWaveObjectsBatchSize);
+        let objs: WaveObj[];
+        try {
+            objs = await ObjectService.GetObjects(batch);
+        } catch (error) {
+            console.warn("primeWaveObjects failed", error);
+            return;
+        }
+        if (objs == null) {
+            continue;
+        }
+        for (const obj of objs) {
+            if (obj == null || !isValidWaveObj(obj)) {
+                continue;
+            }
+            updateWaveObject({ updatetype: "update", otype: obj.otype, oid: obj.oid, obj });
+        }
+    }
+}
+
 // gets the value of a WaveObject from the cache.
 // should provide getFn if it is available (e.g. inside of a jotai atom)
 // otherwise it will use the globalStore.get function
@@ -433,6 +490,32 @@ export {
     loadAndPinWaveObject,
     makeORef,
     mockObjectForPreview,
+    primeWaveObjects,
+    reloadWaveObject,
+    setObjectValue,
+    splitORef,
+    updateWaveObject,
+    updateWaveObjects,
+    useWaveObjectValue,
+    wpsSubscribeToObject,
+};
+
+/**
+ * 命名空间形态的同一套 API（`import { WOS } from "./wos"`）。
+ *
+ * 面板/测试都用 `WOS.xxx` 读，与 `global.ts` 的 `import * as WOS` 同源，
+ * 避免调用方在两种 import 风格之间分叉。
+ */
+export const WOS = {
+    callBackendService,
+    getObjectValue,
+    getWaveObjectAtom,
+    getWaveObjectLoadingAtom,
+    isWaveObjectNullAtom,
+    loadAndPinWaveObject,
+    makeORef,
+    mockObjectForPreview,
+    primeWaveObjects,
     reloadWaveObject,
     setObjectValue,
     splitORef,

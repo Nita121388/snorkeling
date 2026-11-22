@@ -1,0 +1,30 @@
+{
+  "id": "overview-tab-card-ux",
+  "name": "overview-tab-card-ux",
+  "title": "Overview Tab 分组修复 + 卡片发送 + 新建 Tab",
+  "description": "Overview 三件 UX 整改：Tab 分组 tab-first 化修显示 bug（P0）、agent 卡点击展开详情+composer 发送（P1）、Overview 内新建 Tab（P2）",
+  "status": "planning",
+  "dev_type": null,
+  "scope": null,
+  "package": "snorkeling-docs",
+  "priority": "P2",
+  "creator": "nita",
+  "assignee": "nita",
+  "createdAt": "2026-11-22",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": "snorkeling",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [
+    "11-22-overview-tab-grouping",
+    "11-22-overview-card-send",
+    "11-22-overview-new-tab"
+  ],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {}
+}

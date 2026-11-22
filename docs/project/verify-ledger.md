@@ -290,3 +290,13 @@
 | 2026-11-21 19:55 | agent-roundtrip | ❌ 11/12 | launch+reset | `20261121T19474-agent-roundtrip` | 05ba66388 |
 | 2026-11-21 20:05 | agent-roundtrip | ❌ 11/12 | launch+reset | `20261121T19573-agent-roundtrip` | 05ba66388 |
 | 2026-11-21 20:22 | agent-roundtrip | ✅ 12/12 | launch+reset | `20261121T20160-agent-roundtrip` | 05ba66388 |
+| 2026-11-22 07:44 | overview-ux | ❌ fatal（未跑） | attach | `20261122T07433-overview-ux` | 730f08341 |
+| 2026-11-22 07:45 | overview-ux | ❌ 7/9 | launch+reset | `20261122T07393-overview-ux` | 730f08341 |
+| 2026-11-22 07:52 | overview-ux | ❌ 7/9 | launch+reset | `20261122T07472-overview-ux` | 730f08341 |
+| 2026-11-22 07:55 | overview-ux | ❌ fatal（未跑） | attach | `20261122T07543-overview-ux` | 730f08341 |
+| 2026-11-22 08:00 | overview-ux | ❌ 4/4（fatal） | launch+reset | `20261122T07554-overview-ux` | 730f08341 |
+| 2026-11-22 08:09 | overview-ux | ❌ 8/9 | launch+reset | `20261122T08043-overview-ux` | 730f08341 |
+| 2026-11-22 08:16 | overview-ux | ❌ 9/10 | launch+reset | `20261122T08112-overview-ux` | 730f08341 |
+| 2026-11-22 08:30 | overview-ux | ❌ fatal（未跑） | launch+reset | `20261122T08235-overview-ux` | 730f08341 |
+| 2026-11-22 08:33 | overview-board | ❌ 70/79 | launch+reset | `20261122T08260-overviewboard` | working-tree |
+| 2026-11-22 08:37 | overview-ux | ✅ 10/10 | launch+reset | `20261122T08330-overview-ux` | 730f08341 |

@@ -1,0 +1,11 @@
+ [31m×[39m frontend/app/store/wos-prime.test.ts[2m > [22mprimeWaveObjects[2m > [22m190 个未解析 oref → 恰好 1 次 GetObjects（400 上限内不分批）[32m 7[2mms[22m[39m
+ [31m×[39m frontend/app/store/wos-prime.test.ts[2m > [22mprimeWaveObjects[2m > [22m已解析的 oref 跳过（幂等，第二次不再拉）[32m 1[2mms[22m[39m
+ [31m×[39m frontend/app/store/wos-prime.test.ts[2m > [22mprimeWaveObjects[2m > [22m服务端返回 null 的对象不写缓存、不抛错[32m 0[2mms[22m[39m
+ [31m×[39m frontend/app/store/wos-prime.test.ts[2m > [22mprimeWaveObjects[2m > [22m超过 400 分批[32m 1[2mms[22m[39m
+[41m[1m FAIL [22m[49m frontend/app/session-overview/overview-tab-groups.test.ts[2m [ frontend/app/session-overview/overview-tab-groups.test.ts ][22m
+[31m[1mError[22m: Cannot find module './overview-tab-groups' imported from 'E:/code/snorkeling/frontend/app/session-overview/overview-tab-groups.test.ts'[39m
+[31m[1mSerialized Error:[22m[39m [90m{ code: 'ERR_MODULE_NOT_FOUND' }[39m
+[41m[1m FAIL [22m[49m frontend/app/store/wos-prime.test.ts[2m > [22mprimeWaveObjects[2m > [22m190 个未解析 oref → 恰好 1 次 GetObjects（400 上限内不分批）
+[41m[1m FAIL [22m[49m frontend/app/store/wos-prime.test.ts[2m > [22mprimeWaveObjects[2m > [22m已解析的 oref 跳过（幂等，第二次不再拉）
+[41m[1m FAIL [22m[49m frontend/app/store/wos-prime.test.ts[2m > [22mprimeWaveObjects[2m > [22m服务端返回 null 的对象不写缓存、不抛错
+[41m[1m FAIL [22m[49m frontend/app/store/wos-prime.test.ts[2m > [22mprimeWaveObjects[2m > [22m超过 400 分批

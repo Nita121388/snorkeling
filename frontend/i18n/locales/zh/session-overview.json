@@ -97,7 +97,12 @@
         "viewTimeline": "时间线",
         "viewListTitle": "列表视图",
         "viewBoardTitle": "看板视图",
-        "viewTimelineTitle": "时间线视图"
+        "viewTimelineTitle": "时间线视图",
+        "tabUnopened": "未打开",
+        "tabBlockCount": "{{n}} 块",
+        "tabAgentsCount": "{{n}} agents",
+        "tabSummary": "共 {{tabs}} Tab（显示 {{shown}}）· {{agents}} 个 agent",
+        "tabLoading": "加载中"
     },
     "dialog": {
         "badgeNotification": "通知",

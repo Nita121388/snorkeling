@@ -27,7 +27,7 @@ import { AISessionsServiceType, BlockServiceType, ObjectService } from "@/app/st
 import { RpcApi } from "@/app/store/wshclientapi";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
 import { primeSessionNote } from "@/app/store/session-note-cache";
-import { openedThisLaunchTabIdsAtom, wasTabOpenedThisLaunch } from "@/app/tab/tab-open-state";
+import { openedThisLaunchTabIdsAtom } from "@/app/tab/tab-open-state";
 import {
     AiSessionNoteUpdatedEvent,
     dispatchAISessionNoteUpdated,
@@ -75,6 +75,7 @@ import {
     type OverviewViewModeImplemented,
 } from "./overview-board-model";
 import { OverviewTimeline } from "./overview-timeline";
+import { buildTabGroups, type OverviewTabGroup } from "./overview-tab-groups";
 import {
     buildTimelineRows,
     buildTimelineSegments,
@@ -91,7 +92,7 @@ import {
     agentStatusHookProvidersForInstall,
     agentStatusHookStatusesNeedingInstall,
 } from "./session-overview-agent-status";
-import { SessionOverviewModel } from "./session-overview-model";
+import { SessionOverviewModel, type OverviewBlock } from "./session-overview-model";
 import {
     getCachedSessionDetail,
     getCachedSessionSummary,
@@ -107,18 +108,6 @@ import "./session-overview.scss";
 
 const agentStatusLog = debug("wave:agentstatus");
 const overviewLog = debug("wave:sessionoverview");
-
-type OverviewBlock = {
-    tabId: string;
-    tabName: string;
-    blockId: string;
-    block: Block;
-    view: string;
-    title: string;
-    isAgentLike: boolean;
-    agentProvider: string;
-    sessionId: string;
-};
 
 type DetailState = {
     loading: boolean;
@@ -156,12 +145,6 @@ type HookInstallState = {
 };
 
 type NoteSaveStatus = "idle" | "saving" | "saved" | "error";
-
-type TabGroup = {
-    tabId: string;
-    tabName: string;
-    blocks: OverviewBlock[];
-};
 
 const SessionOverviewNoteAutoSaveDelayMs = 3000;
 
@@ -310,7 +293,7 @@ function resolveBoardAvatar(
             iconClass: makeIconClass(blockViewToIcon(block.view), false, { defaultIcon: "square" }),
         };
     }
-    const icon = getAgentIcon(block.agentProvider, {
+    const icon = getAgentIcon(block.agentProvider ?? "", {
         meta: block.block?.meta,
         sessionId: block.sessionId,
         personas,
@@ -331,6 +314,40 @@ function useOverviewBlocks(workspace: Workspace | null): OverviewBlock[] {
     const activeLocale = useActiveLocale();
     const tabIds = workspace?.tabids ?? [];
     const tabIdsKey = tabIds.join("\n");
+    // 两阶段批量 prime（读路径旁路，2026-11-22）：先把 tab 一次拉齐（1 次 GetObjects），
+    // 再把这些 tab 的 block 一次拉齐（1 次 GetObjects，>400 分批）。此前每块单发
+    // GetObject（19 Tab ≈ 190 次），首帧全 null → 组被「空组过滤」删掉。
+    // 已解析 oref 幂等跳过；单件懒加载（getWaveObjectAtom）保留作为兜底。
+    useEffect(() => {
+        if (tabIds.length === 0) {
+            return;
+        }
+        let cancelled = false;
+        const primeTabsAndBlocks = async (): Promise<void> => {
+            await WOS.primeWaveObjects(tabIds.map((tabId) => WOS.makeORef("tab", tabId)));
+            if (cancelled) {
+                return;
+            }
+            const blockOrefs: string[] = [];
+            for (const tabId of tabIds) {
+                const tab = WOS.getObjectValue<Tab>(WOS.makeORef("tab", tabId));
+                for (const blockId of tab?.blockids ?? []) {
+                    const oref = WOS.makeORef("block", blockId);
+                    if (oref != null) {
+                        blockOrefs.push(oref);
+                    }
+                }
+            }
+            if (cancelled || blockOrefs.length === 0) {
+                return;
+            }
+            await WOS.primeWaveObjects(blockOrefs);
+        };
+        fireAndForget(primeTabsAndBlocks);
+        return () => {
+            cancelled = true;
+        };
+    }, [workspace?.oid, tabIdsKey]);
     const overviewAtom = useMemo(
         () =>
             jotai.atom((get) => {
@@ -365,6 +382,41 @@ function useOverviewBlocks(workspace: Workspace | null): OverviewBlock[] {
         [workspace?.oid, tabIdsKey, activeLocale]
     );
     return jotai.useAtomValue(overviewAtom);
+}
+
+/**
+ * Tab 分组需要的静态索引：解析后的 Tab 对象 + 哪些 block id 是 Overview 块。
+ *
+ * 单独成 hook（而不是揉进 `useOverviewBlocks`）是因为那边输出 shape 被看板/时间线共用，
+ * 不能变；这里只供列表分组用，`overviewBlockIds` 用来判定 `empty`（只含 Overview 块的 Tab）。
+ */
+function useOverviewTabIndex(workspace: Workspace | null): {
+    tabById: Map<string, Tab | null>;
+    overviewBlockIds: Set<string>;
+} {
+    const tabIds = workspace?.tabids ?? [];
+    const tabIdsKey = tabIds.join("\n");
+    const indexAtom = useMemo(
+        () =>
+            jotai.atom((get) => {
+                const tabById = new Map<string, Tab | null>();
+                const overviewBlockIds = new Set<string>();
+                for (const tabId of tabIds) {
+                    const tab = get(WOS.getWaveObjectAtom<Tab>(WOS.makeORef("tab", tabId)));
+                    tabById.set(tabId, tab ?? null);
+                    for (const blockId of tab?.blockids ?? []) {
+                        const block = get(WOS.getWaveObjectAtom<Block>(WOS.makeORef("block", blockId)));
+                        const meta = (block?.meta ?? {}) as Record<string, unknown>;
+                        if (meta.view === "sessionoverview") {
+                            overviewBlockIds.add(blockId);
+                        }
+                    }
+                }
+                return { tabById, overviewBlockIds };
+            }),
+        [workspace?.oid, tabIdsKey]
+    );
+    return jotai.useAtomValue(indexAtom);
 }
 
 /**
@@ -1702,7 +1754,8 @@ function RowMetaChips({ summary }: { summary: SessionSummary | null }) {
                     data-overview-row-prop={row.key}
                     title={`${row.name}: ${propValue(row)}`}
                 >
-                    <span className="session-overview-row-prop-name">{row.name}</span>
+                    {/* 自解释值（色胶囊 / 多值）省名字，名字留在 title（与看板卡同一 hideName 口径） */}
+                    {row.hideName ? null : <span className="session-overview-row-prop-name">{row.name}</span>}
                     {row.single ? (
                         <span className={cn("property-chip", `property-chip--${row.single.color}`)}>
                             {row.single.value}
@@ -1786,7 +1839,7 @@ function BlockRow({
     const personas = useAgentPersonas();
     const sessionEmojis = useSessionEmojis();
     const agentIcon = block.isAgentLike
-        ? getAgentIcon(block.agentProvider, { meta: block.block?.meta, personas, sessionEmojis })
+        ? getAgentIcon(block.agentProvider ?? "", { meta: block.block?.meta, personas, sessionEmojis })
         : null;
     const agentStatusUnread =
         agentStatus != null &&
@@ -2035,8 +2088,9 @@ function TabGroupSection({
     onAckAgentStatus,
     onAckTabAgentStatuses,
     onAddAgent,
+    agentsOnly,
 }: {
-    group: TabGroup;
+    group: OverviewTabGroup;
     collapsed: boolean;
     details: Record<string, DetailState>;
     summaries: Record<string, SummaryState>;
@@ -2049,6 +2103,8 @@ function TabGroupSection({
     agentStatuses: Record<string, AgentStatus | null>;
     agentStatusAckedFp: Record<string, string>;
     agentStatusDoneAckedAt: Record<string, number>;
+    /** agentsOnly 开启时组头补一枚 `0 agents` 徽章（行全被滤空时）。 */
+    agentsOnly: boolean;
     onSelectBlock: (block: OverviewBlock) => void;
     onJumpBlock: (block: OverviewBlock) => void;
     onToggleSessionNote: (block: OverviewBlock) => void;
@@ -2076,7 +2132,17 @@ function TabGroupSection({
         );
     });
     return (
-        <section key={group.tabId} className={cn("session-overview-tab-group", collapsed && "is-collapsed")}>
+        <section
+            key={group.tabId}
+            data-overview-tab-group={group.tabId}
+            data-overview-tab-status={group.status}
+            className={cn(
+                "session-overview-tab-group",
+                collapsed && "is-collapsed",
+                group.status === "unopened" && "is-unopened",
+                group.status === "loading" && "is-loading"
+            )}
+        >
             <div className="session-overview-tab-title">
                 <button
                     type="button"
@@ -2098,7 +2164,24 @@ function TabGroupSection({
                     />
                     <i className={makeIconClass("table-columns", false)} />
                     <span className="session-overview-tab-name">{group.tabName}</span>
-                    <strong>{group.blocks.length}</strong>
+                    <strong>{group.blockCount}</strong>
+                    {group.status === "unopened" ? (
+                        <span className="session-overview-tab-status-badge">
+                            {t("session-overview:panel.tabUnopened")}
+                            {" · "}
+                            {i18n.t("session-overview:panel.tabBlockCount", { n: group.blockCount })}
+                        </span>
+                    ) : null}
+                    {agentsOnly && group.agentCount === 0 && group.blockCount > 0 && group.status !== "loading" ? (
+                        <span className="session-overview-tab-status-badge is-agents">
+                            {i18n.t("session-overview:panel.tabAgentsCount", { n: 0 })}
+                        </span>
+                    ) : null}
+                    {group.status === "loading" ? (
+                        <span className="session-overview-tab-status-badge is-loading">
+                            {t("session-overview:panel.tabLoading")}
+                        </span>
+                    ) : null}
                     <AggregateStatusChip
                         statuses={groupAgentStatuses}
                         unread={tabAgentStatusUnread}
@@ -2115,7 +2198,18 @@ function TabGroupSection({
                     <i className={makeIconClass("arrow-up-right-from-square", false)} />
                 </button>
             </div>
-            {!collapsed ? (
+            {group.status === "loading" ? (
+                <div
+                    className="session-overview-tab-skeleton"
+                    role="status"
+                    aria-label={t("session-overview:panel.tabLoading")}
+                >
+                    <div className="session-overview-tab-skeleton-row" />
+                    <div className="session-overview-tab-skeleton-row" />
+                    <div className="session-overview-tab-skeleton-row" />
+                </div>
+            ) : null}
+            {!collapsed && group.status !== "loading" ? (
                 <div className="session-overview-block-list">
                     {group.blocks.length === 0 ? (
                         <div className="session-overview-muted">{t("session-overview:dialog.noBlocks")}</div>
@@ -2180,26 +2274,6 @@ function TabGroupSection({
     );
 }
 
-function useTabGroups(workspace: Workspace | null, blocks: OverviewBlock[]): TabGroup[] {
-    const tabIds = workspace?.tabids ?? [];
-    const tabIdsKey = tabIds.join("\n");
-    const tabGroupsAtom = useMemo(
-        () =>
-            jotai.atom((get) =>
-                tabIds.map((tabId) => {
-                    const tab = get(WOS.getWaveObjectAtom<Tab>(WOS.makeORef("tab", tabId)));
-                    return {
-                        tabId,
-                        tabName: tab?.name ?? i18n.t("session-overview:dialog.untitled"),
-                        blocks: blocks.filter((block) => block.tabId === tabId),
-                    };
-                })
-            ),
-        [tabIdsKey, blocks]
-    );
-    return jotai.useAtomValue(tabGroupsAtom);
-}
-
 /** 视图按钮的图标/文案。新增视图时只改这里 + 渲染分支（顺序即按钮顺序）。 */
 const OverviewViewModeMeta = {
     list: {
@@ -2245,34 +2319,56 @@ function SessionOverviewPanel({ blockId, model }: ViewComponentProps<SessionOver
     const currentBlockId = jotai.useAtomValue(FocusManager.getInstance().blockFocusAtom);
     const sessionService = useMemo(() => new AISessionsServiceType(), []);
     const now = useNow(overviewVisible);
-    const tabGroups = useTabGroups(workspace, blocks);
+    const tabIndex = useOverviewTabIndex(workspace);
+    const workspaceTabIds = workspace?.tabids ?? [];
+    const tabIdsKey = workspaceTabIds.join("\n");
+    // tab-first 分组（2026-11-22）：组头常驻，只要 Tab 在 workspace.tabids 里就画。
+    // 删组权力只给 hideUnopenedTabs（且只删 unopened 组）；agentsOnly 只过滤组内行。
+    // 旧实现末尾的 `blocks.length > 0` 过滤就是"没打开过的 Tab 不显示"的根因之一。
     const displayedTabGroups = useMemo(
         () =>
-            tabGroups
-                .map((group) => ({
-                    ...group,
-                    blocks: agentsOnly ? group.blocks.filter((block) => block.isAgentLike) : group.blocks,
-                }))
-                .filter((group) => {
-                    if (hideUnopenedTabs && group.tabId !== activeTabId) {
-                        return wasTabOpenedThisLaunch(openedThisLaunchTabIds, group.tabId);
-                    }
-                    return true;
-                })
-                .filter((group) => group.blocks.length > 0),
-        [activeTabId, agentsOnly, hideUnopenedTabs, openedThisLaunchTabIds, tabGroups]
+            buildTabGroups({
+                tabIds: workspaceTabIds,
+                tabById: tabIndex.tabById,
+                blocks,
+                overviewBlockIds: tabIndex.overviewBlockIds,
+                openedThisLaunch: openedThisLaunchTabIds,
+                activeTabId: activeTabId ?? null,
+                hideUnopenedTabs,
+                agentsOnly,
+            }),
+        [
+            workspaceTabIds,
+            tabIndex,
+            blocks,
+            openedThisLaunchTabIds,
+            activeTabId,
+            hideUnopenedTabs,
+            agentsOnly,
+        ]
     );
     const [collapsedTabIds, setCollapsedTabIds] = useState<Record<string, boolean>>({});
+    // 折叠态默认值：显式记忆优先；否则 empty / unopened 组默认折叠（live 默认展开）。
+    const isGroupCollapsed = React.useCallback(
+        (tabId: string, status: OverviewTabGroup["status"]): boolean => {
+            const explicit = collapsedTabIds[tabId];
+            if (explicit !== undefined) {
+                return explicit;
+            }
+            return status === "empty" || status === "unopened";
+        },
+        [collapsedTabIds]
+    );
     const detailBlocks = useMemo(
         () =>
             displayedTabGroups.flatMap((group) =>
-                collapsedTabIds[group.tabId] === true
+                isGroupCollapsed(group.tabId, group.status)
                     ? []
                     : group.blocks.filter(
                           (block) => block.isAgentLike && block.sessionId && shouldShowFullOverviewBlock(block)
                       )
             ),
-        [collapsedTabIds, displayedTabGroups]
+        [displayedTabGroups, isGroupCollapsed]
     );
     useEffect(() => {
         overviewLog("visible detail blocks", {
@@ -2350,7 +2446,7 @@ function SessionOverviewPanel({ blockId, model }: ViewComponentProps<SessionOver
     const noteEditorRef = useRef<OverviewSessionNoteEditorHandle | null>(null);
     const noteSwitchSeqRef = useRef(0);
     const [sessionAction, setSessionAction] = useState<SessionActionState>({ deletingSessionId: "", error: "" });
-    const tabGroupsKey = useMemo(() => tabGroups.map((group) => group.tabId).join("\n"), [tabGroups]);
+    const tabGroupsKey = tabIdsKey;
     // ack 必须同时写 R (fingerprint) 与 D (doneAckedAt), 否则另一面会因为只认自己的那份判定而"复活".
     // 收口到 ackAgentStatusUnified: 本文件不再直接碰两个 store.
     const ackAgentStatus = React.useCallback((blockId: string, status: AgentStatus) => {
@@ -2382,17 +2478,18 @@ function SessionOverviewPanel({ blockId, model }: ViewComponentProps<SessionOver
             return changed ? next : current;
         });
     }, [tabGroupsKey]);
-    const toggleTabCollapsed = React.useCallback((tabId: string) => {
-        setCollapsedTabIds((current) => {
-            const next = { ...current };
-            if (next[tabId]) {
-                delete next[tabId];
-            } else {
-                next[tabId] = true;
-            }
-            return next;
-        });
-    }, []);
+    const toggleTabCollapsed = React.useCallback(
+        (tabId: string, status: OverviewTabGroup["status"]) => {
+            setCollapsedTabIds((current) => {
+                // 翻转必须相对「当前生效值」（显式记忆 ?? 默认值），不是相对显式记忆本身——
+                // 否则 empty/unopened 默认折叠组永远翻不开（点一次写 true，点两次删回 undefined，
+                // 两种状态都是折叠）。真机抓过：组头 toggle 成死按钮。
+                const cur = current[tabId] ?? (status === "empty" || status === "unopened");
+                return { ...current, [tabId]: !cur };
+            });
+        },
+        []
+    );
     const currentBlockInOverview = currentBlockId != null && blocks.some((block) => block.blockId === currentBlockId);
     const selectedBlockInOverview =
         selectedBlockId != null && blocks.some((block) => block.blockId === selectedBlockId);
@@ -2589,6 +2686,11 @@ function SessionOverviewPanel({ blockId, model }: ViewComponentProps<SessionOver
         () => displayedTabGroups.reduce((count, group) => count + group.blocks.length, 0),
         [displayedTabGroups]
     );
+    // 汇总行 K：只算当前渲染出来的组（hideUnopenedTabs / agentsOnly 已作用在 blocks 上）。
+    const totalAgentCount = useMemo(
+        () => displayedTabGroups.reduce((count, group) => count + group.agentCount, 0),
+        [displayedTabGroups]
+    );
     const unreadCount = blocks.filter((block) => {
         const updatedAtMs = normalizeTimeMs(
             summaries[block.sessionId]?.summary?.updatedAt ?? details[block.sessionId]?.detail?.summary?.updatedAt
@@ -2650,7 +2752,7 @@ function SessionOverviewPanel({ blockId, model }: ViewComponentProps<SessionOver
                     providerLabel,
                     // raw provider key（不是显示名）：看板 emoji 头像热区要用它开 picker。
                     // 非 agent 卡没有 persona，给 "" —— 卡片侧据此保留纯展示头像。
-                    provider: nextBlock.isAgentLike ? nextBlock.agentProvider : "",
+                    provider: nextBlock.isAgentLike ? (nextBlock.agentProvider ?? "") : "",
                     projectName,
                     // tags 去 `#` 前缀并去重：卡片 chip / 标签分组 / 属性面板共用同一份口径。
                     tags: normalizeBoardTags(summary?.tags ?? detailSummary?.tags),
@@ -2970,7 +3072,9 @@ function SessionOverviewPanel({ blockId, model }: ViewComponentProps<SessionOver
                     ) : OVERVIEW_BOARD_ENABLED && viewMode === "board" ? (
                         displayedTabGroups.length === 0 ? (
                             <div className="session-overview-empty">
-                                {tabGroups.length === 0 ? t("session-overview:panel.noTabs") : emptyMessage}
+                                {workspaceTabIds.length === 0
+                                    ? t("session-overview:panel.noTabs")
+                                    : emptyMessage}
                             </div>
                         ) : (
                             <OverviewBoard
@@ -2991,14 +3095,16 @@ function SessionOverviewPanel({ blockId, model }: ViewComponentProps<SessionOver
                         )
                     ) : displayedTabGroups.length === 0 ? (
                         <div className="session-overview-empty">
-                            {tabGroups.length === 0 ? t("session-overview:panel.noTabs") : emptyMessage}
+                            {workspaceTabIds.length === 0
+                                ? t("session-overview:panel.noTabs")
+                                : emptyMessage}
                         </div>
                     ) : (
                         displayedTabGroups.map((group) => (
                             <TabGroupSection
                                 key={group.tabId}
                                 group={group}
-                                collapsed={collapsedTabIds[group.tabId] === true}
+                                collapsed={isGroupCollapsed(group.tabId, group.status)}
                                 details={details}
                                 summaries={summaries}
                                 openNoteBlockId={openNoteBlockId}
@@ -3015,7 +3121,7 @@ function SessionOverviewPanel({ blockId, model }: ViewComponentProps<SessionOver
                                 }}
                                 onToggleSessionNote={toggleSessionNoteInline}
                                 onCloseSessionNote={closeSessionNoteInline}
-                                onToggleCollapsed={() => toggleTabCollapsed(group.tabId)}
+                                onToggleCollapsed={() => toggleTabCollapsed(group.tabId, group.status)}
                                 onOpenSessionDetail={(nextBlock) => {
                                     if (!nextBlock.sessionId) return;
                                     setSelectedBlockId(nextBlock.blockId);
@@ -3106,12 +3212,23 @@ function SessionOverviewPanel({ blockId, model }: ViewComponentProps<SessionOver
                                 }}
                                 agentStatusAckedFp={agentStatusAckedFp}
                                 agentStatusDoneAckedAt={agentStatusDoneAckedAt}
+                                agentsOnly={agentsOnly}
                                 onAckAgentStatus={ackAgentStatus}
                                 onAckTabAgentStatuses={() => ackTabAgentStatuses(group.blocks)}
                                 onAddAgent={openAddAgent}
                             />
                         ))
                     )}
+                    {/* 汇总行（R1.5）：N = workspace tabids 数，M = 渲染组数，K = agent 合计 */}
+                    {!OVERVIEW_BOARD_ENABLED || viewMode === "list" ? (
+                        <div className="session-overview-tab-summary" data-overview-tab-summary="">
+                            {i18n.t("session-overview:panel.tabSummary", {
+                                tabs: workspaceTabIds.length,
+                                shown: displayedTabGroups.length,
+                                agents: totalAgentCount,
+                            })}
+                        </div>
+                    ) : null}
                     {sessionAction.error ? <div className="session-overview-error">{sessionAction.error}</div> : null}
                 </div>
             </div>

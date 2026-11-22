@@ -19,6 +19,25 @@ import * as jotai from "jotai";
 import { atomWithStorage } from "jotai/vanilla/utils";
 import type { SyncStorage } from "jotai/vanilla/utils/atomWithStorage";
 
+/**
+ * 列表/看板/时间线共用的块投影。
+ *
+ * 放在 model 而不是面板文件里：分组纯函数（`overview-tab-groups.ts`）和它的单测
+ * 都要引用这个 shape，而纯函数不能反向依赖 React 面板。
+ */
+export type OverviewBlock = {
+	tabId: string;
+	tabName: string;
+	blockId: string;
+	block: Block;
+	view: string;
+	title: string;
+	isAgentLike: boolean;
+	/** 显示名来源（provider key）；非 agent 块为空串。 */
+	agentProvider: string | null;
+	sessionId: string;
+};
+
 const SessionOverviewView = "sessionoverview";
 const SessionOverviewTabKind = "overview";
 const SessionOverviewTabKindMetaKey = "snorkeling:tab-kind";
