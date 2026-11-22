@@ -300,3 +300,5 @@
 | 2026-11-22 08:30 | overview-ux | ❌ fatal（未跑） | launch+reset | `20261122T08235-overview-ux` | 730f08341 |
 | 2026-11-22 08:33 | overview-board | ❌ 70/79 | launch+reset | `20261122T08260-overviewboard` | working-tree |
 | 2026-11-22 08:37 | overview-ux | ✅ 10/10 | launch+reset | `20261122T08330-overview-ux` | 730f08341 |
+| 2026-11-22 08:52 | overview-board | ❌ 77/79 | launch+reset | `20261122T08473-overviewboard` | working-tree |
+| 2026-11-22 09:06 | overview-board | ❌ 77/79 | launch+reset | `20261122T09004-overviewboard` | working-tree |

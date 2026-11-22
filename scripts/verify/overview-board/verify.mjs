@@ -749,9 +749,8 @@ async function main() {
             const modals = await import("/frontend/app/store/modalmodel.ts");
             for (let i = 0; i < 10 && modals.modalsModel.hasOpenModals(); i++) modals.modalsModel.popModal();
             await new Promise((r) => setTimeout(r, 150));
-            const rect = (el) => {
+            const center = (el) => {
                 if (el == null) return null;
-                el.scrollIntoView({ block: "center", inline: "center" });
                 const r = el.getBoundingClientRect();
                 if (r.width < 4 || r.height < 4) return null;
                 return { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) };
@@ -762,14 +761,20 @@ async function main() {
             const withAvatar = agentCards.find(
                 (c) => c.querySelector(".session-overview-board-card-avatar-btn") != null
             );
-            await new Promise((r) => setTimeout(r, 120));
+            const target = withAvatar ?? agentCards[0];
+            const titleEl = target.querySelector(".session-overview-board-card-title");
+            const avatarEl = target.querySelector(".session-overview-board-card-avatar-btn");
+            // 只滚一次，等 snap 落定再量：board 用 scroll-snap-type: x proximity，
+            // 滚完立刻量会把「滑动中」的坐标交给真实指针（点偏 → 死区误报，2026-11-22 实测）。
+            (titleEl ?? target).scrollIntoView({ block: "center", inline: "center" });
+            await new Promise((r) => setTimeout(r, 300));
             return {
                 ok: true,
                 agentCards: agentCards.length,
                 avatarButtons: cards.filter((c) => c.querySelector(".session-overview-board-card-avatar-btn") != null).length,
-                targetBlockId: withAvatar?.getAttribute("data-block-id") ?? "",
-                title: rect(withAvatar?.querySelector(".session-overview-board-card-title") ?? agentCards[0]?.querySelector(".session-overview-board-card-title")),
-                avatarBtn: rect(withAvatar?.querySelector(".session-overview-board-card-avatar-btn")),
+                targetBlockId: target.getAttribute("data-block-id") ?? "",
+                title: center(titleEl),
+                avatarBtn: center(avatarEl),
             };
         })()`);
         const dialogVisible = () => client.evaluate(`document.querySelector(".agent-dialog") != null`);

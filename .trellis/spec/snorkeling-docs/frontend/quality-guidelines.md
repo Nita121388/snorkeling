@@ -1000,3 +1000,22 @@ Windows/Electron 下「焦点逃逸（blur）」不是可靠的关闭信号：
   （`handleOpen` 里 `closeAgentEmojiPicker()` 即此模式）。
 - 新写全屏 backdrop 时自问一句：它的 z-index 是否高于 modal 壳、有没有不依赖外点 dismiss
   的兜底关闭（表面 unmount / 打开其他弹窗时）。
+
+## Overview 看板卡：属性行的「隐藏名字」判定只能在模型层（2026-11-22, task 11-22-overview-agent-card-hierarchy）
+
+看板卡与列表行各有一份属性行渲染（`overview-board.tsx` 的 `card-props` 与 `session-overview.tsx` 的
+`RowMetaChips`），但**"哪些属性不值得显示名字"只允许在 `resolveBoardPropRows` 里判定一次**，写进
+`BoardPropRow.hideName`：
+
+- `select / status / person / relation / multi_select`：值本身自解释（色胶囊 / chips）→ `hideName: true`；
+- `text / number / url / date / checkbox`：去掉名字就读不懂 → `hideName: false`；
+- 名字不丢：两处渲染都保留 `title="名字: 值"`。
+
+第二份判定（各面自己 `if (type === "select")`）会立刻让卡片与列表行两副口径，改规则时只改模型层。
+
+同一任务里另一条同源规则：**卡面已经表达的属性不再占属性行** —— `BoardBuiltinPropKeys` 现已包含 `emoji`
+（卡面左上头像就是同一个 emoji），会话属性面板仍可见可编辑。新增"卡面已有同源展示"的属性时，
+优先考虑塞进这个集合而不是在渲染层逐个 `if`。
+
+meta 行形状词汇（同一任务）：状态 = 唯一彩色胶囊；agent 类型 = 品牌标（`getAgentLogoByProvider`，品牌色只上图标）
++ 名称；项目 = folder 图标 + 名称；标签 = 迷你方片（radius 4、无色描边）。四类信息不得共用同一种胶囊几何。

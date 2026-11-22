@@ -276,3 +276,16 @@ async function hoverUntil(client, point, probe, ready, { tries = 14, waitMs = 70
   卡死到 curl 000、renderer 空白、`initPromise timed out`，看起来像"实例起不来"，其实是 CPU/IO 打满。
   排查顺序：先 `curl http://127.0.0.1:<vite>`，000 就查有没有并行构建/其他重活在跑（Get-Process node 按 CPU 排序），
   杀掉后重起一轮；连续失败两次以上先停手，别让子代理无限重试。
+
+## 踩坑记录（2026-11-22, Overview 看板卡视觉整改）
+
+- **向导/引导弹窗的关闭按钮文案是本地化的，白名单只写英文 = 一条都匹配不上。** zh profile 下欢迎向导按钮是
+  「开始使用」，`scripts/verify/lib/launch.mjs` 的 `DISMISS_SCORER` 只有 Skip/Continue 等英文，`dismissOverlays()`
+  返回"无事可做"，向导留在屏幕上盖住整块看板 → 真实指针断言连红 9 条，而 `.click()` 合成点击照常绿。
+  已把「跳过/稍后/开始使用/继续/我同意」等中文标签并入白名单；**新增界面文案语言时要回看这个 scorer**。
+- **`scrollIntoView` 之后不能立刻量坐标：`scroll-snap-type: x proximity` 还在滑。** 量到的 rect 属于"滑动中"的帧，
+  真实指针点下去落在卡片外或右栏上（实测 rect x=1312 两次不同），表现为"点标题/点头像都打不开"，但 DOM 点击全绿。
+  正解：滚一次 → 等 ~300ms 让 snap 落定 → 再同时量标题与头像的 `getBoundingClientRect()` 中心点。
+- **卡面从 `transparent` 改成表面色后，验证断言要比"和面板不同"而不是"不是白色"。**
+  `card-surface-raised` 断言取 `getComputedStyle(card).backgroundColor` 与 `.session-overview-panel` 的底色比较，
+  暗色主题下是 `rgba(255,255,255,0.06)` vs `rgba(31,33,31,0.5)` —— 只断言"非 transparent"会漏掉"面板也 recap 同色"的情况。
