@@ -115,9 +115,50 @@ describe("resolveBoardPropRows", () => {
             props[`p${i}`] = cell(String(i), { type: "text", order: i + 1 });
         }
         expect(resolveBoardPropRows(props, undefined, 3)).toEqual({
-            visible: [0, 1, 2].map((i) => ({ key: `p${i}`, name: `P${i}`, type: "text", text: String(i) })),
+            visible: [0, 1, 2].map((i) => ({
+                key: `p${i}`,
+                name: `P${i}`,
+                type: "text",
+                text: String(i),
+                hideName: false,
+            })),
             hiddenCount: 2,
         });
+    });
+
+    it("drops the emoji prop: 卡面头像已是同一个 emoji，属性行不重复（2026-11-22）", () => {
+        const props: Record<string, PropertyCell> = {
+            emoji: cell("🐚", { type: "text", name: "emoji" }),
+            owner: cell("nita", { type: "person", name: "负责人" }),
+        };
+        const { visible } = resolveBoardPropRows(props);
+        expect(visible.map((row) => row.key)).toEqual(["owner"]);
+    });
+
+    it("hideName 只在自解释值上为 true（select/status/person/relation/multi_select）", () => {
+        const props: Record<string, PropertyCell> = {
+            status: cell("Done", { type: "select" }),
+            owner: cell(["nita"], { type: "person" }),
+            labels: cell(["a", "b"], { type: "multi_select" }),
+            shell: cell("bash", { type: "text" }),
+            count: cell(3, { type: "number" }),
+            done: cell(true, { type: "checkbox" }),
+            due: cell("2026-11-22", { type: "date" }),
+            link: cell("https://example.com", { type: "url" }),
+        };
+        const byKey = new Map(resolveBoardPropRows(props, undefined, 9).visible.map((row) => [row.key, row]));
+        // 自解释值：胶囊 / chips → 省名字
+        expect(byKey.get("status")?.hideName).toBe(true);
+        expect(byKey.get("owner")?.hideName).toBe(true);
+        expect(byKey.get("labels")?.hideName).toBe(true);
+        // 纯文本值：去掉名字就读不懂 → 必须保留
+        expect(byKey.get("shell")?.hideName).toBe(false);
+        expect(byKey.get("count")?.hideName).toBe(false);
+        expect(byKey.get("done")?.hideName).toBe(false);
+        expect(byKey.get("due")?.hideName).toBe(false);
+        expect(byKey.get("link")?.hideName).toBe(false);
+        // 名字本身不丢（渲染层放 title="name: value"）
+        expect(byKey.get("status")?.name).toBe("Status");
     });
 
     it("falls back to humanized key when name is missing", () => {

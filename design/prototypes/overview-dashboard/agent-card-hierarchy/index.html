@@ -370,6 +370,143 @@
                 font-weight: 500;
                 opacity: 0.82;
             }
+
+            /* ================= meta 行层次方案（M1/M2/M3） =================
+               问题：状态胶囊 / provider / 项目 / tags 四种东西共用同一种胶囊几何，
+               大小相近、无轻重，扫读时四者互相冒充。
+               思路：只保留一个真胶囊（状态），归属信息降成排版文字，标签再降一档。 */
+
+            /* 共同：plain 文本档 */
+            .meta-source,
+            .meta-tag,
+            .meta-sep-text {
+                font-size: 9.5px;
+                font-weight: 500;
+                line-height: 1.2;
+                white-space: nowrap;
+            }
+            .meta-source {
+                max-width: 110px;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                color: var(--secondary-text-color);
+            }
+            /* 归属信息是“环境/坐标”，不是标记，所以不加底色 */
+            .meta-project {
+                max-width: 96px;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                color: rgb(from var(--secondary-text-color) r g b / 0.78);
+                font-size: 9.5px;
+                white-space: nowrap;
+            }
+            .meta-sep-text {
+                color: rgb(from var(--secondary-text-color) r g b / 0.45);
+            }
+            /* tags 最弱：无底、无框，只靠 # 前缀与字号 */
+            .meta-tag {
+                max-width: 84px;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                color: rgb(from var(--secondary-text-color) r g b / 0.85);
+                font-size: 9.5px;
+            }
+
+            /* M1：1 胶囊 + 纯文本归属 + 纯文本标签 */
+            .meta-v1 .meta-tag {
+                opacity: 0.82;
+            }
+            /* M2：provider 保留描边胶囊（无底），项目与 tags 继续降成文本 */
+            .meta-provider {
+                display: inline-flex;
+                height: 15px;
+                max-width: 96px;
+                align-items: center;
+                padding: 0 6px;
+                border: 1px solid rgb(from var(--border-color) r g b / 0.9);
+                border-radius: 999px;
+                background: transparent;
+                color: var(--secondary-text-color);
+                font-size: 9px;
+                font-weight: 600;
+                line-height: 1;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+            }
+            /* M4：图标化词汇 —— agent 类型用品牌标+品牌色（agent-logo.tsx 同源），
+               项目用 folder 图标（全 app 的 fa-folder 词汇），tags 用迷你小方片。
+               三类信息三种形状，不再共用一种胶囊。 */
+            /* M4 组间距 7px：三组各成一簇，比组内 3px 大三档 */
+            .meta-m4 {
+                gap: 7px;
+            }
+            .meta-m4 .meta-group + .meta-tag-mini {
+                margin-left: 0;
+            }
+            .meta-group {
+                display: inline-flex;
+                min-width: 0;
+                align-items: center;
+                gap: 3px;
+                white-space: nowrap;
+            }
+            .meta-ico {
+                width: 10px;
+                height: 10px;
+                flex: 0 0 auto;
+            }
+            .meta-agent {
+                /* 品牌色只上图标：文字保持 secondary，避免与状态色抢彩色通道 */
+                color: var(--secondary-text-color);
+                font-size: 9.5px;
+                font-weight: 600;
+                max-width: 84px;
+                overflow: hidden;
+                text-overflow: ellipsis;
+            }
+            .meta-folder {
+                color: var(--secondary-text-color);
+                font-size: 9.5px;
+                font-weight: 500;
+                max-width: 96px;
+                overflow: hidden;
+                text-overflow: ellipsis;
+            }
+            .meta-folder .meta-ico {
+                opacity: 0.85;
+            }
+            /* tags：迷你小方片（radius 4、无描边、极淡底），与状态胶囊/文字都不同形 */
+            .meta-tag-mini {
+                display: inline-flex;
+                height: 15px;
+                max-width: 84px;
+                align-items: center;
+                padding: 0 6px;
+                border-radius: 4px;
+                background: rgb(from var(--main-text-color) r g b / 0.06);
+                color: rgb(from var(--main-text-color) r g b / 0.72);
+                font-size: 9.5px;
+                font-weight: 500;
+                line-height: 1;
+                overflow: hidden;
+                text-overflow: ellipsis;
+            }
+            .meta-tag-mini .meta-hash {
+                opacity: 0.5;
+                margin-right: 1px;
+            }
+
+            /* M3：归属左簇，标签被推到行尾（空间分隔，靠对齐而非分隔符） */
+            .meta-v3 .meta-tags {
+                margin-left: auto;
+                padding-left: 8px;
+                border-left: 1px solid rgb(from var(--border-color) r g b / 0.6);
+                display: inline-flex;
+                gap: 7px;
+                min-width: 0;
+                overflow: hidden;
+            }
             /* .session-overview-board-card-view-label：这一档才有描边 */
             .view-label {
                 padding: 1px 6px;
@@ -693,6 +830,13 @@
                     <button data-variant="b">B 内容井</button>
                     <button data-variant="c">C +状态左轨</button>
                 </div>
+                <span class="control-label">meta 行</span>
+                <div class="seg" id="meta-seg">
+                    <button data-meta="m4" class="is-on">M4 图标化 ✦</button>
+                    <button data-meta="m1">M1 文本</button>
+                    <button data-meta="m2">M2 描边</button>
+                    <button data-meta="m3">M3 右对齐</button>
+                </div>
                 <span class="control-label">列宽</span>
                 <div class="seg" id="width-seg">
                     <button data-w="220">220</button>
@@ -768,6 +912,54 @@
                     <td>值只有 ✓</td>
                 </tr>
             </table>
+
+            <h2>meta 行分层（M1 / M2 / M3）</h2>
+            <p>
+                问题：<b>状态胶囊 / provider / 项目 / tags 四种东西共用同一种胶囊几何</b>（都是 16px 高、9–10px 字的圆角胶囊），
+                大小相近、无轻重，四者互相冒充 —— 扫读时看不出“哪个是状态、哪个是环境、哪个是标记”。
+                信息也完全不同类：状态是「现在在干什么」（最高），provider/项目是「在哪」（坐标），tags 是「归类」（最弱）。
+            </p>
+            <p>
+                思路：<b>只保留一个真胶囊（状态），归属降成「图标 + 文字」，标签降成迷你方片</b>。
+                三类信息三种形状词汇，形状本身就在说“这是状态 / 这是坐标 / 这是标记”，不用再靠字号硬拉层级。
+                M4 是推荐形态，M1~M3 保留作对照：
+            </p>
+            <table>
+                <tr>
+                    <th>变体</th>
+                    <th>状态</th>
+                    <th>provider / 项目</th>
+                    <th>tags</th>
+                </tr>
+                <tr>
+                    <td><b>M4 图标化</b>（推荐）</td>
+                    <td>着色胶囊（唯一胶囊、唯一彩色信号）</td>
+                    <td>agent 类型 = 品牌标 + 名称（品牌色只上图标）；项目 = folder 图标 + 名称</td>
+                    <td>迷你小方片（radius 4、极淡底、<code>#</code> 前缀降透明度）</td>
+                </tr>
+                <tr>
+                    <td><b>M1 文本</b></td>
+                    <td>着色胶囊（唯一胶囊）</td>
+                    <td><code>codex · snorkeling</code> 纯文本 9.5px secondary，中点分隔</td>
+                    <td><code>#tag</code> 纯文本 9.5px、opacity .82</td>
+                </tr>
+                <tr>
+                    <td><b>M2 描边</b></td>
+                    <td>着色胶囊</td>
+                    <td>provider 描边胶囊（无底、次要色）+ 项目文本</td>
+                    <td>纯文本</td>
+                </tr>
+                <tr>
+                    <td><b>M3 右对齐</b></td>
+                    <td>着色胶囊</td>
+                    <td>同 M1</td>
+                    <td>推到行尾 + 1px 竖线，靠空间分隔（位置稳定）</td>
+                </tr>
+            </table>
+            <p>
+                保守做法（不动信息结构、只换渲染）：<code>.session-overview-board-chip</code> 去掉 provider/项目的底色与胶囊，
+                保留 tags 的胶囊但降不透明度；M1/M3 则是彻底去胶囊化。三者卡高差异 ≤ 2px（除 220px 窄列 tags 换行时 +13px）。
+            </p>
 
             <h2>卡面层次</h2>
             <p>
@@ -871,15 +1063,74 @@
                 return `<span class="card-prop" title="${p.name}: ${p.value}">${dropName ? "" : name}${value}</span>`;
             }
 
-            function renderCard(c, compact) {
+            /**
+             * meta 行层次：只保留一个真胶囊（状态），归属降为排版文字，标签再降一档。
+             * M1：状态胶囊 + provider·project 文本 + #tag 文本
+             * M2：状态胶囊 + provider 描边胶囊（无底）+ project 文本 + #tag 文本
+             * M3：同 M1，但标签被推到行尾（空间分隔 + 1px 竖线）
+             */
+            function renderMeta(c, metaVariant) {
                 const statusChip =
                     `<span class="status-chip ${c.status.cls}" style="--status-color: ${c.status.color}">` +
                     `<span class="dot"></span>${c.status.label}` +
                     (c.status.age ? ` <span class="age">${c.status.age}</span>` : "") +
                     `</span>`;
-                const metaChips =
-                    `<span class="view-label">${c.kindLabel}</span>` +
-                    c.metaChips.map((m) => `<span class="board-chip">${m}</span>`).join("");
+                const provider = c.metaChips[0] ?? "";
+                const project = c.metaChips[1] ?? "";
+                const tagText = c.tags.map((t) => `<span class="meta-tag">${t}</span>`).join("");
+                let cluster;
+                let tags;
+                const brand = { codex: "#74a7cb", opencode: "#e0b956", pi: "#888888" }[provider] ?? "var(--secondary-text-color)";
+                if (metaVariant === "m4") {
+                    const agentGroup = `<span class="meta-group" title="agent provider">
+                            <svg class="meta-ico" viewBox="0 0 10 10" style="--brand-color:${brand}" aria-hidden="true">
+                                <path fill="${brand}" d="M5 0 L6.1 3.9 L10 5 L6.1 6.1 L5 10 L3.9 6.1 L0 5 L3.9 3.9 Z" />
+                            </svg>
+                            <span class="meta-agent">${provider}</span>
+                        </span>`;
+                    const folderGroup = project
+                        ? `<span class="meta-group" title="项目">
+                            <svg class="meta-ico" viewBox="0 0 12 12" aria-hidden="true">
+                                <path fill="var(--secondary-text-color)" d="M1.2 2.2 h3.1 l1.3 1.4 h5.2 a0.9 0.9 0 0 1 0.9 0.9 v5.1 a0.9 0.9 0 0 1 -0.9 0.9 H1.2 a0.9 0.9 0 0 1 -0.9 -0.9 V3.1 a0.9 0.9 0 0 1 0.9 -0.9 Z" />
+                            </svg>
+                            <span class="meta-folder">${project}</span>
+                        </span>`
+                        : "";
+                    const tagGroup = c.tags
+                        .map(
+                            (t) =>
+                                `<span class="meta-tag-mini"><span class="meta-hash">#</span>${t.slice(1)}</span>`
+                        )
+                        .join("");
+                    return `<span class="card-meta meta-m4">${statusChip}${agentGroup}${folderGroup}${tagGroup}</span>`;
+                }
+                if (metaVariant === "m2") {
+                    cluster =
+                        `<span class="meta-provider" title="provider">${provider}</span>` +
+                        (project ? `<span class="meta-sep-text">·</span><span class="meta-project">${project}</span>` : "");
+                    tags = tagText;
+                } else if (metaVariant === "m3") {
+                    cluster =
+                        `<span class="meta-source" title="provider">${provider}</span>` +
+                        (project ? `<span class="meta-sep-text">·</span><span class="meta-project">${project}</span>` : "");
+                    tags = `<span class="meta-tags">${tagText}</span>`;
+                } else {
+                    cluster =
+                        `<span class="meta-source" title="provider">${provider}</span>` +
+                        (project ? `<span class="meta-sep-text">·</span><span class="meta-project">${project}</span>` : "");
+                    tags = tagText;
+                }
+                return `<span class="card-meta meta-${metaVariant}">${statusChip}${cluster}${tags}</span>`;
+            }
+
+            function renderCard(c, compact, metaVariant) {
+                const statusChip =
+                    `<span class="status-chip ${c.status.cls}" style="--status-color: ${c.status.color}">` +
+                    `<span class="dot"></span>${c.status.label}` +
+                    (c.status.age ? ` <span class="age">${c.status.age}</span>` : "") +
+                    `</span>`;
+                // 现状形态 / 无状态卡兜底用的胶囊簇（方案分支走 renderMeta）
+                const metaChips = c.metaChips.map((m) => `<span class="board-chip">${m}</span>`).join("");
                 const tags = c.tags.map((t) => `<span class="board-chip is-tag">${t}</span>`).join("");
                 // 属性行：compact（方案）下 emoji 属性整条不渲染 —— 左上头像已经表达同一信息，
                 // 用户 2026-11-22 截图确认两张 emoji 并排是重复。current 保留以对照现状。
@@ -893,7 +1144,10 @@
                         <span class="card-title">${c.title}</span>
                         <span class="card-age">${c.age}</span>
                     </span>`;
-                const meta = `<span class="card-meta">${statusChip}${metaChips}${tags}</span>`;
+                const meta =
+                    compact && c.status
+                        ? renderMeta(c, metaVariant)
+                        : `<span class="card-meta">${statusChip}${metaChips}${tags}</span>`;
                 const body = compact
                     ? `<span class="card-body">
                            <span class="card-preview">${c.preview}</span>
@@ -921,11 +1175,13 @@
 
             function renderColumn(el, variant) {
                 const compact = variant !== "current";
-                el.innerHTML = CARDS.map((c) => renderCard(c, compact)).join("");
+                el.innerHTML = CARDS.map((c) => renderCard(c, compact, state.meta)).join("");
             }
 
             const colCurrent = document.getElementById("col-current");
             const colProposal = document.getElementById("col-proposal");
+            // 全局渲染状态：卡片变体 × meta 行变体
+            const state = { variant: "a", meta: "m4" };
             const captions = {
                 a: "A · 卡面浮起 + 间距/字号分级",
                 b: "B · A + 正文内容井（surface-soft）",
@@ -933,10 +1189,17 @@
             };
 
             function setVariant(variant) {
+                state.variant = variant;
                 colProposal.className = `col variant-${variant}`;
                 document.getElementById("proposal-caption").textContent = captions[variant] ?? "";
                 renderColumn(colCurrent, "current");
                 renderColumn(colProposal, variant);
+                measureCards();
+            }
+
+            function setMeta(mv) {
+                state.meta = mv;
+                renderColumn(colProposal, state.variant);
                 measureCards();
             }
 
@@ -965,6 +1228,12 @@
                 if (!btn) return;
                 document.querySelectorAll("#variant-seg button").forEach((b) => b.classList.toggle("is-on", b === btn));
                 setVariant(btn.dataset.variant);
+            });
+            document.getElementById("meta-seg").addEventListener("click", (event) => {
+                const btn = event.target.closest("button[data-meta]");
+                if (!btn) return;
+                document.querySelectorAll("#meta-seg button").forEach((b) => b.classList.toggle("is-on", b === btn));
+                setMeta(btn.dataset.meta);
             });
             document.getElementById("width-seg").addEventListener("click", (event) => {
                 const btn = event.target.closest("button[data-w]");
@@ -997,6 +1266,13 @@
                 document
                     .querySelectorAll("#width-seg button")
                     .forEach((b) => b.classList.toggle("is-on", b.dataset.w === w));
+            }
+            const mv = params.get("meta");
+            if (["m1", "m2", "m3", "m4"].includes(mv)) {
+                state.meta = mv;
+                document
+                    .querySelectorAll("#meta-seg button")
+                    .forEach((b) => b.classList.toggle("is-on", b.dataset.meta === mv));
             }
             const startVariant = ["a", "b", "c"].includes(params.get("variant")) ? params.get("variant") : "a";
             document

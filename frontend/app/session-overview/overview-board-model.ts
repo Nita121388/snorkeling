@@ -662,6 +662,9 @@ const BoardBuiltinPropKeys: ReadonlySet<string> = new Set([
     "createdAt",
     "updated_at",
     "updatedAt",
+    // emoji：卡面左上头像已经是同一个 emoji，属性行再列一次 `emoji 🐚` 是纯重复
+    // （2026-11-22 真机截图）。会话属性面板（property-list）不受影响，仍可见可编辑。
+    "emoji",
 ]);
 
 /** Notion 9 色调色板（与 aisessions property-model 同序）——哈希上色保证同值同色。 */
@@ -703,6 +706,14 @@ export type BoardPropRow = {
     checked?: boolean;
     /** text / number / url：单行文本（已 String 化）。 */
     text?: string;
+    /**
+     * 是否省略属性名（只显示值）。
+     * `select/status` 的彩色胶囊、`person/multi_select` 的 chips 本身就自解释，
+     * 名字前缀是噪声（`Status In Progress` → `In Progress`）；
+     * `text/number/url/checkbox` 去掉名字就读不懂，必须保留。
+     * 名字不丢：渲染层继续把它放 `title="name: value"`。
+     */
+    hideName: boolean;
 };
 
 export type BoardPropRows = {
@@ -792,7 +803,14 @@ export function resolveBoardPropRows(
         const type = boardPropTypeOf(cell.type, cell.value);
         if (isBoardPropEmpty(type, cell.value)) continue;
         const name = (cell.name ?? "").trim() || humanizeBoardPropKey(key);
-        const row: BoardPropRow = { key, name, type };
+        // 自解释值（胶囊/chips）省略名字；纯文本值保留名字（hideName 判定只在这一个地方，两处渲染共读）
+        const hideName =
+            type === "select" ||
+            type === "status" ||
+            type === "person" ||
+            type === "relation" ||
+            type === "multi_select";
+        const row: BoardPropRow = { key, name, type, hideName };
         if (type === "multi_select" || type === "person" || type === "relation") {
             row.multi = boardPropStrings(cell.value);
         } else if (type === "checkbox") {

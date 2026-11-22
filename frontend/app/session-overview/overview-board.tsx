@@ -4,6 +4,7 @@
 import { openAgentEmojiPicker } from "@/app/agent-persona/picker-host";
 import type { AgentStatus } from "@/app/agent-status/agent-status-types";
 import { useAgentReadContext } from "@/app/agent-status/use-agent-status-view";
+import { getAgentLogoByProvider } from "@/app/view/term/agent-logo";
 import { i18n } from "@/i18n/config";
 import { cn, makeIconClass } from "@/util/util";
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -231,8 +232,12 @@ function BoardCardImpl({
     const ageTitle = formatBoardAgeTitle(card.updatedAt, now);
     const readContext = useAgentReadContext(card.blockId, status);
     const unread = readContext.read === "unread";
-    const chips = [card.providerLabel, card.projectName || card.tabName].filter((chip) => chip !== "");
-    const visibleChips = chips.slice(0, 2);
+    // meta 行三簇（2026-11-22 M4 图标化）：
+    //   provider（agent 类型）= 品牌标 + 名称；project = folder 图标 + 名称；tags = 迷你方片。
+    // 四类信息不再共用同一种胶囊几何 —— 胶囊只留给状态 chip。
+    const providerLabel = (card.providerLabel ?? "").trim();
+    const projectLabel = (card.projectName || card.tabName || "").trim();
+    const providerLogo = card.provider ? getAgentLogoByProvider(card.provider) : null;
 
     // Chip 内部是 <button>，卡片容器不能再是 <button>（嵌套按钮是非法 HTML，点击会串）。
     const openCard = () => onOpenCard(card);
@@ -380,26 +385,50 @@ function BoardCardImpl({
                 {metaLabel !== "" ? (
                     <span className="session-overview-board-card-view-label">{metaLabel}</span>
                 ) : null}
-                {visibleChips.map((chip, index) => (
-                    <span key={`${chip}-${index}`} className="session-overview-board-chip" title={chip}>
-                        {chip}
+                {providerLabel !== "" ? (
+                    <span className="session-overview-board-card-meta-group" data-board-meta="provider">
+                        {providerLogo != null ? (
+                            <span
+                                className="session-overview-board-card-meta-logo"
+                                style={providerLogo.iconColor != null ? { color: providerLogo.iconColor } : undefined}
+                                aria-hidden="true"
+                            >
+                                {providerLogo.icon}
+                            </span>
+                        ) : null}
+                        <span className="session-overview-board-card-meta-agent" title={providerLabel}>
+                            {providerLabel}
+                        </span>
                     </span>
-                ))}
-                {/* 会话标签：与 aisessions 属性面板同一套「标签 chip」观感，
-                    最多 3 个 + `+n` 溢出计数（硬上限，卡片高度不随标签数跳动）。 */}
+                ) : null}
+                {projectLabel !== "" ? (
+                    <span
+                        className="session-overview-board-card-meta-group"
+                        data-board-meta="project"
+                        title={projectLabel}
+                    >
+                        <i className={makeIconClass("folder", false)} aria-hidden="true" />
+                        <span className="session-overview-board-card-meta-folder">{projectLabel}</span>
+                    </span>
+                ) : null}
+                {/* 会话标签：迷你方片（与状态胶囊/文字都不同形），最多 3 个 + `+n` 溢出计数
+                    （硬上限，卡片高度不随标签数跳动）。`data-board-tag` 是 verify 探针契约。 */}
                 {tagChips.visible.map((tag) => (
                     <span
                         key={`tag-${tag}`}
-                        className="session-overview-board-chip is-tag"
+                        className="session-overview-board-tag"
                         data-board-tag={tag}
                         title={`#${tag}`}
                     >
-                        #{tag}
+                        <span className="session-overview-board-tag-hash" aria-hidden="true">
+                            #
+                        </span>
+                        {tag}
                     </span>
                 ))}
                 {tagChips.hiddenCount > 0 ? (
                     <span
-                        className="session-overview-board-chip is-tag-more"
+                        className="session-overview-board-tag-more"
                         data-board-tag-overflow={tagChips.hiddenCount}
                         title={i18n.t("session-overview:board.moreTags", { count: tagChips.hiddenCount })}
                     >
@@ -429,7 +458,10 @@ function BoardCardImpl({
                             data-board-prop-type={row.type}
                             title={`${row.name}: ${rowValue}`}
                         >
-                            <span className="session-overview-board-card-prop-name">{row.name}</span>
+                            {/* 自解释值（色胶囊 / chips）省名字；名字不丢，留在 title 里 */}
+                            {row.hideName ? null : (
+                                <span className="session-overview-board-card-prop-name">{row.name}</span>
+                            )}
                             {row.single ? (
                                 <span className={cn("property-chip", `property-chip--${row.single.color}`)}>
                                     {row.single.value}

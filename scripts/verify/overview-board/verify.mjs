@@ -396,6 +396,91 @@ async function main() {
         } else {
           skip("agent-card-status-chip", `状态播种失败: ${seeded.err}`);
         }
+        // ── 卡面层次（2026-11-22 overview-agent-card-hierarchy）：
+        //   1. 卡片不再是 transparent：与面板底色可区分（表面层 + 微阴影）；
+        //   2. 标题独占 13px 档；
+        //   3. meta 行三簇：provider 品牌标 / project folder / 标签迷你方片；
+        //   4. hideName：自解释值不再带属性名，但 title 仍含「名: 值」。
+        const hierarchy = await client.evaluate(`(() => {
+            const card = [...document.querySelectorAll(".session-overview-board-card")].find(
+                (c) => c.getAttribute("data-agent-like") === "true"
+            );
+            if (card == null) return { found: false };
+            const panel = card.closest(".session-overview-panel");
+            const cardBg = getComputedStyle(card).backgroundColor;
+            const panelBg = panel == null ? "" : getComputedStyle(panel).backgroundColor;
+            const title = card.querySelector(".session-overview-board-card-title");
+            const providerGroup = card.querySelector('[data-board-meta="provider"]');
+            const logo = providerGroup?.querySelector(".session-overview-board-card-meta-logo");
+            const projectGroup = card.querySelector('[data-board-meta="project"]');
+            const tags = [...card.querySelectorAll(".session-overview-board-tag")];
+            const tagStyle = tags.length > 0 ? getComputedStyle(tags[0]) : null;
+            const selfExplaining = new Set(["select", "status", "person", "relation", "multi_select"]);
+            const props = [...card.querySelectorAll(".session-overview-board-card-prop")];
+            const hideNameOk = props.filter((p) => {
+                const type = p.getAttribute("data-board-prop-type") ?? "";
+                if (!selfExplaining.has(type)) return false;
+                if (p.querySelector(".session-overview-board-card-prop-name") != null) return true; // 违例
+                return !(p.getAttribute("title") || "").includes(":"); // 名字必须留在 title
+            }).length;
+            return {
+                found: true,
+                cardBg,
+                panelBg,
+                titleSize: title ? getComputedStyle(title).fontSize : "",
+                providerText: (providerGroup?.querySelector(".session-overview-board-card-meta-agent")?.textContent || "").trim(),
+                logoColor: logo ? getComputedStyle(logo).color : "",
+                projectHasFolder: projectGroup == null ? null : projectGroup.querySelector("i") != null,
+                tagCount: tags.length,
+                tagRadius: tagStyle ? tagStyle.borderRadius : "",
+                tagBorderWidth: tagStyle ? tagStyle.borderTopWidth : "",
+                propCount: props.length,
+                hideNameOk,
+            };
+        })()`);
+        if (hierarchy?.found === true) {
+          check(
+            "card-surface-raised",
+            hierarchy.cardBg !== "rgba(0, 0, 0, 0)" && hierarchy.cardBg !== hierarchy.panelBg,
+            `card=${hierarchy.cardBg} panel=${hierarchy.panelBg}（不得回退 transparent）`
+          );
+          check("card-title-tier-13px", hierarchy.titleSize === "13px", `titleSize=${hierarchy.titleSize}`);
+          check(
+            "card-meta-provider-group",
+            hierarchy.providerText !== "",
+            `provider=${hierarchy.providerText} logo=${hierarchy.logoColor}`
+          );
+          check(
+            "card-meta-project-folder",
+            hierarchy.projectHasFolder !== false,
+            `project 有 folder 图标=${hierarchy.projectHasFolder}`
+          );
+          if (hierarchy.tagCount > 0) {
+            check(
+              "card-tag-mini-chip",
+              hierarchy.tagRadius === "4px" && hierarchy.tagBorderWidth === "0px",
+              `tags=${hierarchy.tagCount} radius=${hierarchy.tagRadius} border=${hierarchy.tagBorderWidth}`
+            );
+          } else {
+            skip("card-tag-mini-chip", "本机无带 tags 的会话卡");
+          }
+          if (hierarchy.propCount > 0) {
+            check(
+              "card-prop-hide-name",
+              hierarchy.hideNameOk === 0,
+              `props=${hierarchy.propCount} 违例=${hierarchy.hideNameOk}`
+            );
+          } else {
+            skip("card-prop-hide-name", "播种块无自定义属性");
+          }
+        } else {
+          skip("card-surface-raised", "agent 卡不在看板上");
+          skip("card-title-tier-13px", "agent 卡不在看板上");
+          skip("card-meta-provider-group", "agent 卡不在看板上");
+          skip("card-meta-project-folder", "agent 卡不在看板上");
+          skip("card-tag-mini-chip", "agent 卡不在看板上");
+          skip("card-prop-hide-name", "agent 卡不在看板上");
+        }
         // 让卡片真的进画面：面板撑宽 + 把卡片所在列横向滚到中间。
         await client
           .evaluate(

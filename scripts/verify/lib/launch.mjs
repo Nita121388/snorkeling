@@ -291,12 +291,18 @@ export async function dismissOverlays(client) {
   const warnings = [];
   // 引导流程是多页向导（Welcome → Wave AI → …），所以按"优先级打分"挑按钮：
   // 先找跳过类（Skip / Not now / Later），再找前进类（Continue / Next / Get Started），最后同意类。
+  // 中文界面（zh locale）下按钮文案是「开始使用 / 跳过 / 稍后」，只写英文白名单会一条都匹配不上，
+  // 向导弹窗于是留在屏幕上挡住了后续所有「真实指针点击」断言（2026-11-22 overview-board 实测 9 红）。
   const DISMISS_SCORER = String.raw`(function score(label) {
         var s = 0;
         if (/^skip/i.test(label)) s = 100;
         else if (/not now|maybe later|later|already have/i.test(label)) s = 90;
+        else if (/^(跳过|先跳过|稍后|以后再说|暂不|暂不设置)$/.test(label)) s = 100;
+        else if (/^(稍后再说|以后再说吧)$/.test(label)) s = 90;
         else if (/^(continue|next|next step|get started|got it|done|close|ok)$/i.test(label)) s = 50;
+        else if (/^(开始使用|开始|继续|下一步|完成|关闭|知道了|好的)$/.test(label)) s = 50;
         else if (/^(i agree|agree)$/i.test(label)) s = 40;
+        else if (/^(我同意|同意)$/.test(label)) s = 40;
         return s;
     })`;
 

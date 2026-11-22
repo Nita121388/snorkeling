@@ -4,15 +4,16 @@
 
 # Overview Agent Card · 属性紧凑化 + 卡面层次
 
-三个议题，一个文件（`index.html`，零依赖，直接浏览器打开）：
+四个议题，一个文件（`index.html`，零依赖，直接浏览器打开）：
 
 1. **`emoji` 属性整条不渲染**（已拍板）：卡片左上头像与属性行 `emoji 🐚` 重复展示同一信息（用户 2026-11-22 真机截图确认）。
 2. **属性行其余类型去名字前缀**：`Status In Progress` → `In Progress`（色胶囊自解释）。
-3. **卡片脱离面板底色 + 间距/字号分级**：现状卡内六行 `gap:6px`、9–12px 字号混排、transparent 底与面板同色。
+3. **meta 行分层**：状态 / provider·项目 / tags 三类信息不该共用同一种胶囊几何（M1/M2/M3 三方案）。
+4. **卡片脱离面板底色 + 间距/字号分级**：现状卡内六行 `gap:6px`、9–12px 字号混排、transparent 底与面板同色。
 
-原型左列固定「现状」，右列可切 **A 宽松 / B 内容井 / C +状态左轨**；列宽可切 **220/280/360**（真实看板
-`grid-auto-columns: minmax(220px, 1fr)`），暗/亮双主题；页内 `measure-line` 实时显示每列三张卡的
-`getBoundingClientRect().height`。直链定态：`?variant=a|b|c&w=220|280|360&theme=dark|light`。
+原型左列固定「现状」，右列可切 **A 宽松 / B 内容井 / C +状态左轨** × **meta M1/M2/M3**；列宽可切 **220/280/360**
+（真实看板 `grid-auto-columns: minmax(220px, 1fr)`），暗/亮双主题；页内 `measure-line` 实时显示每列三张卡的
+`getBoundingClientRect().height`。直链定态：`?variant=a|b|c&meta=m1|m2|m3&w=220|280|360&theme=dark|light`。
 
 **主题对齐声明**：所有颜色 token 从 `frontend/app/theme.scss` 原样搬运（暗 `rgb(34,34,34)` 底/绿 accent，
 亮 `#f2eee5` 底/紫 accent，working `#3b82f6` / blocked `--warning-color` / done `rgb(78,154,6)`）；
@@ -39,7 +40,36 @@ chip/胶囊/度量轨几何从 `session-overview.scss` / `property-list.scss` / 
 名字降级进 `title="name: value"`，hover 与无障碍不丢。实现：`BoardPropRow` 增派生字段 `hideName`
 （select/status/person/multi_select → true），`overview-board.tsx` 与 `session-overview.tsx`（`RowMetaChips`）两处共读。
 
-## 议题 3：卡面层次（间距 + 字号分级）
+## 议题 3：meta 行分层（M1 / M2 / M3）
+
+真机问题：状态胶囊 / provider / 项目 / tags **共用同一种胶囊几何**（16px 高、9–10px 字、`radius:999`），
+四者大小相近、无轻重，扫读时互相冒充；而它们其实是三类不同信息：
+
+| 元素 | 语义 | 层级 |
+|---|---|---|
+| `.status-chip`（`Working 12m`） | 现在在干什么 | 最高 |
+| `.board-chip`（`codex` / `snorkeling`） | 在哪（provider + 项目坐标） | 中 |
+| `.board-chip.is-tag`（`#frontend`） | 归类标记 | 最低 |
+
+方案：**只保留一个真胶囊（状态），归属降成排版文字，标签再降一档。** 原型「meta 行」控件可切三变体：
+
+| 变体 | 状态 | provider / 项目 | tags |
+|---|---|---|---|
+| **M4 图标化**（推荐） | 着色胶囊（唯一胶囊/唯一彩色信号） | agent 类型 = 品牌标（`getAgentLogoByProvider` 同源，品牌色只上图标）+ 名称；项目 = folder 图标 + 名称 | 迷你小方片（radius 4、底色 main/6%、`#` 前缀 50% 透明） |
+| **M1 文本** | 着色胶囊 | `codex · snorkeling` 纯文本 9.5px secondary + 中点 | `#tag` 纯文本、opacity .82 |
+| **M2 描边** | 着色胶囊 | provider 描边胶囊（无底）+ 项目文本 | 纯文本 |
+| **M3 右对齐** | 着色胶囊 | 同 M1 | 推到行尾 + 1px 竖线（位置稳定） |
+
+- **M4 的形状词汇**（推荐）：`状态胶囊`（唯一彩色，点 + 时长）｜`品牌标 + 名称`（codex `#74a7cb` / opencode `#e0b956` / pi `#888888`，
+  `agent-logo.tsx` 同源）｜`folder 图标 + 项目名`（全 app 的 `fa-folder` 词汇）｜`迷你方片`（tags，radius 4、无描边）。
+  组间 gap 7px、组内 3px —— 分组靠间距，不靠分隔符。
+- 品牌色只打在图标上、文字用 secondary：状态色仍是全行**唯一**彩色信号，不会出现两个彩色通道抢注意力。
+- 保守做法（不动结构，只换渲染）：`.session-overview-board-chip` 去底色胶囊、保留 tags 胶囊但降透明度。
+- 卡高影响 ≤ 2px；220px 窄列下 M1/M3 的 tags 可能换行到第二行（+13px），M2 因 provider 仍是胶囊更早换行。
+- 已确认：`resolveBoardMetaLabel` 有状态 chip 时 `kindLabel` 返回 `""`，所以 agent 卡本来就不显示 `Agent` 视图标签
+  （第一版原型多画了这个胶囊，已修）。
+
+## 议题 4：卡面层次（间距 + 字号分级）
 
 ### 现状问题
 
@@ -95,6 +125,11 @@ chip/胶囊/度量轨几何从 `session-overview.scss` / `property-list.scss` / 
    - 单测：emoji 被滤；select/status/person/multi → hideName true；text/number/checkbox → false；
      emoji 整条不出现；hideName 行 `title` 仍含属性名。
 2. `overview-board.tsx` + `session-overview.tsx`（`RowMetaChips`）：`hideName` 时跳过 `.prop-name`。
+2b. meta 行分层（若拍板 M4）：`overview-board.tsx` 的 meta 组装改为三簇 ——
+    `provider` 用 `getAgentLogoByProvider()` 的品牌标 + 名称（图标上品牌色、文字 secondary），
+    `project` 用 folder 图标 + 名称，`tags` 换成迷你方片（radius 4、底色 main/6%）；
+    `session-overview.scss` 加 `.session-overview-board-meta-group/.meta-agent/.meta-folder/.meta-tag-mini`；
+    单测断言「有状态 chip 时无 kindLabel、meta 行彩色只来自状态 chip」。
 3. `session-overview.scss`：
    - `.session-overview-board-card` 表面底色 + 微阴影 + hover 抬升（暗/亮/单色三主题验证）；
    - 间距/字号刻度按上表（padding 13 / gap 10 / 标题 13 / preview 11.5/1.55 / note 10.5/.78 / 度量 9.5）；
@@ -107,7 +142,9 @@ chip/胶囊/度量轨几何从 `session-overview.scss` / `property-list.scss` / 
 
 ## 待拍板
 
-1. **密度档位**：A（+36~40px/卡 @220px）还是折中档（+20px，原型待补）？
-2. **B 内容井**：要 / 不要（+16px/卡，层次最强）？
-3. **C 状态左轨**：不做 / 设置项 / 下一轮（与卡头状态 chip 双通道重复）？
-4. 卡面暗色档位：`--surface-strong-color`（白 8%，本原型）还是 `--surface-color`（白 6%，更克制）？
+1. **meta 行**：M4 图标化（推荐）/ M1 文本 / M2 描边 / M3 右对齐？
+   若只挑 tags 形态：迷你方片（M4）/ 无底纯文本（M1）/ 保留胶囊（保守）。
+2. **密度档位**：A（+36~40px/卡 @220px）还是折中档（+20px，原型待补）？
+3. **B 内容井**：要 / 不要（+16px/卡，层次最强）？
+4. **C 状态左轨**：不做 / 设置项 / 下一轮（与卡头状态 chip 双通道重复）？
+5. 卡面暗色档位：`--surface-strong-color`（白 8%，本原型）还是 `--surface-color`（白 6%，更克制）？
