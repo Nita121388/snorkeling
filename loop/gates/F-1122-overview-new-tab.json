@@ -1,0 +1,17 @@
+{
+  "g1": {
+    "at": "2026-11-22T10:32:56Z",
+    "by": "nita",
+    "verdict": "confirmed",
+    "prdHash": "0df750df6715"
+  },
+  "g2": {
+    "redProof": "loop/red/F-1122-overview-new-tab.txt",
+    "at": "2026-11-22T10:32:56Z"
+  },
+  "g5": {
+    "ok": true,
+    "executedAt": "2026-11-22T10:32:56Z",
+    "by": "main"
+  }
+}

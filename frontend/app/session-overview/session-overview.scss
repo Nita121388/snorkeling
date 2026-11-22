@@ -2704,6 +2704,212 @@
     padding: 6px 10px;
 }
 
+/* ─── 「＋ 新建 Tab」入口与弹窗（F-1122-overview-new-tab）─────────────────
+   两处入口：工具栏（与 filter 按钮同一枚样式语言的描边按钮）+ 组列表尾部（虚线整行，
+   与 .session-overview-tab-add 同款收尾观感）。弹窗内容复用全局 <Modal>，这里只补内容段。 */
+
+.session-overview-new-tab-button {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 26px;
+    padding: 0 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: transparent;
+    box-sizing: border-box;
+    color: var(--secondary-text-color);
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 11px;
+    white-space: nowrap;
+    transition:
+        border-color 120ms ease,
+        color 120ms ease,
+        background-color 120ms ease;
+
+    &:hover,
+    &:focus-visible {
+        border-color: rgb(from var(--accent-color) r g b / 0.6);
+        background: rgb(from var(--accent-color) r g b / 0.08);
+        color: var(--accent-color);
+    }
+
+    &:focus-visible {
+        outline: 2px solid var(--accent-color);
+        outline-offset: 1px;
+    }
+}
+
+.session-overview-tab-new {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    width: 100%;
+    margin-top: 6px;
+    padding: 9px 0;
+    border: 1px dashed var(--border-color);
+    border-radius: 8px;
+    background: transparent;
+    box-sizing: border-box;
+    color: var(--secondary-text-color);
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 12px;
+    transition:
+        border-color 120ms ease,
+        color 120ms ease,
+        background-color 120ms ease;
+
+    &:hover,
+    &:focus-visible {
+        border-color: rgb(from var(--accent-color) r g b / 0.6);
+        background: rgb(from var(--accent-color) r g b / 0.08);
+        color: var(--accent-color);
+    }
+
+    &:focus-visible {
+        outline: 2px solid var(--accent-color);
+        outline-offset: 1px;
+    }
+}
+
+.session-overview-new-tab-modal {
+    width: min(420px, calc(100vw - 48px));
+}
+
+.session-overview-new-tab-section {
+    display: flex;
+    flex-direction: column;
+
+    & + & {
+        margin-top: 2px;
+        padding-top: 14px;
+        border-top: 1px solid var(--border-color);
+    }
+}
+
+.session-overview-new-tab-label {
+    margin-bottom: 6px;
+    color: var(--secondary-text-color);
+    font-size: 10px;
+}
+
+.session-overview-new-tab-name {
+    width: 100%;
+    height: 30px;
+    padding: 0 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: var(--surface-color, transparent);
+    box-sizing: border-box;
+    color: var(--main-text-color);
+    font-family: inherit;
+    font-size: 12px;
+    outline: none;
+
+    &::placeholder {
+        color: var(--secondary-text-color);
+    }
+
+    &:focus {
+        border-color: var(--accent-color);
+    }
+
+    &:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+    }
+}
+
+.session-overview-new-tab-kinds {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.session-overview-new-tab-kind {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+    border-radius: 6px;
+    color: var(--main-text-color);
+    cursor: pointer;
+    font-size: 12px;
+    transition: background-color 120ms ease;
+
+    input[type="radio"] {
+        margin: 0;
+        accent-color: var(--accent-color);
+    }
+
+    &:hover {
+        background: var(--hover-bg-color-strong);
+    }
+
+    &.is-selected {
+        background: rgb(from var(--accent-color) r g b / 0.12);
+    }
+
+    /* 占位项（从模板…）与「没探测到 agent」时的灰态：不隐藏，让用户看到功能在 */
+    &.is-disabled {
+        color: var(--secondary-text-color);
+        cursor: not-allowed;
+        opacity: 0.6;
+
+        &:hover {
+            background: transparent;
+        }
+    }
+}
+
+.session-overview-new-tab-hint {
+    margin-top: 6px;
+    color: var(--secondary-text-color);
+    font-size: 11px;
+    line-height: 1.4;
+}
+
+/* 创建失败：内联错误 + 重试（弹窗不关；Tab 没建成功，重试不会重复建） */
+.session-overview-new-tab-error {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-top: 10px;
+    padding: 8px 10px;
+    border: 1px solid rgb(from var(--error-color, #d64545) r g b / 0.5);
+    border-radius: 6px;
+    background: rgb(from var(--error-color, #d64545) r g b / 0.08);
+    color: var(--error-color, #d64545);
+    font-size: 11px;
+    line-height: 1.5;
+    word-break: break-word;
+}
+
+.session-overview-new-tab-retry {
+    flex: 0 0 auto;
+    padding: 2px 8px;
+    border: 1px solid currentColor;
+    border-radius: 4px;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 11px;
+
+    &:hover {
+        background: rgb(from var(--error-color, #d64545) r g b / 0.12);
+    }
+
+    &:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+    }
+}
+
 /* 弹窗：标题右侧的 Tab 名（只在头部出现一次，别再往段标签里塞） */
 .session-overview-add-agent-modal {
     /* 显式宽度：不由 chip 行的内容宽决定（贴边观感的另一半根因）
@@ -2965,4 +3171,273 @@
     font-size: 10px;
     text-overflow: ellipsis;
     white-space: nowrap;
+}
+
+// ── 卡片展开体 + composer（11-22-overview-card-send） ──
+// 展开体在行下方跨满整行（grid-column: 1 / -1，与 note-editor 同一自动行策略）。
+
+.session-overview-card-expand {
+    grid-column: 1 / -1;
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 8px;
+    padding: 4px 0 2px;
+    cursor: default;
+}
+
+.session-overview-card-expand-attrs {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 4px 10px;
+}
+
+.session-overview-card-expand-attr {
+    display: inline-flex;
+    min-width: 0;
+    max-width: 100%;
+    align-items: center;
+    gap: 4px;
+    font-size: 10px;
+}
+
+.session-overview-card-expand-attr-name {
+    flex: 0 0 auto;
+    color: var(--secondary-text-color);
+    opacity: 0.9;
+}
+
+.session-overview-card-expand-attr-value {
+    min-width: 0;
+    max-width: 220px;
+    overflow: hidden;
+    color: var(--main-text-color);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.session-overview-card-expand-label {
+    flex: 0 0 auto;
+    color: var(--secondary-text-color);
+    font-size: 10px;
+    font-weight: 600;
+}
+
+.session-overview-card-expand-reply,
+.session-overview-card-expand-newreply {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 8px;
+}
+
+.session-overview-card-expand-reply-text {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--main-text-color);
+    font-size: 10.5px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+
+    &.is-muted {
+        color: var(--secondary-text-color);
+    }
+}
+
+.session-overview-card-expand-newreply .session-overview-card-expand-reply-text {
+    white-space: normal;
+    max-height: 5.4em;
+    line-height: 1.35;
+    overflow-y: auto;
+    overflow-wrap: anywhere;
+}
+
+.session-overview-card-expand-link {
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 4px;
+    border: 0;
+    background: transparent;
+    color: var(--secondary-text-color);
+    cursor: pointer;
+    font-size: 10px;
+    padding: 0;
+
+    &:hover {
+        color: var(--accent-color);
+    }
+}
+
+.session-overview-card-send-composer {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.session-overview-card-send-input {
+    width: 100%;
+    min-height: 54px;
+    max-height: 160px;
+    resize: vertical;
+    border: 1px solid rgb(from var(--main-text-color) r g b / 0.12);
+    border-radius: 6px;
+    background: rgb(from var(--main-text-color) r g b / 0.025);
+    color: var(--main-text-color);
+    padding: 6px 8px;
+    box-sizing: border-box;
+    font: inherit;
+    font-size: 12px;
+    line-height: 1.45;
+    outline: none;
+
+    &:focus {
+        border-color: rgb(from var(--accent-color) r g b / 0.45);
+        background: var(--panel-bg-color, transparent);
+    }
+}
+
+.session-overview-card-send-footer {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.session-overview-card-send-wait {
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 5px;
+    color: var(--secondary-text-color);
+    font-size: 10.5px;
+    cursor: pointer;
+
+    input {
+        accent-color: var(--accent-color);
+    }
+}
+
+// 行程徽章：phase → tone（replied=绿 / submitted=绿 / unconfirmed=橙 / timeout=黄 / failed=红）
+.session-overview-card-send-badge {
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 5px;
+    border: 1px solid transparent;
+    border-radius: 999px;
+    padding: 2px 8px;
+    font-size: 10px;
+    font-weight: 600;
+    line-height: 1;
+    white-space: nowrap;
+
+    > i {
+        display: inline-flex;
+        font-size: 9px;
+        animation: spin 0.8s linear infinite;
+    }
+
+    &.is-pending {
+        color: var(--secondary-text-color);
+        border-color: var(--border-color);
+        background: rgb(from var(--main-text-color) r g b / 0.04);
+    }
+
+    &.is-ok {
+        color: rgb(from var(--success-color) r g b / 0.9);
+        border-color: rgb(from var(--success-color) r g b / 0.4);
+        background: rgb(from var(--success-color) r g b / 0.1);
+    }
+
+    &.is-warn {
+        color: var(--warning-color, #f59e0b);
+        border-color: rgb(245 158 11 / 0.4);
+        background: rgb(245 158 11 / 0.1);
+    }
+
+    &.is-danger {
+        color: var(--error-color, #ef4444);
+        border-color: rgb(from var(--error-color, #ef4444) r g b / 0.4);
+        background: rgb(from var(--error-color, #ef4444) r g b / 0.1);
+    }
+}
+
+.session-overview-card-send-badge-note {
+    color: inherit;
+    font-variant-numeric: tabular-nums;
+    opacity: 0.75;
+}
+
+.session-overview-card-send-submit {
+    display: inline-flex;
+    height: 24px;
+    flex: 0 0 auto;
+    align-items: center;
+    margin-left: auto;
+    border: 1px solid rgb(from var(--accent-color) r g b / 0.45);
+    border-radius: 6px;
+    background: rgb(from var(--accent-color) r g b / 0.1);
+    color: var(--accent-color);
+    cursor: pointer;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 0 12px;
+
+    &:hover:not(:disabled) {
+        background: rgb(from var(--accent-color) r g b / 0.16);
+    }
+
+    &:disabled {
+        cursor: default;
+        opacity: 0.45;
+    }
+}
+
+// 失败/超时原地提示（R3.3）：不弹窗，一条行内 alert。
+.session-overview-card-send-alert {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+
+    &.is-warn {
+        color: var(--warning-color, #f59e0b);
+    }
+
+    &.is-danger {
+        color: var(--error-color, #ef4444);
+    }
+}
+
+.session-overview-card-send-alert-text {
+    min-width: 0;
+    overflow: hidden;
+    font-size: 10.5px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.session-overview-card-send-alert-button {
+    display: inline-flex;
+    height: 20px;
+    flex: 0 0 auto;
+    align-items: center;
+    border: 1px solid currentColor;
+    border-radius: 5px;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+    font-size: 10px;
+    font-weight: 600;
+    padding: 0 8px;
+
+    &:hover {
+        background: rgb(from var(--main-text-color) r g b / 0.06);
+    }
 }

@@ -18,6 +18,13 @@
 //   5. tab-summary-consistent           汇总行 N == tabids 数、M == 渲染组数
 //   6. firstpaint-groups-fast           刷新后 1.2s 内组头数 == tabids 数（tab-first 首帧不缺席）
 //   7. firstpaint-getobjects-le3        首屏批量 prime：GetObjects 服务调用 1..3 次（旧路径是 ~190 次单件 GetObject）
+//   8. new-tab-toolbar-entry-creates-empty-tab  工具栏「＋ 新建 Tab」→ 空 Tab：tabids +1、组头数 +1、激活 Tab 不变
+//   9. new-tab-tail-entry-creates-agent-tab     组尾「＋ 新建 Tab」→ 空 Tab + Agent：blockids = 1 且块 meta 含 agent:*、不抢焦点
+//      （8/9 = F-1122-overview-new-tab 的真机入口，弹窗走 ReactDOM portal 挂 #main，不在 block 容器里）
+//  10. card-expand-focus                        点 agent 行主体 → 展开体 + composer 出现且焦点在 textarea；Esc 收起
+//  11. card-send-replied                        勾「发送后等回复」发 CARD_OK → 徽章「收到回复」+ 卡片内出现 CARD_OK
+//  12. card-send-no-wait                        取消勾选再发 NOWAIT_SECOND → ≤3s 徽章「已提交/未确认提交」（非回复）；另一行仍可展开
+//      （10-12 = F-1122-overview-card-send 的真机入口；可对话 agent 由台内自起：AgentLaunchCommand + ControllerResync）
 //
 // 组头标记（实现已落地，本台子只读）：
 //   `[data-overview-tab-group="<tabId>"]` + `data-overview-tab-status="live|empty|unopened|loading"`
@@ -875,6 +882,663 @@ async function main() {
         }
     }
 
+    // ── 断言 14/15：Overview「＋ 新建 Tab」（F-1122-overview-new-tab）────────────
+    // 14 工具栏入口 → 空 Tab：tabids +1、组头数 +1、当前激活 Tab 不变；
+    // 15 组尾入口 → 空 Tab + Agent：新 Tab blockids = 1 且块 meta 含 agent:*；不抢焦点。
+    // 弹窗用 ReactDOM.createPortal 挂到 #main，不在 block 容器里，所以动作探针查 document。
+    function clickNewTabEntryProbe(entry) {
+        return `(() => {
+            const blk = document.querySelector('[data-blockid="' + ${JSON.stringify(overviewBlockId)} + '"]');
+            if (blk == null) return { ok: false, reason: "no-block" };
+            const btn = blk.querySelector('[data-overview-new-tab="' + ${JSON.stringify(entry)} + '"]');
+            if (btn == null) return { ok: false, reason: "no-entry" };
+            btn.click();
+            return { ok: true };
+        })()`;
+    }
+
+    /** 打开弹窗后：可选点一枚 kind radio，再点「创建」（Modal footer 里非 grey 的那个 ok 按钮）。 */
+    function newTabCreateProbe(kind) {
+        return `(() => {
+            const modal = document.querySelector(".session-overview-new-tab-modal");
+            if (modal == null) return { ok: false, reason: "no-modal" };
+            if (${JSON.stringify(kind)} != null) {
+                const radio = modal.querySelector('[data-new-tab-kind="' + ${JSON.stringify(kind)} + '"]');
+                if (radio == null || radio.disabled) return { ok: false, reason: radio == null ? "no-radio" : "radio-disabled", kind: ${JSON.stringify(kind)} };
+                radio.click();
+            }
+            const okBtn = [...modal.querySelectorAll(".modal-footer button")].find((b) => !String(b.className).includes("grey"));
+            if (okBtn == null) return { ok: false, reason: "no-ok-btn" };
+            okBtn.click();
+            return { ok: true };
+        })()`;
+    }
+
+    /**
+     * 弹窗里的「空 Tab + Agent」radio 是否已可用。
+     *
+     * 为什么需要等：profile 列表是 `useDetectedAgentProfileOptions` 的**异步** FindCommand 探测
+     * （use-agent-profile-options.ts）—— 弹窗刚挂上时探测还在飞，`defaultProfile == null` 于是 radio
+     * disabled。这里点太快会拿到 `radio-disabled`，断言变成量「探测延迟」而不是量「组尾入口能不能建 agent Tab」。
+     * 这不是放松断言：等不到仍会以 `radio-disabled` 失败，只是把**探测完成**当成前置条件。
+     */
+    const newTabAgentRadioProbe = `(() => {
+        const modal = document.querySelector(".session-overview-new-tab-modal");
+        if (modal == null) return { modal: false, radio: false, enabled: false };
+        const radio = modal.querySelector('[data-new-tab-kind="agent"]');
+        return {
+            modal: true,
+            radio: radio != null,
+            enabled: radio != null && radio.disabled !== true,
+            hint: (modal.querySelector(".session-overview-new-tab-hint")?.textContent || "").trim(),
+        };
+    })()`;
+
+    function diffTabIds(before, after) {
+        const beforeSet = new Set(before ?? []);
+        return (after ?? []).filter((id) => !beforeSet.has(id));
+    }
+
+    const newTabStateProbe = `(async () => {
+        ${VG_PREAMBLE}
+        const g = await __vg();
+        const ws = g.globalStore.get(g.atoms.workspace);
+        const activeTabId = g.globalStore.get(g.atoms.staticTabId) ?? null;
+        const blk = document.querySelector('[data-blockid="' + ${JSON.stringify(overviewBlockId)} + '"]');
+        const groups = blk ? [...blk.querySelectorAll("[data-overview-tab-group]")].map((el) => el.getAttribute("data-overview-tab-group")) : [];
+        return { tabIds: (ws && ws.tabids ? ws.tabids.slice() : []), activeTabId, groups };
+    })()`;
+
+    function newTabBlockProbe(tabId) {
+        return `(async () => {
+            ${VG_PREAMBLE}
+            const g = await __vg();
+            const tab = g.WOS.getObjectValue("tab:" + ${JSON.stringify(tabId)});
+            if (tab == null) return { ok: false, reason: "tab-not-resolved" };
+            const blockids = (tab.blockids ?? []).slice();
+            const block = blockids.length === 1 ? g.WOS.getObjectValue("block:" + blockids[0]) : null;
+            const meta = block?.meta ?? null;
+            const agentMetaKeys = meta == null ? [] : Object.keys(meta).filter((k) => k.startsWith("agent:"));
+            return { ok: true, blockids, agentMetaKeys };
+        })()`;
+    }
+
+    // 断言 14：工具栏入口 → 空 Tab
+    const beforeToolbar = await evalRetry(newTabStateProbe);
+    const clickedToolbar = await client.evaluate(clickNewTabEntryProbe("toolbar"));
+    const toolbarModal = await waitFor(
+        client,
+        `(() => document.querySelector(".session-overview-new-tab-modal") != null)()`,
+        (v) => v === true,
+        8000,
+        200
+    );
+    const toolbarCreate = toolbarModal === true ? await client.evaluate(newTabCreateProbe(null)) : { ok: false, reason: "modal-never-opened" };
+    const newEmptyTabId = diffTabIds(beforeToolbar.tabIds, (await waitFor(
+        client,
+        newTabStateProbe,
+        (st) => diffTabIds(beforeToolbar.tabIds, st.tabIds).length >= 1,
+        30000,
+        300
+    )).tabIds)[0] ?? "";
+    // 组行渲染比 tabids 多一拍：等组头也带出新 Tab（不直接拿一帧快照就断言）
+    const afterToolbar = newEmptyTabId === "" ? await evalRetry(newTabStateProbe) : await waitFor(
+        client,
+        newTabStateProbe,
+        (st) => st.groups.includes(newEmptyTabId) && st.tabIds.length === beforeToolbar.tabIds.length + 1,
+        15000,
+        250
+    );
+    check(
+        "new-tab-toolbar-entry-creates-empty-tab",
+        clickedToolbar.ok === true &&
+            toolbarModal === true &&
+            toolbarCreate.ok === true &&
+            newEmptyTabId !== "" &&
+            afterToolbar.tabIds.length === beforeToolbar.tabIds.length + 1 &&
+            afterToolbar.groups.length === beforeToolbar.groups.length + 1 &&
+            afterToolbar.groups.includes(newEmptyTabId) &&
+            afterToolbar.activeTabId === beforeToolbar.activeTabId,
+        {
+            clicked: clickedToolbar,
+            modalOpened: toolbarModal,
+            created: toolbarCreate,
+            newTabId: newEmptyTabId,
+            tabIdsBefore: beforeToolbar.tabIds.length,
+            tabIdsAfter: afterToolbar.tabIds.length,
+            groupsBefore: beforeToolbar.groups.length,
+            groupsAfter: afterToolbar.groups.length,
+            activeTabBefore: beforeToolbar.activeTabId,
+            activeTabAfter: afterToolbar.activeTabId,
+            note: "工具栏入口建空 Tab：workspace.tabids +1、Overview 组头 +1、当前激活 Tab 不变（不抢焦点）",
+        }
+    );
+    if (newEmptyTabId !== "") createdTabIds.push(newEmptyTabId);
+    await shot(client, "05-new-tab-toolbar-empty");
+
+    // 断言 15：组尾入口 → 空 Tab + Agent
+    const beforeTail = await evalRetry(newTabStateProbe);
+    const clickedTail = await client.evaluate(clickNewTabEntryProbe("tail"));
+    const tailModal = await waitFor(
+        client,
+        `(() => document.querySelector(".session-overview-new-tab-modal") != null)()`,
+        (v) => v === true,
+        8000,
+        200
+    );
+    // 等 FindCommand 探测完成（radio 从 disabled 变可用）；等不到仍会以 radio-disabled 失败。
+    const tailRadioReady = tailModal === true
+        ? await waitFor(client, newTabAgentRadioProbe, (st) => st?.modal === true && st.enabled === true, 15000, 200)
+        : null;
+    const tailCreate = tailModal === true ? await client.evaluate(newTabCreateProbe("agent")) : { ok: false, reason: "modal-never-opened" };
+    const newAgentTabId = diffTabIds(beforeTail.tabIds, (await waitFor(
+        client,
+        newTabStateProbe,
+        (st) => diffTabIds(beforeTail.tabIds, st.tabIds).length >= 1,
+        30000,
+        300
+    )).tabIds)[0] ?? "";
+    let newAgentBlock = { blockids: [], agentMetaKeys: [] };
+    if (newAgentTabId !== "") {
+        newAgentBlock = (await waitFor(client, newTabBlockProbe(newAgentTabId), (b) => b.ok === true && b.blockids.length === 1, 30000, 300)) ?? newAgentBlock;
+    }
+    const afterTail = newAgentTabId === "" ? await evalRetry(newTabStateProbe) : await waitFor(
+        client,
+        newTabStateProbe,
+        (st) => st.groups.includes(newAgentTabId) && st.tabIds.length === beforeTail.tabIds.length + 1,
+        15000,
+        250
+    );
+    check(
+        "new-tab-tail-entry-creates-agent-tab",
+        clickedTail.ok === true &&
+            tailModal === true &&
+            tailCreate.ok === true &&
+            newAgentTabId !== "" &&
+            newAgentBlock.blockids.length === 1 &&
+            newAgentBlock.agentMetaKeys.length > 0 &&
+            afterTail.activeTabId === beforeTail.activeTabId &&
+            afterTail.groups.includes(newAgentTabId),
+        {
+            clicked: clickedTail,
+            modalOpened: tailModal,
+            radioReadyAfterWait: tailRadioReady == null ? null : { enabled: tailRadioReady.enabled, hint: tailRadioReady.hint },
+            created: tailCreate,
+            newTabId: newAgentTabId,
+            blockids: newAgentBlock.blockids.length,
+            agentMetaKeys: newAgentBlock.agentMetaKeys,
+            activeTabBefore: beforeTail.activeTabId,
+            activeTabAfter: afterTail.activeTabId,
+            note: "组尾入口 + 「空 Tab + Agent」：新 Tab blockids = 1 且块 meta 含 agent:*（默认 provider）+ 不抢焦点",
+        }
+    );
+    if (newAgentTabId !== "") createdTabIds.push(newAgentTabId);
+    await shot(client, "06-new-tab-tail-agent");
+
+    // ── 断言 10-12：卡片展开 + composer 发送（F-1122-overview-card-send）─────────
+    // 10 点 agent 行主体 → 展开体 + composer 出现且焦点在 textarea；Esc 收起
+    // 11 勾「发送后等回复」发 CARD_OK → 徽章「收到回复」+ 卡片内出现 CARD_OK
+    // 12 取消勾选再发 NOWAIT_SECOND → ≤3s 徽章「已提交/未确认提交」（非回复）；另一行仍可展开
+    //
+    // 稳定钩子（实现已落地，本台子只读；phase 不上 DOM，按徽章 tone + 新回复块判定）：
+    //   行       .session-overview-block-row[data-overview-card-expandable="true"]（按组定位）
+    //   展开体   [data-overview-card-send-body] / composer [data-overview-card-send-input|wait|submit]
+    //   徽章     .session-overview-card-send-badge.is-{pending|ok|warn|danger}
+    //   新回复   [data-overview-card-send-reply]（replied 才渲染 → 「收到回复」的唯一可判钩子）
+    //
+    // 可对话 agent 的来源：播种的 agent 行是假会话（发不出去，只用来验展开/聚焦）。
+    // 真发送用台内自起 agent 块：AgentLaunchCommand（`agent launch` 的 in-app 双胞胎，走 agent catalog）
+    // + ControllerResyncCommand（后台 Tab 的块不挂载 term view，控制器要显式起）。
+    // 起不来（catalog 无模型 / agent 回不了话）= 环境问题 → 断言 11/12 记 skipped，不假装通过。
+
+    function cardSendGroupProbe(tabId) {
+        return `(() => {
+            const blk = document.querySelector('[data-blockid="' + ${JSON.stringify(overviewBlockId)} + '"]');
+            if (blk == null) return { found: false, reason: "no-block" };
+            const group = blk.querySelector('[data-overview-tab-group="' + ${JSON.stringify(tabId)} + '"]');
+            if (group == null) return { found: false, reason: "no-group" };
+            const toggle = group.querySelector(".session-overview-tab-toggle");
+            const row = group.querySelector('.session-overview-block-row[data-overview-card-expandable="true"]');
+            const body = group.querySelector("[data-overview-card-send-body]");
+            const input = group.querySelector("[data-overview-card-send-input]");
+            const badge = group.querySelector(".session-overview-card-send-badge");
+            const reply = group.querySelector("[data-overview-card-send-reply]");
+            const alert = group.querySelector(".session-overview-card-send-alert");
+            const submit = group.querySelector("[data-overview-card-send-submit]");
+            const wait = group.querySelector("[data-overview-card-send-wait]");
+            const active = document.activeElement;
+            return {
+                found: true,
+                toggleExpanded: toggle == null ? null : toggle.getAttribute("aria-expanded"),
+                rowExpandable: row != null,
+                bodyBlockId: body == null ? null : body.getAttribute("data-overview-card-send-body"),
+                hasInput: input != null,
+                focusedIsInput: input != null && active === input,
+                focusedTag: active == null ? null : String(active.tagName || ""),
+                badgeClass: badge == null ? null : String(badge.className || ""),
+                badgeText: badge == null ? "" : (badge.textContent || "").replace(/\\s+/g, " ").trim(),
+                replyText: reply == null ? "" : (reply.textContent || "").replace(/\\s+/g, " ").trim(),
+                replyTurn: reply == null ? null : reply.getAttribute("data-overview-card-send-reply"),
+                alertText: alert == null ? "" : (alert.textContent || "").replace(/\\s+/g, " ").trim(),
+                submitDisabled: submit == null ? null : submit.disabled === true,
+                waitChecked: wait == null ? null : wait.checked === true,
+            };
+        })()`;
+    }
+
+    function clickCardRowProbe(tabId) {
+        return `(() => {
+            const blk = document.querySelector('[data-blockid="' + ${JSON.stringify(overviewBlockId)} + '"]');
+            if (blk == null) return { ok: false, reason: "no-block" };
+            const group = blk.querySelector('[data-overview-tab-group="' + ${JSON.stringify(tabId)} + '"]');
+            if (group == null) return { ok: false, reason: "no-group" };
+            const row = group.querySelector('.session-overview-block-row[data-overview-card-expandable="true"]');
+            if (row == null) return { ok: false, reason: "no-expandable-row" };
+            row.click();
+            return { ok: true };
+        })()`;
+    }
+
+    function setCardDraftProbe(tabId, text) {
+        return `(() => {
+            const blk = document.querySelector('[data-blockid="' + ${JSON.stringify(overviewBlockId)} + '"]');
+            const group = blk == null ? null : blk.querySelector('[data-overview-tab-group="' + ${JSON.stringify(tabId)} + '"]');
+            if (group == null) return { ok: false, reason: "no-group" };
+            const input = group.querySelector("[data-overview-card-send-input]");
+            if (input == null) return { ok: false, reason: "no-input" };
+            const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value").set;
+            setter.call(input, ${JSON.stringify(text)});
+            input.dispatchEvent(new Event("input", { bubbles: true }));
+            return { ok: true, value: input.value };
+        })()`;
+    }
+
+    function clickCardSubmitProbe(tabId) {
+        return `(() => {
+            const blk = document.querySelector('[data-blockid="' + ${JSON.stringify(overviewBlockId)} + '"]');
+            const group = blk == null ? null : blk.querySelector('[data-overview-tab-group="' + ${JSON.stringify(tabId)} + '"]');
+            if (group == null) return { ok: false, reason: "no-group" };
+            const btn = group.querySelector("[data-overview-card-send-submit]");
+            if (btn == null) return { ok: false, reason: "no-submit" };
+            if (btn.disabled) return { ok: false, reason: "disabled" };
+            btn.click();
+            return { ok: true };
+        })()`;
+    }
+
+    function clickCardWaitProbe(tabId) {
+        return `(() => {
+            const blk = document.querySelector('[data-blockid="' + ${JSON.stringify(overviewBlockId)} + '"]');
+            const group = blk == null ? null : blk.querySelector('[data-overview-tab-group="' + ${JSON.stringify(tabId)} + '"]');
+            if (group == null) return { ok: false, reason: "no-group" };
+            const cb = group.querySelector("[data-overview-card-send-wait]");
+            if (cb == null) return { ok: false, reason: "no-wait-checkbox" };
+            cb.click();
+            return { ok: true, checked: cb.checked };
+        })()`;
+    }
+
+    // 等回复超时的提示条里 [继续等] 在前、[取消] 在后；取消 = 清行程（不重发）。
+    function clickCardCancelWaitProbe(tabId) {
+        return `(() => {
+            const blk = document.querySelector('[data-blockid="' + ${JSON.stringify(overviewBlockId)} + '"]');
+            const group = blk == null ? null : blk.querySelector('[data-overview-tab-group="' + ${JSON.stringify(tabId)} + '"]');
+            if (group == null) return { ok: false, reason: "no-group" };
+            const alert = group.querySelector(".session-overview-card-send-alert.is-warn");
+            if (alert == null) return { ok: false, reason: "no-warn-alert" };
+            const buttons = [...alert.querySelectorAll(".session-overview-card-send-alert-button")];
+            if (buttons.length === 0) return { ok: false, reason: "no-buttons" };
+            buttons[buttons.length - 1].click();
+            return { ok: true, buttons: buttons.length };
+        })()`;
+    }
+
+    // 徽章 tone → phase（与 overview-card-send.ts 的 CardSendPhaseTone 一一对应）。
+    function cardSendPhase(snapshot) {
+        const cls = snapshot == null ? null : snapshot.badgeClass;
+        if (typeof cls !== "string" || !cls.includes("session-overview-card-send-badge")) return null;
+        if (cls.includes("is-pending")) return null;
+        if (cls.includes("is-danger")) return "failed";
+        if (cls.includes("is-warn")) return (snapshot.alertText ?? "") !== "" ? "timeout" : "unconfirmed";
+        if (cls.includes("is-ok")) return (snapshot.replyText ?? "") !== "" ? "replied" : "submitted";
+        return null;
+    }
+
+    // 写草稿 → 等「发送」按钮可用 → 点它（React 受控组件：原生 setter + input 事件）。
+    async function cardSendSubmitOnce(tabId, text) {
+        const set = await client.evaluate(setCardDraftProbe(tabId, text));
+        if (set?.ok !== true) return { ok: false, stage: "set-draft", detail: set };
+        const enabled = await waitFor(
+            client,
+            cardSendGroupProbe(tabId),
+            (st) => st?.found === true && st.submitDisabled === false,
+            5000,
+            150
+        );
+        if (enabled?.submitDisabled !== false) return { ok: false, stage: "submit-disabled", detail: enabled };
+        const clicked = await client.evaluate(clickCardSubmitProbe(tabId));
+        if (clicked?.ok !== true) return { ok: false, stage: "submit", detail: clicked };
+        return { ok: true, at: Date.now() };
+    }
+
+    // ── 断言 10：点 agent 行 → 展开体 + composer 聚焦；Esc 收起 ─────────────────
+    // 目标行用播种的 agent 行（假 sessionid 也能展开，不发送）。该组是 unopened → 默认折叠，先展开组。
+    const seededAgentTabId = seeded.tabs.find((tab) => tab.kind === "agent")?.tabId ?? "";
+    const agentGroupToggle = await client.evaluate(clickGroupToggleProbe(overviewBlockId, seededAgentTabId));
+    const agentGroupOpen = await waitFor(
+        client,
+        cardSendGroupProbe(seededAgentTabId),
+        (st) => st?.found === true && st.toggleExpanded === "true",
+        8000,
+        250
+    );
+    const clickedAgentRow = await client.evaluate(clickCardRowProbe(seededAgentTabId));
+    const agentRowExpanded = await waitFor(
+        client,
+        cardSendGroupProbe(seededAgentTabId),
+        (st) => st?.found === true && st.bodyBlockId != null && st.focusedIsInput === true,
+        8000,
+        200
+    );
+    // Esc 收起：真实键盘事件（焦点已在 textarea）。偶尔窗口焦点丢了，重试一次（两次都是真键）。
+    let escCollapsed = null;
+    for (let attempt = 0; attempt < 2; attempt++) {
+        await client.activate();
+        await client.pressKey("Escape");
+        escCollapsed = await waitFor(
+            client,
+            cardSendGroupProbe(seededAgentTabId),
+            (st) => st?.found === true && st.bodyBlockId == null,
+            4000,
+            150
+        );
+        if (escCollapsed?.found === true && escCollapsed.bodyBlockId == null) break;
+    }
+    check(
+        "card-expand-focus",
+        agentGroupToggle?.ok === true &&
+            agentGroupOpen?.toggleExpanded === "true" &&
+            clickedAgentRow?.ok === true &&
+            agentRowExpanded?.bodyBlockId != null &&
+            agentRowExpanded?.hasInput === true &&
+            agentRowExpanded?.focusedIsInput === true &&
+            agentRowExpanded?.focusedTag === "TEXTAREA" &&
+            escCollapsed?.found === true &&
+            escCollapsed?.bodyBlockId == null,
+        {
+            groupToggle: agentGroupToggle,
+            groupExpanded: agentGroupOpen?.toggleExpanded,
+            clickedRow: clickedAgentRow,
+            bodyBlockId: agentRowExpanded?.bodyBlockId,
+            hasInput: agentRowExpanded?.hasInput,
+            focusedIsInput: agentRowExpanded?.focusedIsInput,
+            focusedTag: agentRowExpanded?.focusedTag,
+            bodyAfterEsc: escCollapsed?.bodyBlockId,
+            note: "行主体点击 = 展开（面板级互斥）；展开即聚焦 composer textarea；Esc 只收起这张卡",
+        }
+    );
+    await shot(client, "07-card-expand-focus");
+
+    // ── 可对话 agent（真发送的前置，不计入断言）：台内自起 + 显式起 controller ──────────
+    const spawnAgentProbe = `(async () => {
+        const out = { ok: false, err: "", tabId: "", blockId: "", profile: "", model: "", catalog: [] };
+        try {
+            ${VG_PREAMBLE}
+            const g = await __vg();
+            const services = await __vimp("/frontend/app/store/services.ts", ["WorkspaceService"]);
+            const wshclient = await import("/frontend/app/store/wshclientapi.ts");
+            const wshrpcutil = await import("/frontend/app/store/wshrpcutil.ts");
+            const catalogMod = await import("/frontend/app/workspace/agent-catalog.ts");
+            const ws = g.globalStore.get(g.atoms.workspace);
+            if (ws == null || !ws.oid) throw new Error("workspace 未就绪");
+            const catalog = (await catalogMod.loadAgentCatalog(true).catch(() => [])) ?? [];
+            out.catalog = catalog.map((p) => ({ name: p.name, models: (p.models ?? []).length }));
+            // pi 优先（与 agent-roundtrip 台同一条 proven 链路），其次任一配了模型的 profile。
+            const profile =
+                catalog.find((p) => p.name === "pi" && (p.models ?? []).length > 0) ??
+                catalog.find((p) => (p.models ?? []).length > 0) ??
+                null;
+            if (profile == null) {
+                out.err = "agent catalog 里没有带模型的 profile（无可用 agent）";
+                return out;
+            }
+            out.profile = profile.name;
+            // 先建空 Tab（activateTab=false，不抢焦点）：AgentLaunchCommand 的 tab:"new" 会
+            // 激活新 Tab，把 Overview 面板所在 renderer 换掉，所以 Tab 自己建、显式传 id。
+            const tabId = await services.WorkspaceService.CreateEmptyTab(
+                ws.oid,
+                "verify-card-send-" + Date.now().toString(36),
+                false
+            );
+            out.tabId = tabId;
+            const launch = await wshclient.RpcApi.AgentLaunchCommand(wshrpcutil.TabRpcClient, {
+                profile: profile.name,
+                tab: tabId,
+                nofocus: true,
+            });
+            out.blockId = launch?.blockid ?? "";
+            out.model = launch?.model ?? "";
+            if (!out.blockId) {
+                out.err = "agentlaunch 未返回 blockid";
+                return out;
+            }
+            // 后台 Tab 的块不挂载 term view（渲染层挂载时才 resync）：显式起控制器
+            // （block.tsx 的 warmup 同一条 RPC）。controller Start 会铸 agent:sessionid 并拉起 agent 进程。
+            await wshclient.RpcApi.ControllerResyncCommand(wshrpcutil.TabRpcClient, {
+                tabid: tabId,
+                blockid: out.blockId,
+                rtopts: { termsize: { rows: 25, cols: 80 } },
+            });
+            out.ok = true;
+        } catch (err) {
+            out.err = String(err && err.message ? err.message : err);
+        }
+        return out;
+    })()`;
+
+    const agentSpawn = await evalRetry(spawnAgentProbe);
+    let piTabId = "";
+    let piBlockId = "";
+    let agentUsable = false;
+    if (agentSpawn?.ok === true) {
+        piTabId = agentSpawn.tabId;
+        piBlockId = agentSpawn.blockId;
+        createdTabIds.push(piTabId);
+        // 组出现（tabids 广播）+ 块 meta 拿到 agent:sessionid（controller Start 铸，行才可展开）
+        const groupShown = await waitFor(client, cardSendGroupProbe(piTabId), (st) => st?.found === true, 20000, 300);
+        const metaReady = await waitFor(
+            client,
+            `(async () => {
+                const wshclient = await import("/frontend/app/store/wshclientapi.ts");
+                const wshrpcutil = await import("/frontend/app/store/wshrpcutil.ts");
+                const meta = await wshclient.RpcApi.GetMetaCommand(wshrpcutil.TabRpcClient, {
+                    oref: ${JSON.stringify(`block:${piBlockId}`)},
+                });
+                return { sessionId: typeof meta?.["agent:sessionid"] === "string" ? meta["agent:sessionid"] : "" };
+            })()`,
+            (st) => (st?.sessionId ?? "") !== "",
+            120000,
+            2000
+        );
+        if (groupShown?.found === true && (metaReady?.sessionId ?? "") !== "") {
+            // 新 Tab 没激活过 → 组 unopened 默认折叠：展开组，行才进 DOM
+            await client.evaluate(clickGroupToggleProbe(overviewBlockId, piTabId));
+            const piGroupOpen = await waitFor(
+                client,
+                cardSendGroupProbe(piTabId),
+                (st) => st?.found === true && st.toggleExpanded === "true",
+                8000,
+                250
+            );
+            const rowReady = await waitFor(
+                client,
+                cardSendGroupProbe(piTabId),
+                (st) => st?.found === true && st.rowExpandable === true,
+                30000,
+                500
+            );
+            // 行可展开还不够：composer 只在展开体里。点行主体展开，等 textarea 真的出现。
+            const rowExpandClick = await client.evaluate(clickCardRowProbe(piTabId));
+            const piExpanded = await waitFor(
+                client,
+                cardSendGroupProbe(piTabId),
+                (st) => st?.found === true && st.bodyBlockId != null && st.hasInput === true,
+                10000,
+                200
+            );
+            agentUsable =
+                piGroupOpen?.toggleExpanded === "true" &&
+                rowReady?.rowExpandable === true &&
+                rowExpandClick?.ok === true &&
+                piExpanded?.bodyBlockId != null &&
+                piExpanded?.hasInput === true;
+        }
+        log(`agent block: tab=${piTabId} block=${piBlockId} profile=${agentSpawn.profile} model=${agentSpawn.model} usable=${agentUsable}`);
+    } else {
+        log(`agent spawn failed: ${JSON.stringify(agentSpawn)}`);
+    }
+
+    // 预热（环境门，不计入断言）：pi 冷启动会跑 npm 查扩展更新（实测 40s+），而 composer 的
+    // 等回复窗口默认 60s。先真发一条 WARMUP_OK 并等到回复，让 agent 进入 idle —— 之后两条断言
+    // 才在「热」agent 上量 UI 行为（否则 60s 窗口量到的是冷启动，不是卡片行为）。
+    let warmup = { ok: false, phase: "not-run", badgeClass: null, badgeText: "", replyText: "", alertText: "", attempts: 0 };
+    if (agentUsable) {
+        for (let attempt = 1; attempt <= 2; attempt++) {
+            const sent = await cardSendSubmitOnce(piTabId, "reply with exactly: WARMUP_OK");
+            if (sent.ok !== true) {
+                warmup = { ...warmup, ok: false, phase: "send-failed", attempts: attempt, detail: sent };
+                break;
+            }
+            const settled = await waitFor(client, cardSendGroupProbe(piTabId), (st) => cardSendPhase(st) != null, 100000, 700);
+            const phase = cardSendPhase(settled);
+            warmup = {
+                ok: phase === "replied" && String(settled?.replyText ?? "").includes("WARMUP_OK"),
+                phase: phase ?? "no-terminal-state",
+                badgeClass: settled?.badgeClass ?? null,
+                badgeText: settled?.badgeText ?? "",
+                replyText: String(settled?.replyText ?? "").slice(0, 200),
+                alertText: String(settled?.alertText ?? "").slice(0, 200),
+                attempts: attempt,
+            };
+            log(`warmup attempt ${attempt}: ${JSON.stringify(warmup)}`);
+            if (warmup.ok) break;
+            if (phase !== "timeout" && phase !== "failed") break;
+            // 超时/启动未就绪：清行程（timeout 的 [取消]），等一拍再重发一次。
+            if (phase === "timeout") await client.evaluate(clickCardCancelWaitProbe(piTabId)).catch(() => null);
+            await sleep2(15000);
+        }
+    }
+
+    if (!agentUsable || !warmup.ok) {
+        const reason =
+            agentSpawn?.ok !== true
+                ? `agent 块没起起来（${String(agentSpawn?.err ?? "unknown")}）`
+                : !agentUsable
+                  ? `agent 块起了但行不可展开（未拿到 agent:sessionid）`
+                  : `预热等不到回复（phase=${warmup.phase} alert=${warmup.alertText || "-"}）`;
+        skipped.push(
+            `card-send-replied / card-send-no-wait 未跑：${reason}。按环境问题记 skipped（agent 起不来不假装通过）；` +
+                `profile=${agentSpawn?.profile || "-"} catalog=${JSON.stringify(agentSpawn?.catalog ?? [])}`
+        );
+        log(`card-send assertions skipped: ${reason}`);
+    } else {
+        // ── 断言 11：勾「发送后等回复」→ CARD_OK → 徽章「收到回复」+ 卡片内出现 CARD_OK ────
+        const before11 = await evalRetry(cardSendGroupProbe(piTabId));
+        const sent11 = await cardSendSubmitOnce(piTabId, "reply with exactly: CARD_OK");
+        const settle11 = await waitFor(
+            client,
+            cardSendGroupProbe(piTabId),
+            (st) => ["replied", "failed", "timeout"].includes(cardSendPhase(st) ?? ""),
+            130000,
+            500
+        );
+        const phase11 = cardSendPhase(settle11);
+        const wall11 = Date.now() - (sent11?.at ?? Date.now());
+        check(
+            "card-send-replied",
+            sent11?.ok === true &&
+                before11?.waitChecked === true &&
+                phase11 === "replied" &&
+                String(settle11?.replyText ?? "").includes("CARD_OK"),
+            {
+                waitCheckedBefore: before11?.waitChecked,
+                sent: sent11?.ok === true,
+                phase: phase11,
+                wallMs: wall11,
+                badgeClass: settle11?.badgeClass,
+                badgeText: settle11?.badgeText,
+                replyText: String(settle11?.replyText ?? "").slice(0, 240),
+                replyTurn: settle11?.replyTurn,
+                alertText: settle11?.alertText,
+                note: "勾「发送后等回复」发送：徽章到「收到回复」（is-ok + 新回复块）且卡片内出现 CARD_OK",
+            }
+        );
+        await shot(client, "08-card-send-replied");
+
+        // ── 断言 12：取消勾选 → NOWAIT_SECOND → ≤3s 徽章「已提交/未确认提交」；另一行仍可展开 ────
+        const waitToggle = await client.evaluate(clickCardWaitProbe(piTabId));
+        const waitOff = await waitFor(
+            client,
+            cardSendGroupProbe(piTabId),
+            (st) => st?.found === true && st.waitChecked === false,
+            5000,
+            150
+        );
+        // 给 TUI 一拍安静（上一回合的回显收尾），再发不等回复的那条
+        await sleep2(3000);
+        const sent12 = await cardSendSubmitOnce(piTabId, "reply with exactly: NOWAIT_SECOND");
+        const settle12 = await waitFor(
+            client,
+            cardSendGroupProbe(piTabId),
+            (st) => ["submitted", "unconfirmed", "failed"].includes(cardSendPhase(st) ?? ""),
+            3000,
+            150
+        );
+        const phase12 = cardSendPhase(settle12);
+        const elapsed12 = Date.now() - (sent12?.at ?? Date.now());
+        // 另一行仍能展开（互斥：另一行展开 = 这张卡收起；发送的 RPC 不阻塞面板交互）
+        const clickedOther = await client.evaluate(clickCardRowProbe(seededAgentTabId));
+        const otherExpanded = await waitFor(
+            client,
+            cardSendGroupProbe(seededAgentTabId),
+            (st) => st?.found === true && st.bodyBlockId != null,
+            5000,
+            200
+        );
+        const piAfter12 = await evalRetry(cardSendGroupProbe(piTabId));
+        check(
+            "card-send-no-wait",
+            waitToggle?.ok === true &&
+                waitToggle?.checked === false &&
+                waitOff?.waitChecked === false &&
+                sent12?.ok === true &&
+                (phase12 === "submitted" || phase12 === "unconfirmed") &&
+                elapsed12 <= 3000 &&
+                !String(settle12?.replyText ?? "").includes("NOWAIT_SECOND") &&
+                clickedOther?.ok === true &&
+                otherExpanded?.bodyBlockId != null &&
+                piAfter12?.found === true &&
+                piAfter12?.bodyBlockId == null,
+            {
+                waitToggle,
+                waitCheckedAfterToggle: waitOff?.waitChecked,
+                sent: sent12?.ok === true,
+                phase: phase12,
+                elapsedMs: elapsed12,
+                budgetMs: 3000,
+                badgeClass: settle12?.badgeClass,
+                badgeText: settle12?.badgeText,
+                replyText: String(settle12?.replyText ?? "").slice(0, 200),
+                alertText: settle12?.alertText,
+                otherRow: clickedOther,
+                otherExpandedBody: otherExpanded?.bodyBlockId,
+                piRowAfter: piAfter12?.bodyBlockId,
+                note: "不等回复：徽章停在「已提交/未确认提交」（is-ok/is-warn 且无新回复块），≤3s 落定；另一行仍可展开（面板不阻塞）",
+            }
+        );
+        await shot(client, "09-card-send-nowait");
+    }
+
     // ── 有意不覆盖的面 ─────────────────────────────────────────────────────
     skipped.push(
         "大规模场景（19 Tab × ~10 块的 190 次单件 RPC 对比）未跑：全新实例只播 8 Tab，判据用 GetObjects 计数代理"
@@ -898,6 +1562,12 @@ async function main() {
             expectedTabs,
             seededTabs: seeded.tabs,
             summaryText,
+            cardSend: {
+                spawn: { profile: agentSpawn?.profile ?? "", model: agentSpawn?.model ?? "", ok: agentSpawn?.ok === true, err: agentSpawn?.err ?? "", usable: agentUsable },
+                piTabId,
+                piBlockId,
+                warmup,
+            },
             // 真机观察到的产品缺陷（若 empty-tab-group-shows-no-blocks FAIL，根因在这里）：
             // toggleTabCollapsed 只翻「显式记忆」（undefined→true→undefined），而
             // isGroupCollapsed 对 empty/unopened 默认返回 true → 默认折叠的组怎么点都不展开，

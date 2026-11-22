@@ -62,3 +62,27 @@ setCollapsed({ ...collapsed, [tabId]: !cur });
 - 不要为了"没结果"去删组——画占位（`noBlocks`）。
 - 不要给骨架行加出现动画（会和虚拟行稳定性冲突）。
 - 不要改 `workspace.tabids` 数据层。
+
+## 8. 卡片展开 composer（11-22-overview-card-send）
+
+- **RPC 超时必须放大**：`waitreply` 走 `cardSendRpcTimeoutMs()`（`min(320000, waitms+20s)`），
+  沿用 `agent-roundtrip-contract.md` §3——8s 默认会把 60s 等待窗口假杀成 E_TIMEOUT。
+- **映射顺序固定**（`overview-card-send.ts outcomeFromSend`）：抛错→failed（取 `E_` 码）→
+  replied → warnings 含 reply-timeout/reply-rpc-deadline→timeout（**不是失败**）→
+  submitconfirmed→submitted → 其余 unconfirmed。
+- `waitReply=true` 时**绝不带 `async`**（服务端 E_USAGE）；文本走 `text64`。
+- 失败原地 `⚠ <code> [重试]`；`E_AGENT_NOT_READY` 额外给「改为不等待」；超时给「继续等」
+  （`SessionWaitCommand until idle`，**不重发消息**——重发会重复投递）。
+- **热区纪律**：行内既有热区（跳转/备注/关闭/`[↪]`）必须 `stopPropagation`；
+  展开只在行主体空白区生效。展开互斥（面板级 `expandedBlockId`）。
+
+## 9. Overview 新建 Tab（11-22-overview-new-tab）
+
+- `WorkspaceService.CreateTab(workspaceId, name, activateTab=false)` 返回 tabId——
+  **不要**先 `getApi().createTab()` 再查 id。
+- 建 agent 块照 `overview-add-agent-modal.tsx` 范式（`CreateBlockInTab(…, false, false)`），
+  别造第二份。
+- 弹窗壳用全仓唯一 `<Modal>`（`modals/modal.tsx`）；「从模板」是占位，
+  `planNewTab` 层直接拒绝（`template-unsupported`），不靠按钮 disabled 兜底。
+- 验证台已知竞态：profile 列表来自异步 `FindCommand`，agent radio 挂载初期短暂 disabled——
+  台子必须等 radio 可用再点，不能当产品 bug 报。

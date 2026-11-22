@@ -23,7 +23,7 @@ import { atoms, setActiveTab, WOS } from "@/app/store/global";
 import { globalStore } from "@/app/store/jotaiStore";
 import { uxCloseBlock } from "@/app/store/keymodel";
 import { modalsModel } from "@/app/store/modalmodel";
-import { AISessionsServiceType, BlockServiceType, ObjectService } from "@/app/store/services";
+import { AISessionsServiceType, BlockServiceType, ObjectService, WorkspaceService } from "@/app/store/services";
 import { RpcApi } from "@/app/store/wshclientapi";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
 import { primeSessionNote } from "@/app/store/session-note-cache";
@@ -54,6 +54,7 @@ import { AgentStatusChip, shouldShowAgentStatusChip } from "./agent-status-chip"
 import { planBlockRemoval } from "./block-removal";
 import { buildAddAgentLaunchContext } from "./overview-add-agent";
 import { OverviewAddAgentModal, type AddAgentSubmitRequest } from "./overview-add-agent-modal";
+import { OverviewNewTabModal, type NewTabSubmitRequest } from "./overview-new-tab-modal";
 import { OverviewBoard } from "./overview-board";
 import {
     normalizeBoardTags,
@@ -74,6 +75,15 @@ import {
     type OverviewViewMode,
     type OverviewViewModeImplemented,
 } from "./overview-board-model";
+import {
+    buildCardSendRequest,
+    cardSendRpcTimeoutMs,
+    CardSendPhaseLabelKey,
+    CardSendPhaseTone,
+    isAgentNotReadyCode,
+    outcomeFromSend,
+    type CardSendResult,
+} from "./overview-card-send";
 import { OverviewTimeline } from "./overview-timeline";
 import { buildTabGroups, type OverviewTabGroup } from "./overview-tab-groups";
 import {
@@ -1779,6 +1789,518 @@ function RowMetaChips({ summary }: { summary: SessionSummary | null }) {
     );
 }
 
+// ───────────────────────── 卡片展开 + composer 发送（11-22-overview-card-send） ─────────────────────────
+//
+// 状态全部挂在面板级（design §4）：`expandedBlockId` 互斥（同时只有一张卡展开）、
+// `draftByBlock` 存草稿、`sendByBlock` 存行程/结果、`waitReply` 是「发送后等回复」勾选，
+// 全部不持久化。映射与请求组装在 `overview-card-send.ts`（vitest 锁签名），这里只管交互与渲染。
+//
+// 热区纪律：行内既有热区（跳转/备注/关闭/消息方块/输入框）全部 stopPropagation，
+// 展开只认「行主体空白区」的点击 —— 看板卡曾因缺少这层保护，点动作按钮顺带把卡片也展开了。
+
+type CardSendEntry = CardSendResult | "sending";
+
+type CardSendSubmitOverrides = {
+    /** 显式覆盖「等回复」勾选（失败重试用同一值，「改为不等待」用 false+dispatch）。 */
+    waitReply?: boolean;
+    /** 异步派发（失败逃生口「改为不等待」）：async:true，立即返回 queued。 */
+    dispatch?: boolean;
+};
+
+type CardSendState = {
+    expandedBlockId: string | null;
+    draftByBlock: Record<string, string>;
+    sendByBlock: Record<string, CardSendEntry>;
+    sendingStartedAt: Record<string, number>;
+    waitReply: boolean;
+    setWaitReply: (value: boolean) => void;
+    toggleExpanded: (blockId: string) => void;
+    collapse: () => void;
+    setDraft: (blockId: string, text: string) => void;
+    submit: (block: OverviewBlock, text: string, overrides?: CardSendSubmitOverrides) => void;
+    retry: (block: OverviewBlock, overrides?: CardSendSubmitOverrides) => void;
+    continueWait: (block: OverviewBlock) => void;
+    cancelWait: (block: OverviewBlock) => void;
+    retryRead: (block: OverviewBlock) => void;
+};
+
+const CardSendContext = React.createContext<CardSendState | null>(null);
+
+function removeRecordKey<T>(record: Record<string, T>, key: string): Record<string, T> {
+    if (!(key in record)) return record;
+    const next = { ...record };
+    delete next[key];
+    return next;
+}
+
+function useCardSendState(reload: () => void): CardSendState {
+    const [expandedBlockId, setExpandedBlockId] = useState<string | null>(null);
+    const [draftByBlock, setDraftByBlock] = useState<Record<string, string>>({});
+    const [sendByBlock, setSendByBlock] = useState<Record<string, CardSendEntry>>({});
+    const [sendingStartedAt, setSendingStartedAt] = useState<Record<string, number>>({});
+    const [waitReply, setWaitReply] = useState(true);
+    // 引用镜像：回调里要读最新值，但不想为此每次渲染都换函数引用。
+    const waitReplyRef = useRef(waitReply);
+    waitReplyRef.current = waitReply;
+    const draftRef = useRef(draftByBlock);
+    draftRef.current = draftByBlock;
+    // 每次发送一个序号：只认最后一次结果（用户可能失败后立即「改为不等待」重发）。
+    const sendSeqRef = useRef<Record<string, number>>({});
+
+    const applyOutcome = React.useCallback((blockId: string, outcome: CardSendResult) => {
+        setSendByBlock((current) => ({ ...current, [blockId]: outcome }));
+        setSendingStartedAt((current) => removeRecordKey(current, blockId));
+    }, []);
+
+    const runSend = React.useCallback(
+        (block: OverviewBlock, text: string, overrides?: CardSendSubmitOverrides) => {
+            const blockId = block.blockId;
+            const useWaitReply = overrides?.waitReply ?? waitReplyRef.current;
+            const built = buildCardSendRequest({
+                blockId,
+                text,
+                waitReply: useWaitReply,
+                dispatch: overrides?.dispatch === true,
+            });
+            // 空文本在 UI 层就被禁发；这里再兑底一次（纯函数返回 ok:false，不投递）。
+            if (!built.ok) return;
+            const seq = (sendSeqRef.current[blockId] ?? 0) + 1;
+            sendSeqRef.current[blockId] = seq;
+            setSendByBlock((current) => ({ ...current, [blockId]: "sending" }));
+            setSendingStartedAt((current) => ({ ...current, [blockId]: Date.now() }));
+            // 等回复的窗口必须放大 RPC timeout（agent-roundtrip-contract §3），
+            // 否则 60s 等待会被默认 8s 超时假杀。
+            const timeout = useWaitReply ? cardSendRpcTimeoutMs(built.req.replywaitms) : 60_000;
+            RpcApi.AgentSendCommand(TabRpcClient, built.req, { timeout })
+                .then((rtn) => {
+                    if (sendSeqRef.current[blockId] !== seq) return;
+                    const outcome = outcomeFromSend(rtn ?? null);
+                    applyOutcome(blockId, outcome);
+                    // 只有真发出去才清稿：失败时保留原文，[重试] 才能原样再发一次。
+                    if (outcome.phase !== "failed") {
+                        setDraftByBlock((current) => removeRecordKey(current, blockId));
+                    }
+                    if (outcome.phase === "replied" || outcome.phase === "timeout") {
+                        reload();
+                    }
+                })
+                .catch((error) => {
+                    if (sendSeqRef.current[blockId] !== seq) return;
+                    const outcome = outcomeFromSend(null, error);
+                    console.warn("[overview-card-send] 发送失败", {
+                        blockId,
+                        code: outcome.errorCode,
+                        error,
+                    });
+                    applyOutcome(blockId, outcome);
+                });
+        },
+        [applyOutcome, reload]
+    );
+
+    const retry = React.useCallback(
+        (block: OverviewBlock, overrides?: CardSendSubmitOverrides) => {
+            // 失败时草稿未清（见 runSend），原样重发；「改为不等待」只换投递模式。
+            runSend(block, draftRef.current[block.blockId] ?? "", overrides);
+        },
+        [runSend]
+    );
+
+    const continueWait = React.useCallback(
+        (block: OverviewBlock) => {
+            const blockId = block.blockId;
+            const sessionId = block.sessionId;
+            if (!sessionId) return;
+            setSendingStartedAt((current) => ({ ...current, [blockId]: Date.now() }));
+            // 超时后的「继续等」只等状态落回 idle，不重发消息（重发 = 重复投递）。
+            RpcApi.SessionWaitCommand(
+                TabRpcClient,
+                { identifier: sessionId, blockid: blockId, until: "idle", timeoutms: 60_000 },
+                { timeout: 75_000 }
+            )
+                .then((rtn) => {
+                    setSendingStartedAt((current) => removeRecordKey(current, blockId));
+                    if (rtn?.matched !== true) return;
+                    setSendByBlock((current) => {
+                        const prev = current[blockId];
+                        const base = prev != null && prev !== "sending" ? prev : outcomeFromSend(null);
+                        return {
+                            ...current,
+                            [blockId]: {
+                                ...base,
+                                phase: "replied",
+                                warnings: [],
+                                waitedMs: rtn.waitedms ?? base.waitedMs,
+                            },
+                        };
+                    });
+                    reload();
+                })
+                .catch((error) => {
+                    console.warn("[overview-card-send] 继续等失败", { blockId, error });
+                    setSendingStartedAt((current) => removeRecordKey(current, blockId));
+                });
+        },
+        [reload]
+    );
+
+    const cancelWait = React.useCallback((block: OverviewBlock) => {
+        setSendByBlock((current) => removeRecordKey(current, block.blockId));
+        setSendingStartedAt((current) => removeRecordKey(current, block.blockId));
+    }, []);
+
+    const retryRead = React.useCallback(
+        (block: OverviewBlock) => {
+            // reply-empty：答复存在但索引没跟上；強刷 detail（refreshSeq → forceRefresh）。
+            setSendByBlock((current) => {
+                const prev = current[block.blockId];
+                if (prev == null || prev === "sending") return current;
+                return {
+                    ...current,
+                    [block.blockId]: {
+                        ...prev,
+                        warnings: prev.warnings.filter((warning) => warning !== "reply-empty"),
+                    },
+                };
+            });
+            reload();
+        },
+        [reload]
+    );
+
+    const toggleExpanded = React.useCallback((blockId: string) => {
+        // 互斥：再点同一张卡 = 收起；面板同一时刻只有一张卡展开。
+        setExpandedBlockId((current) => (current === blockId ? null : blockId));
+    }, []);
+
+    return useMemo<CardSendState>(
+        () => ({
+            expandedBlockId,
+            draftByBlock,
+            sendByBlock,
+            sendingStartedAt,
+            waitReply,
+            setWaitReply,
+            toggleExpanded,
+            collapse: () => setExpandedBlockId(null),
+            setDraft: (blockId, text) => setDraftByBlock((current) => ({ ...current, [blockId]: text })),
+            submit: (block, text, overrides) => runSend(block, text, overrides),
+            retry,
+            continueWait,
+            cancelWait,
+            retryRead,
+        }),
+        [
+            expandedBlockId,
+            draftByBlock,
+            sendByBlock,
+            sendingStartedAt,
+            waitReply,
+            runSend,
+            retry,
+            continueWait,
+            cancelWait,
+            retryRead,
+            toggleExpanded,
+        ]
+    );
+}
+
+function truncateCardSendText(text: string, maxChars: number): string {
+    const normalized = text.replace(/\s+$/g, "");
+    if (normalized.length <= maxChars) return normalized;
+    return `${normalized.slice(0, maxChars)}…`;
+}
+
+function useSendingSeconds(startedAt: number | undefined): number {
+    const [elapsed, setElapsed] = useState(0);
+    useEffect(() => {
+        if (startedAt == null) {
+            setElapsed(0);
+            return;
+        }
+        const tick = () => setElapsed(Math.max(0, Math.floor((Date.now() - startedAt) / 1000)));
+        tick();
+        const timer = window.setInterval(tick, 1000);
+        return () => window.clearInterval(timer);
+    }, [startedAt]);
+    return elapsed;
+}
+
+function CardSendAttrRow(props: { label: string; value: string; title?: string }) {
+    return (
+        <span className="session-overview-card-expand-attr" title={props.title ?? props.value}>
+            <span className="session-overview-card-expand-attr-name">{props.label}</span>
+            <span className="session-overview-card-expand-attr-value">{props.value}</span>
+        </span>
+    );
+}
+
+/** 卡片展开体：属性行 / 最近回复 / composer（11-22 PRD R2-R4）。 */
+function CardSendExpander({
+    block,
+    summary,
+    detail,
+    onOpenMessage,
+}: {
+    block: OverviewBlock;
+    summary: SessionSummary | null;
+    detail: SessionDetail | null;
+    onOpenMessage: (block: OverviewBlock, message: Message) => void;
+}) {
+    const { t } = useTranslation("session-overview");
+    const cardSend = React.useContext(CardSendContext);
+    const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+    const blockId = block.blockId;
+    const draft = cardSend?.draftByBlock[blockId] ?? "";
+    const entry = cardSend?.sendByBlock[blockId];
+    const sending = entry === "sending";
+    const result = entry != null && entry !== "sending" ? entry : null;
+    const elapsedSecs = useSendingSeconds(cardSend?.sendingStartedAt[blockId]);
+    const lastReply = useMemo(() => {
+        const messages = readableMessages(detail);
+        for (let i = messages.length - 1; i >= 0; i--) {
+            if (messages[i].role === "assistant") return messages[i];
+        }
+        return messages.length > 0 ? messages[messages.length - 1] : null;
+    }, [detail]);
+    // 展开即聚焦输入框，但不切激活块/不切 Tab：只 focus，不碰 layout/focus API。
+    useEffect(() => {
+        const node = textareaRef.current;
+        if (node == null) return;
+        const timer = window.setTimeout(() => node.focus({ preventScroll: true }), 0);
+        return () => window.clearTimeout(timer);
+    }, [blockId]);
+
+    const meta = (block.block?.meta ?? {}) as Record<string, unknown>;
+    const modelLabel =
+        typeof meta["agent:requestedmodel"] === "string" ? (meta["agent:requestedmodel"] as string).trim() : "";
+    const projectPath = (
+        summary?.projectPath ?? (typeof meta["cmd:cwd"] === "string" ? (meta["cmd:cwd"] as string) : "")
+    ).trim();
+    const sessionKey = (summary?.key ?? block.sessionId ?? "").trim();
+    const tags = normalizeBoardTags(summary?.tags);
+
+    const draftEmpty = draft.trim() === "";
+    const submitDraft = () => {
+        if (cardSend == null || draftEmpty) return;
+        cardSend.submit(block, draft);
+    };
+
+    return (
+        <div
+            className="session-overview-card-expand"
+            data-overview-card-send-body={blockId}
+            onClick={(event) => event.stopPropagation()}
+            onKeyDown={(event) => {
+                if (event.key === "Escape") {
+                    // Esc 收起只作用在这张卡，不冒泡给全局 keymodel（那层会去关 modal/做别的）。
+                    event.stopPropagation();
+                    cardSend?.collapse();
+                }
+            }}
+        >
+            {/* R2.1 属性行：会话 key / model / 项目 / Tab / tags（只读，编辑走 AgentCardModal） */}
+            <div className="session-overview-card-expand-attrs">
+                {sessionKey !== "" ? (
+                    <CardSendAttrRow label={t("session-overview:panel.cardSendSessionKey")} value={sessionKey} />
+                ) : null}
+                {modelLabel !== "" ? (
+                    <CardSendAttrRow label={t("session-overview:panel.cardSendModel")} value={modelLabel} />
+                ) : null}
+                {projectPath !== "" ? (
+                    <CardSendAttrRow
+                        label={t("session-overview:panel.cardSendProject")}
+                        value={projectPath}
+                        title={projectPath}
+                    />
+                ) : null}
+                <CardSendAttrRow label={t("session-overview:panel.cardSendTab")} value={block.tabName} />
+                {tags.length > 0
+                    ? tags.map((tag) => (
+                          <span key={`tag-${tag}`} className="session-overview-board-chip is-tag" title={`#${tag}`}>
+                              #{tag}
+                          </span>
+                      ))
+                    : null}
+            </div>
+            {/* R2.2 最近回复：行内摘要同源（detail messages），[看全文] 跳既有弹窗 */}
+            <div className="session-overview-card-expand-reply">
+                <span className="session-overview-card-expand-label">
+                    {t("session-overview:panel.cardSendLastReply")}
+                </span>
+                {lastReply != null ? (
+                    <>
+                        <span className="session-overview-card-expand-reply-text">{messagePreview(lastReply)}</span>
+                        <button
+                            type="button"
+                            className="session-overview-card-expand-link"
+                            onClick={() => onOpenMessage(block, lastReply)}
+                        >
+                            <i className={makeIconClass("arrow-up-right-from-square", false)} />
+                            <span>{t("session-overview:panel.cardSendOpenFull")}</span>
+                        </button>
+                    </>
+                ) : (
+                    <span className="session-overview-card-expand-reply-text is-muted">
+                        {t("session-overview:panel.cardSendNoReply")}
+                    </span>
+                )}
+            </div>
+            {/* R4.1 新回复块：发送拿到回复后原地显示（截断 + [看全文]） */}
+            {result?.replyText ? (
+                <div className="session-overview-card-expand-newreply" data-overview-card-send-reply={result.turn}>
+                    <span className="session-overview-card-expand-label">
+                        {t("session-overview:panel.cardSendNewReply")}
+                    </span>
+                    <span className="session-overview-card-expand-reply-text">
+                        {truncateCardSendText(result.replyText, 600)}
+                        {result.truncated ? t("session-overview:panel.cardSendReplyTruncated") : ""}
+                    </span>
+                </div>
+            ) : null}
+            {/* composer：Enter 发送 / Shift+Enter 换行 / Esc 收起 */}
+            <div className="session-overview-card-send-composer">
+                <textarea
+                    ref={textareaRef}
+                    className="session-overview-card-send-input"
+                    data-overview-card-send-input={blockId}
+                    placeholder={t("session-overview:panel.cardSendPlaceholder")}
+                    value={draft}
+                    spellCheck={false}
+                    aria-label={t("session-overview:panel.cardSendPlaceholder")}
+                    onChange={(event) => cardSend?.setDraft(blockId, event.target.value)}
+                    onKeyDown={(event) => {
+                        event.stopPropagation();
+                        if (event.key === "Escape") {
+                            cardSend?.collapse();
+                            return;
+                        }
+                        if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
+                            event.preventDefault();
+                            submitDraft();
+                        }
+                    }}
+                />
+                <div className="session-overview-card-send-footer">
+                    <label className="session-overview-card-send-wait">
+                        <input
+                            type="checkbox"
+                            data-overview-card-send-wait={blockId}
+                            checked={cardSend?.waitReply ?? true}
+                            onChange={(event) => cardSend?.setWaitReply(event.target.checked)}
+                        />
+                        <span>{t("session-overview:panel.cardSendWaitReply")}</span>
+                    </label>
+                    {/* 行程徽章：发送中显秒数，结果按 phase 上色（replied 绿 / timeout 黄 / failed 红 / unconfirmed 橙） */}
+                    {sending ? (
+                        <span className="session-overview-card-send-badge is-pending">
+                            <i className={makeIconClass("spinner", false)} />
+                            <span>{i18n.t("session-overview:panel.cardSendSending", { secs: elapsedSecs })}</span>
+                        </span>
+                    ) : result != null ? (
+                        <span
+                            className={cn("session-overview-card-send-badge", `is-${CardSendPhaseTone[result.phase]}`)}
+                        >
+                            <span>{i18n.t(CardSendPhaseLabelKey[result.phase])}</span>
+                            {result.phase === "timeout" ? (
+                                <span className="session-overview-card-send-badge-note">
+                                    {Math.floor(result.waitedMs / 1000)}s
+                                </span>
+                            ) : null}
+                        </span>
+                    ) : null}
+                    <button
+                        type="button"
+                        className="session-overview-card-send-submit"
+                        data-overview-card-send-submit={blockId}
+                        disabled={sending || draftEmpty}
+                        onClick={(event) => {
+                            event.stopPropagation();
+                            submitDraft();
+                        }}
+                    >
+                        <span>{t("session-overview:panel.cardSendSubmit")}</span>
+                    </button>
+                </div>
+                {/* R3.3 失败不弹窗：原地 ⚠ <code> <msg> [重试]；E_AGENT_NOT_READY 额外给 [改为不等待] */}
+                {result?.phase === "failed" ? (
+                    <div className="session-overview-card-send-alert is-danger" role="alert">
+                        <span className="session-overview-card-send-alert-text">
+                            {"⚠ "}
+                            {result.errorCode ? `${result.errorCode} ` : ""}
+                            {result.errorMessage ?? ""}
+                        </span>
+                        <button
+                            type="button"
+                            className="session-overview-card-send-alert-button"
+                            onClick={(event) => {
+                                event.stopPropagation();
+                                cardSend?.retry(block);
+                            }}
+                        >
+                            {t("session-overview:panel.cardSendRetry")}
+                        </button>
+                        {isAgentNotReadyCode(result.errorCode) ? (
+                            <button
+                                type="button"
+                                className="session-overview-card-send-alert-button"
+                                onClick={(event) => {
+                                    event.stopPropagation();
+                                    cardSend?.retry(block, { waitReply: false, dispatch: true });
+                                }}
+                            >
+                                {t("session-overview:panel.cardSendNoWait")}
+                            </button>
+                        ) : null}
+                    </div>
+                ) : null}
+                {/* 超时不箅失败（agent-roundtrip-contract §3）：停在等回复，给 [继续等] [取消] */}
+                {result?.phase === "timeout" ? (
+                    <div className="session-overview-card-send-alert is-warn">
+                        <button
+                            type="button"
+                            className="session-overview-card-send-alert-button"
+                            onClick={(event) => {
+                                event.stopPropagation();
+                                cardSend?.continueWait(block);
+                            }}
+                        >
+                            {t("session-overview:panel.cardSendContinueWait")}
+                        </button>
+                        <button
+                            type="button"
+                            className="session-overview-card-send-alert-button"
+                            onClick={(event) => {
+                                event.stopPropagation();
+                                cardSend?.cancelWait(block);
+                            }}
+                        >
+                            {t("session-overview:panel.cardSendCancelWait")}
+                        </button>
+                    </div>
+                ) : null}
+                {/* R4.2 reply-empty：答复存在但索引没跟上，给 [重试读取] */}
+                {result != null && result.warnings.includes("reply-empty") ? (
+                    <div className="session-overview-card-send-alert is-warn">
+                        <span className="session-overview-card-send-alert-text">{"⚠ reply-empty"}</span>
+                        <button
+                            type="button"
+                            className="session-overview-card-send-alert-button"
+                            onClick={(event) => {
+                                event.stopPropagation();
+                                cardSend?.retryRead(block);
+                            }}
+                        >
+                            {t("session-overview:panel.cardSendRetryRead")}
+                        </button>
+                    </div>
+                ) : null}
+            </div>
+        </div>
+    );
+}
+
 function BlockRow({
     block,
     detailState,
@@ -1845,6 +2367,10 @@ function BlockRow({
         agentStatus != null &&
         (isAgentStatusUnread(agentStatus, agentStatusAckedFp) ||
             isAgentDoneUnread(agentStatus, agentStatusDoneAckedAt));
+    // 展开互斥状态、草稿、行程统统在面板级（design §4），行只消费。
+    const cardSend = React.useContext(CardSendContext);
+    const canExpandCard = cardSend != null && block.isAgentLike && block.sessionId !== "";
+    const cardExpanded = canExpandCard && cardSend.expandedBlockId === block.blockId;
 
     return (
         <div
@@ -1853,9 +2379,18 @@ function BlockRow({
                 !block.isAgentLike && "is-plain-block",
                 unread && "has-unread",
                 isCurrent && "is-current",
-                noteEditorOpen && "is-note-editing"
+                noteEditorOpen && "is-note-editing",
+                cardExpanded && "is-card-expanded"
             )}
-            onClick={() => onSelectBlock(block)}
+            data-overview-card-expandable={canExpandCard ? "true" : undefined}
+            data-overview-card-expanded={cardExpanded ? "true" : undefined}
+            onClick={() => {
+                // 主点击 = 展开详情 + composer（PRD A）；跳转仍是右侧 [↪] 热区。
+                onSelectBlock(block);
+                if (canExpandCard) {
+                    cardSend.toggleExpanded(block.blockId);
+                }
+            }}
         >
             <div className="session-overview-block-main">
                 <span className={cn("session-overview-block-icon", block.isAgentLike && "is-agent-brand")}>
@@ -2056,6 +2591,14 @@ function BlockRow({
                     block={block}
                     initialSummary={noteSummary}
                     onClose={onCloseSessionNote}
+                />
+            ) : null}
+            {cardExpanded ? (
+                <CardSendExpander
+                    block={block}
+                    summary={summary}
+                    detail={detail ?? null}
+                    onOpenMessage={onOpenMessage}
                 />
             ) : null}
         </div>
@@ -2890,8 +3433,43 @@ function SessionOverviewPanel({ blockId, model }: ViewComponentProps<SessionOver
         }
     }, []);
 
+    // 卡片展开 + composer 发送的共享状态（面板级，不持久化；切换视图/重开即收起）
+    const reloadOverview = React.useCallback(() => model.refresh(), [model]);
+    const cardSend = useCardSendState(reloadOverview);
+
+    // ── 「＋ 新建 Tab」（F-1122-overview-new-tab）：工具栏 + 组列表尾部两处入口同一弹窗 ──
+    const [newTabOpen, setNewTabOpen] = useState(false);
+    const submitNewTab = React.useCallback(
+        async (request: NewTabSubmitRequest): Promise<void> => {
+            const workspaceId = globalStore.get(atoms.workspace)?.oid;
+            if (workspaceId == null || workspaceId === "") {
+                throw new Error("E_NO_WORKSPACE workspace not ready");
+            }
+            // activateTab=false：建完不切过去，用户留在 Overview（PRD R1.1/R3 不抢焦点）。
+            // 抛出异常 = 创建失败（弹窗保留可重试）；成功由这里收尾（关弹窗 + 刷新组）。
+            const tabId = await WorkspaceService.CreateTab(workspaceId, request.name, false);
+            if (request.addAgent && request.profileName != null) {
+                const settings = globalStore.get(atoms.settingsAtom);
+                const blockDef = createAgentBlockDefForProfile(
+                    request.profileName,
+                    settings,
+                    // 新 Tab 没有自己的 context：显式不继承焦点块 context（与 add-agent 同一兑底）。
+                    buildAddAgentLaunchContext({ connection: null, cwd: null })
+                );
+                const runtimeOpts: RuntimeOpts = { termsize: { rows: 25, cols: 80 } };
+                // activateTargetTab=false：建 agent 块同样不抢焦点。
+                await ObjectService.CreateBlockInTab(tabId, blockDef, runtimeOpts, false, false);
+            }
+            setNewTabOpen(false);
+            // 组行随 workspace.tabids 的 update events 自动出现；refresh 让明细/摘要缓存重取，
+            // 也保证接下来 1s 内组头与块列表是同一份数据（不额外造本地假组）。
+            model.refresh();
+        },
+        [model]
+    );
+
     return (
-        <>
+        <CardSendContext.Provider value={cardSend}>
             <div className="session-overview-panel" aria-label={t("session-overview:panel.label")}>
                 <div className="session-overview-header">
                     <div>
@@ -3043,6 +3621,17 @@ function SessionOverviewPanel({ blockId, model }: ViewComponentProps<SessionOver
                                 <span>{t("session-overview:panel.agents")}</span>
                             </button>
                         </div>
+                        {/* ＋ 新建 Tab：工具栏入口（全局建，建完不自动切过去） */}
+                        <button
+                            type="button"
+                            className="session-overview-new-tab-button"
+                            data-overview-new-tab="toolbar"
+                            onClick={() => setNewTabOpen(true)}
+                            title={t("session-overview:newTab.title")}
+                        >
+                            <i className={makeIconClass("plus", false)} />
+                            <span>{t("session-overview:panel.newTab")}</span>
+                        </button>
                         <label className="session-overview-limit">
                             <span>{t("session-overview:panel.messages")}</span>
                             <input
@@ -3219,6 +3808,19 @@ function SessionOverviewPanel({ blockId, model }: ViewComponentProps<SessionOver
                             />
                         ))
                     )}
+                    {/* ＋ 新建 Tab：组列表尾部入口（就近建，新组插在末尾）——只在列表视图渲染 */}
+                    {(!OVERVIEW_BOARD_ENABLED || viewMode === "list") && displayedTabGroups.length > 0 ? (
+                        <button
+                            type="button"
+                            className="session-overview-tab-new"
+                            data-overview-new-tab="tail"
+                            onClick={() => setNewTabOpen(true)}
+                            title={t("session-overview:newTab.title")}
+                        >
+                            <i className={makeIconClass("plus", false)} />
+                            <span>{t("session-overview:panel.newTab")}</span>
+                        </button>
+                    ) : null}
                     {/* 汇总行（R1.5）：N = workspace tabids 数，M = 渲染组数，K = agent 合计 */}
                     {!OVERVIEW_BOARD_ENABLED || viewMode === "list" ? (
                         <div className="session-overview-tab-summary" data-overview-tab-summary="">
@@ -3274,7 +3876,8 @@ function SessionOverviewPanel({ blockId, model }: ViewComponentProps<SessionOver
                     onSubmit={submitAddAgent}
                 />
             ) : null}
-        </>
+            {newTabOpen ? <OverviewNewTabModal onClose={() => setNewTabOpen(false)} onSubmit={submitNewTab} /> : null}
+        </CardSendContext.Provider>
     );
 }
 

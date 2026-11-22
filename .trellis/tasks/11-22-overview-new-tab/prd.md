@@ -1,3 +1,5 @@
+> **Confirmed: 2026-11-22 @nita**
+
 # PRD：Overview 新建 Tab（两处入口 + 三选一弹窗）
 
 > 父任务：`11-22-overview-tab-card-ux`。UX：父任务 `ux-ascii.md` §④

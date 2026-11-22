@@ -1,3 +1,5 @@
+> **Confirmed: 2026-11-22 @nita**
+
 # PRD：Overview agent 卡点击展开 — 详情 + composer 发送
 
 > 父任务：`11-22-overview-tab-card-ux`。UX：父任务 `ux-ascii.md` §③

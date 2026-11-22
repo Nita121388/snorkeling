@@ -303,3 +303,5 @@
 | 2026-11-22 08:52 | overview-board | ❌ 77/79 | launch+reset | `20261122T08473-overviewboard` | working-tree |
 | 2026-11-22 09:06 | overview-board | ❌ 77/79 | launch+reset | `20261122T09004-overviewboard` | working-tree |
 | 2026-11-22 09:23 | overview-board | ✅ 79/79 | launch+reset | `20261122T09185-overviewboard` | working-tree |
+| 2026-11-22 11:27 | overview-ux | ❌ 14/15 | launch+reset | `20261122T11211-overview-ux` | feb7bf6e8 |
+| 2026-11-22 11:36 | overview-ux | ✅ 15/15 | launch+reset | `20261122T11302-overview-ux` | feb7bf6e8 |
