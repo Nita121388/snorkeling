@@ -1,4 +1,5 @@
-> 同步状态：▲ 设计活跃（2026-11-23 原型成稿，未动生产代码；等 #3 刷新问题定性 + #4 验证后进入落地）
+> 同步状态：▲ 设计活跃（2026-11-23 第三稿：样式已对齐真实实现——token 与几何全部从生产 SCSS 原样搬运；
+> 等 #3 刷新问题定性 + #4 验证后进入落地）
 > 镜像源：`frontend/app/session-overview/overview-board.tsx`（BoardCard + 11-23 动作区）、
 > `frontend/app/session-overview/session-overview.tsx`（BlockRow + CardSendExpander/展开体）、
 > `frontend/app/session-overview/overview-card-send-panel.tsx`（11-23 抽出的共享 composer）、
@@ -21,6 +22,23 @@
 
 实现选择（原型里两种都留了）：CSS 容器查询（`@container`）零 JS；保底方案 `ResizeObserver` 打
 `data-size` 属性，Electron 兼容性更稳，**建议先按 data-size 落地**。
+
+## 2026-11-23 样式对齐（nita 反馈：与当前样式差异太大）
+
+原型原先是我自定的视觉，与生产差异大。第三稿起**全部对齐生产实现**，差异只剩"融合"本身：
+
+| 原型元素 | 对齐源（原样搬值） |
+|---|---|
+| 卡片容器 | `.session-overview-board-card`：padding 13 / radius 10 / border 1px / surface 底 / shadow 0 1px 2 |
+| 行形态容器 | `.session-overview-block-row`：**透明底** + padding 8 / radius 8 / hover 底色（is-row 类） |
+| 头部/头像/标题/年龄 | head flex gap 6；avatar 20×20 r6 f14；title 13px/1.35 w600；age 10px |
+| 动作按钮 | `.session-overview-board-card-action`：20×20 / r4 / 11px / secondary 色 / hover 描边 |
+| meta 行 / provider / 项目 | flex wrap gap 7 / 9.5px secondary（真实字号，不是原型自定的 10.5） |
+| 会话标签 pill | `.session-overview-board-tag`：h15 / r4 / 6% 底 / 9.5px w500 / max-width 84 |
+| 属性胶囊 | `.property-chip`：h20 / r3 / px6 / 12px + 三色 |
+| preview / note | 11.5px secondary / 2 行 clamp / mb 6 |
+| 度量轨 + mini | data 区 mt 11 gap 4；mini 3px gap 1 |
+| 主题 token | `theme.scss` 暗/亮全套原值（surface/border/accent/text/secondary/error/warning） |
 
 ## 2026-11-23 反馈修订（nita）
 
