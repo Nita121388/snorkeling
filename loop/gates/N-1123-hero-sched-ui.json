@@ -4,5 +4,14 @@
     "by": "nita",
     "verdict": "confirmed",
     "prdHash": "90263f410f16"
+  },
+  "g2": {
+    "redProof": "loop/red/N-1123-hero-sched-ui.txt",
+    "at": "2026-11-23T13:36:55Z"
+  },
+  "g5": {
+    "ok": true,
+    "executedAt": "2026-11-23T13:36:55Z",
+    "by": "compliance"
   }
 }

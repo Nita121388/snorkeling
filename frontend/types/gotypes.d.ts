@@ -3394,6 +3394,7 @@ declare global {
         tags?: string[];
         createdBy?: string;
         mode?: string;
+        hero?: string;
         tab?: string;
     };
 

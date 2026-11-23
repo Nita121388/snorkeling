@@ -1,0 +1,35 @@
+       | ^
+     13| 
+     14| function draft(over: Record<string, any> = {}): any {
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯
+Serialized Error: { code: 'ERR_MODULE_NOT_FOUND' }
+Caused by: Error: Failed to load url ./scheduledtask-hero (resolved id: ./scheduledtask-hero) in /Users/nita/Primary/projects/snorkeling/frontend/app/modals/scheduledtask-hero.test.ts. Does the file exist?
+ ❯ loadAndTransform node_modules/vite/dist/node/chunks/dep-Dq2t6Dq0.js:35730:17
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  frontend/app/session-overview/overview-scheduled-tasks.test.ts [ frontend/app/session-overview/overview-scheduled-tasks.test.ts ]
+Error: Cannot find module './overview-scheduled-tasks' imported from '/Users/nita/Primary/projects/snorkeling/frontend/app/session-overview/overview-scheduled-tasks.test.ts'
+ ❯ frontend/app/session-overview/overview-scheduled-tasks.test.ts:14:1
+     12| 
+     13| import { describe, expect, it } from "vitest";
+     14| import { buildScheduledTaskCards, computeNextRunAt } from "./overview-…
+       | ^
+     15| 
+     16| const NOW = new Date(2026, 10, 23, 15, 0, 0).getTime(); // 2026-11-23 …
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯
+Serialized Error: { code: 'ERR_MODULE_NOT_FOUND' }
+Caused by: Error: Failed to load url ./overview-scheduled-tasks (resolved id: ./overview-scheduled-tasks) in /Users/nita/Primary/projects/snorkeling/frontend/app/session-overview/overview-scheduled-tasks.test.ts. Does the file exist?
+ ❯ loadAndTransform node_modules/vite/dist/node/chunks/dep-Dq2t6Dq0.js:35730:17
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  2 failed (2)
+      Tests  no tests
+   Start at  21:09:23
+   Duration  619ms (transform 32ms, setup 21ms, collect 0ms, tests 0ms, environment 0ms, prepare 100ms)
+
+JUNIT report written to /Users/nita/Primary/projects/snorkeling/test-results.xml

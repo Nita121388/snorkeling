@@ -56,6 +56,7 @@ import { buildAddAgentLaunchContext } from "./overview-add-agent";
 import { OverviewAddAgentModal, type AddAgentSubmitRequest } from "./overview-add-agent-modal";
 import { OverviewNewTabModal, type NewTabSubmitRequest } from "./overview-new-tab-modal";
 import { OverviewBoard } from "./overview-board";
+import { OverviewScheduledTasksSection } from "./overview-scheduled-tasks-panel";
 import type { BoardCardResumeOutcome } from "./overview-board";
 import {
     normalizeBoardTags,
@@ -3304,6 +3305,9 @@ function SessionOverviewPanel({ blockId, model }: ViewComponentProps<SessionOver
                         </label>
                     </div>
                 </div>
+                {/* 独立「定时任务」区（N-1123-hero-sched-ui）：视图切换之下、列表/看板之上；
+                    无任务时组件自身返回 null，0 视觉变化。 */}
+                <OverviewScheduledTasksSection />
                 <div className="session-overview-body">
                     {OVERVIEW_BOARD_ENABLED && viewMode === "timeline" ? (
                         <OverviewTimeline

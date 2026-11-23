@@ -2,13 +2,16 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { Modal } from "@/app/modals/modal";
+import { loadHeroRoster } from "@/app/store/hero-roster";
 import { modalsModel } from "@/app/store/modalmodel";
 import { describeCron } from "@/app/view/scheduledtasks/cron-describe";
 import type { AgentProfileInfo } from "@/app/workspace/agent-catalog";
 import { findAgentProfile, loadAgentCatalog, modelOptionsFor, pickDefaultModel } from "@/app/workspace/agent-catalog";
-import * as React from "react";
+import { makeHeroHomeBase, type HeroRosterEntry } from "@/app/workspace/hero-launch";
 import { i18n } from "@/i18n/config";
+import * as React from "react";
 import { useTranslation } from "react-i18next";
+import { heroSelectOptions, normalizeHeroBinding } from "./scheduledtask-hero";
 
 const ScheduleTypes = ["cron", "interval", "daily", "weekly", "once"] as const;
 
@@ -32,6 +35,9 @@ export type ScheduledTaskEditorModalProps = {
  * Scheduled Tasks block, which made it tiny and clipped by the block bounds. Rendering it
  * through the global modal layer (Modal portals into #main) gives it the same footprint
  * as the other app dialogs and lets ESC/backdrop close it via modalsModel.
+ *
+ * Hero 绑定（N-1123-hero-sched-ui）：hero 下拉来自 HeroRoster；选中后 workdir 留空即落到
+ * `<hero home>`、provider/model 留空即继承 hero.json（后端 core 包解析），弹窗只负责提示与载荷。
  */
 function ScheduledTaskEditorModal({ task, isNew, onSave }: ScheduledTaskEditorModalProps) {
     const { t } = useTranslation("modals");
@@ -40,6 +46,8 @@ function ScheduledTaskEditorModal({ task, isNew, onSave }: ScheduledTaskEditorMo
         schedule: { ...task.schedule },
     }));
     const [agentCatalog, setAgentCatalog] = React.useState<AgentProfileInfo[]>([]);
+    const [heroRoot, setHeroRoot] = React.useState<string>("");
+    const [heroes, setHeroes] = React.useState<HeroRosterEntry[]>([]);
     const [catalogLoading, setCatalogLoading] = React.useState(true);
     const [err, setErr] = React.useState<string>(null);
     const [saving, setSaving] = React.useState(false);
@@ -56,12 +64,27 @@ function ScheduledTaskEditorModal({ task, isNew, onSave }: ScheduledTaskEditorMo
         };
     }, []);
 
+    // hero 名册只在有 hero 系统时才用：失败解析为空名册，下拉只剩「不绑定」这一项，弹窗仍可用。
+    React.useEffect(() => {
+        let cancelled = false;
+        void loadHeroRoster().then((roster) => {
+            if (cancelled) return;
+            setHeroRoot(roster?.root ?? "");
+            setHeroes(roster?.heroes ?? []);
+        });
+        return () => {
+            cancelled = true;
+        };
+    }, []);
+
     const close = React.useCallback(() => {
         modalsModel.popModal();
     }, []);
 
-    const set = <K extends keyof ScheduledTaskType>(k: K, v: ScheduledTaskType[K]) =>
-        setForm((f) => ({ ...f, [k]: v }));
+    const set = <K extends keyof (ScheduledTaskType)>(
+        k: K,
+        v: (ScheduledTaskType)[K]
+    ) => setForm((f) => ({ ...f, [k]: v }));
     const setSched = <K extends keyof ScheduledTaskScheduleType>(k: K, v: ScheduledTaskScheduleType[K]) =>
         setForm((f) => ({ ...f, schedule: { ...f.schedule, [k]: v } }));
 
@@ -77,9 +100,14 @@ function ScheduledTaskEditorModal({ task, isNew, onSave }: ScheduledTaskEditorMo
 
     const notify = form.notifyOnComplete || form.notifyOnError;
 
+    const heroId = (form.hero ?? "").trim();
+    const heroHome = heroId === "" ? "" : makeHeroHomeBase(heroRoot, heroId);
+    const heroOptions = React.useMemo(() => heroSelectOptions(heroes, t("modals:scheduledTask.heroNone")), [heroes, t]);
+
     const save = async () => {
         setSaving(true);
-        const e = await onSave(form);
+        // hero 是 json:"hero,omitempty"：选中有值就写入，清空则删键（清除绑定靠键缺失）。
+        const e = await onSave(normalizeHeroBinding(form) as ScheduledTaskType);
         setSaving(false);
         if (e) {
             setErr(e);
@@ -119,6 +147,23 @@ function ScheduledTaskEditorModal({ task, isNew, onSave }: ScheduledTaskEditorMo
                             />
                         </Field>
 
+                        <Field label={t("modals:scheduledTask.fieldHero")}>
+                            <select className={inputCls} value={heroId} onChange={(e) => set("hero", e.target.value)}>
+                                {heroOptions.map((opt) => (
+                                    <option key={opt.value || "__none__"} value={opt.value}>
+                                        {opt.label}
+                                    </option>
+                                ))}
+                            </select>
+                            {heroId !== "" ? (
+                                <span className="text-xs text-muted mt-0.5">
+                                    {i18n.t("modals:scheduledTask.heroInheritHint", {
+                                        home: heroHome !== "" ? heroHome : "—",
+                                    })}
+                                </span>
+                            ) : null}
+                        </Field>
+
                         <Field label={t("modals:scheduledTask.fieldAgentProfile")}>
                             {agentCatalog.length === 0 ? (
                                 // Catalog unavailable (RPC failed): keep the editor usable with free text.
@@ -142,7 +187,9 @@ function ScheduledTaskEditorModal({ task, isNew, onSave }: ScheduledTaskEditorMo
                                 </select>
                             )}
                             {catalogLoading && (
-                                <span className="text-xs text-muted mt-0.5">{t("modals:scheduledTask.loadingAgents")}</span>
+                                <span className="text-xs text-muted mt-0.5">
+                                    {t("modals:scheduledTask.loadingAgents")}
+                                </span>
                             )}
                             {!catalogLoading && agentCatalog.length === 0 && (
                                 <span className="text-xs text-muted mt-0.5">
@@ -163,7 +210,11 @@ function ScheduledTaskEditorModal({ task, isNew, onSave }: ScheduledTaskEditorMo
                                     className={inputCls}
                                     value={form.model ?? ""}
                                     onChange={(e) => set("model", e.target.value)}
-                                    placeholder={t("modals:scheduledTask.modelPlaceholder")}
+                                    placeholder={
+                                        heroId !== ""
+                                            ? t("modals:scheduledTask.modelInheritHero")
+                                            : t("modals:scheduledTask.modelPlaceholder")
+                                    }
                                 />
                             ) : (
                                 <select
@@ -171,6 +222,9 @@ function ScheduledTaskEditorModal({ task, isNew, onSave }: ScheduledTaskEditorMo
                                     value={form.model ?? ""}
                                     onChange={(e) => set("model", e.target.value)}
                                 >
+                                    {heroId !== "" ? (
+                                        <option value="">{t("modals:scheduledTask.modelInheritHero")}</option>
+                                    ) : null}
                                     {modelOptions.map((m) => (
                                         <option key={m.id} value={m.id}>
                                             {m.provider != null && m.provider !== ""
@@ -203,8 +257,19 @@ function ScheduledTaskEditorModal({ task, isNew, onSave }: ScheduledTaskEditorMo
                                 className={inputCls}
                                 value={form.workdir ?? ""}
                                 onChange={(e) => set("workdir", e.target.value)}
-                                placeholder="~/myproject"
+                                placeholder={
+                                    heroId !== "" && heroHome !== ""
+                                        ? i18n.t("modals:scheduledTask.workdirHeroPlaceholder", { home: heroHome })
+                                        : t("modals:scheduledTask.workdirPlaceholder")
+                                }
                             />
+                            {heroId !== "" ? (
+                                <span className="text-xs text-muted mt-0.5">
+                                    {i18n.t("modals:scheduledTask.workdirHeroHint", {
+                                        home: heroHome !== "" ? heroHome : "<hero home>",
+                                    })}
+                                </span>
+                            ) : null}
                         </Field>
 
                         <Field label={t("modals:scheduledTask.fieldScheduleType")}>

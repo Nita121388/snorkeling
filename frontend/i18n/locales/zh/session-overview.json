@@ -204,5 +204,11 @@
         "saved": "已保存",
         "saveFailed": "保存失败",
         "unsavedChanges": "未保存的修改"
+    },
+    "scheduledTasks": {
+        "title": "定时任务",
+        "statusPending": "未运行",
+        "cardTitle": "编辑 {{name}}",
+        "toggleLabel": "启用或停用 {{name}}"
     }
 }

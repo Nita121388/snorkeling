@@ -30,7 +30,7 @@ createdAt: "2026-11-23T11:17:09Z"
 - [ ] `npx vitest run frontend/app/session-overview >/dev/null 2>&1 && echo VT_OVERVIEW_OK` → `VT_OVERVIEW_OK`
 - [ ] `npx vitest run frontend/app/session-overview/overview-scheduled-tasks.test.ts >/dev/null 2>&1 && echo VT_SCHEDTASK_OK` → `VT_SCHEDTASK_OK`
 - [ ] `npx vitest run frontend/app/modals >/dev/null 2>&1 && echo VT_MODALS_OK` → `VT_MODALS_OK`
-- [ ] `npm run i18n:check >/dev/null 2>&1 && echo I18N_OK` → `I18N_OK`
+- [ ] `node scripts/i18n/check-parity.mjs >/dev/null 2>&1 && echo I18N_PARITY_OK` → `I18N_PARITY_OK`
 
 ## 记录
 

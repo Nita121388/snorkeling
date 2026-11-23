@@ -172,7 +172,14 @@
         "scheduleTypeInterval": "固定间隔",
         "scheduleTypeDaily": "每天",
         "scheduleTypeWeekly": "每周",
-        "scheduleTypeOnce": "单次"
+        "scheduleTypeOnce": "单次",
+        "fieldHero": "Hero",
+        "heroNone": "不绑定 Hero",
+        "heroInheritHint": "留空即继承 hero home（{{home}}）与 hero.json 里的 provider / model / workdir。",
+        "modelInheritHero": "继承 Hero 配置",
+        "workdirHeroPlaceholder": "{{home}}（Hero home）",
+        "workdirHeroHint": "留空即落到 hero home {{home}}。",
+        "workdirPlaceholder": "~/myproject"
     },
     "syncConflict": {
         "title": "未解决的同步冲突",

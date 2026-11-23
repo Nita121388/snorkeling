@@ -172,7 +172,14 @@
         "scheduleTypeInterval": "interval",
         "scheduleTypeDaily": "daily",
         "scheduleTypeWeekly": "weekly",
-        "scheduleTypeOnce": "once"
+        "scheduleTypeOnce": "once",
+        "fieldHero": "Hero",
+        "heroNone": "Not bound to a hero",
+        "heroInheritHint": "Provider / model / workdir fall back to the hero home ({{home}}) and hero.json when left empty.",
+        "modelInheritHero": "Inherit from hero",
+        "workdirHeroPlaceholder": "{{home}} (hero home)",
+        "workdirHeroHint": "Leave empty to use the hero home {{home}}.",
+        "workdirPlaceholder": "~/myproject"
     },
     "syncConflict": {
         "title": "Unresolved sync conflicts",

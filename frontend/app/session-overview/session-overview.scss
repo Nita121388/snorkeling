@@ -3504,3 +3504,125 @@
     box-shadow: 0 8px 24px rgb(0 0 0 / 0.2);
     padding: 8px;
 }
+
+/* ── 独立「定时任务」区（N-1123-hero-sched-ui） ──
+   紧贴视图切换之下、列表/看板之上的一条紧凑横条：每卡 = hero emoji + 任务名
+   + 下次运行 + 上次状态 + 启停开关。无任务时组件返回 null，本区整体不占位。 */
+.session-overview-scheduled-tasks {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 4px;
+    padding: 4px 2px 6px;
+}
+
+.session-overview-scheduled-tasks-title {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    color: var(--secondary-text-color);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+}
+
+.session-overview-scheduled-tasks-strip {
+    display: flex;
+    overflow-x: auto;
+    gap: 6px;
+    padding-bottom: 2px;
+    scrollbar-width: thin;
+}
+
+.session-overview-scheduled-task-card {
+    display: inline-flex;
+    min-width: 0;
+    align-items: center;
+    gap: 6px;
+    flex: 0 0 auto;
+    max-width: 320px;
+    height: 24px;
+    padding: 0 6px 0 8px;
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    background: transparent;
+    color: var(--main-text-color);
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 10px;
+    line-height: 1;
+
+    &:hover {
+        background: var(--hover-bg-color-strong);
+    }
+
+    &:focus-visible {
+        outline: 1px solid var(--accent-color);
+        outline-offset: 1px;
+    }
+
+    &.is-disabled {
+        opacity: 0.55;
+    }
+}
+
+.session-overview-scheduled-task-hero {
+    flex: 0 0 auto;
+    font-size: 11px;
+    white-space: nowrap;
+}
+
+.session-overview-scheduled-task-name {
+    overflow: hidden;
+    max-width: 120px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: 600;
+}
+
+.session-overview-scheduled-task-nextrun {
+    flex: 0 0 auto;
+    color: var(--secondary-text-color);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+.session-overview-scheduled-task-status {
+    flex: 0 0 auto;
+    white-space: nowrap;
+}
+
+.session-overview-scheduled-task-toggle {
+    position: relative;
+    flex: 0 0 auto;
+    width: 18px;
+    height: 10px;
+    padding: 0;
+    border: 1px solid var(--border-color);
+    border-radius: 999px;
+    appearance: none;
+    background: transparent;
+    cursor: pointer;
+
+    &::after {
+        content: "";
+        position: absolute;
+        top: 1px;
+        left: 1px;
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: var(--secondary-text-color);
+        transition: transform 120ms ease, background-color 120ms ease;
+    }
+
+    &.is-on {
+        border-color: rgb(from var(--accent-color) r g b / 0.42);
+        background: rgb(from var(--accent-color) r g b / 0.16);
+
+        &::after {
+            transform: translateX(8px);
+            background: var(--accent-color);
+        }
+    }
+}

@@ -204,5 +204,11 @@
         "saved": "Saved",
         "saveFailed": "Save failed",
         "unsavedChanges": "Unsaved changes"
+    },
+    "scheduledTasks": {
+        "title": "Scheduled tasks",
+        "statusPending": "pending",
+        "cardTitle": "Edit {{name}}",
+        "toggleLabel": "Enable or disable {{name}}"
     }
 }

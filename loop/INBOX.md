@@ -25,3 +25,4 @@
 - 真机判据阻塞原因：`cmd/wsh/cmd/wshcmd-session.go` 在 21:20 被并行会话改成半成品（`session annotate`
   Long 字符串未闭合），`go build ./cmd/...` 失败 → wsh 二进制与 dev 实例都起不来。不是本包改动，
   等该文件闭合后补跑 `agent-launch` / `agent-send` 真机台。
+- [ ] 2026-11-23 i18n:check 基线本就红：硬编码 CJK 扫描 72 条（allowlist 外 14，全在既有包产物：commontext-send / overview-card-send / agent-emoji-picker / emain 等）；本轮 drag 包的 [overview-drag] console.warn 也在此列。需要一次专项收口（提取为 i18n key 或扩 allowlist）
