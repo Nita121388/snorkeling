@@ -108,7 +108,7 @@ host.style.cssText = 'position:fixed;top:60px;left:0;width:700px;height:500px;ba
 document.body.appendChild(host);
 window.__root = ReactDOM.createRoot(host);
 window.__root.render(React.createElement(Markdown, {
-  text: '# t\n\n![one](/c-dark-detail.png)\n\n第二段\n',
+  text: '# t\n\n![one](/docs/screenshots/c-dark-detail.png)\n\n第二段\n',
   rehype: true,
   onInlineEditCommit: window.__commit,   // 必须稳定引用！
   resolveOpts: { baseDir: '/', connName: 'local', openLink: async()=>{} },

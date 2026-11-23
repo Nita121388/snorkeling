@@ -111,7 +111,7 @@ frontend/app/view/preview/plugins/banner/
 
 ## 示例文件
 
-参考 `test-banner.md` 文件，展示了完整的使用示例。
+示例 md 曾放在仓库根 `test-banner.md`，已清理（历史里可找回：`git show HEAD~:test-banner.md`）。按上面的属性清单自行编写即可。
 
 ## 注意事项
 

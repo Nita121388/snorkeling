@@ -74,6 +74,9 @@ scripts/cdp-gui-chat-*.mjs
 .tmp/
 /nul
 
+# sync 引擎在根目录留下的运行产物（0 字节标记文件）
+/stored.Rev
+
 # verify-* 是运行产物（截图/报告），不进仓库
 verify-runs/
 
