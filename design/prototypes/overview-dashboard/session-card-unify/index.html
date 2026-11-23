@@ -1,0 +1,373 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="utf-8" />
+<title>SessionCard 融合原型 · 列表卡 × 看板卡</title>
+<style>
+  :root{
+    --bg:#222; --panel:#2a2a2a; --panel2:#262626; --line:#3a3a3a; --line2:#333;
+    --text:#e6e6e6; --muted:#9a9a9a; --accent:#58c142; --accent-soft:rgba(88,193,66,.14);
+    --blue:#3b82f6; --warn:#d9930d; --danger:#e5484d; --ok:#4e9a06;
+    --chip:#313131; --chip-line:#3d3d3d;
+    --radius:10px; --radius-sm:7px;
+    --font:-apple-system,"Segoe UI",system-ui,"Microsoft YaHei",sans-serif;
+  }
+  html[data-theme="light"]{
+    --bg:#f2eee5; --panel:#fffdf8; --panel2:#faf7f0; --line:#e2dcd0; --line2:#eae4d8;
+    --text:#2b2a26; --muted:#8a8578; --accent:#7c4dff; --accent-soft:rgba(124,77,255,.10);
+    --blue:#2563eb; --warn:#b4790a; --danger:#cf222e; --ok:#3f7a05;
+    --chip:#f3efe6; --chip-line:#e5dfd2;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font:13px/1.45 var(--font);padding:18px 20px 60px}
+  h1{font-size:16px;margin:0 0 4px}
+  .sub{color:var(--muted);font-size:12px;margin-bottom:14px}
+  .bar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:0 0 16px;padding:10px 12px;
+       background:var(--panel2);border:1px solid var(--line2);border-radius:var(--radius)}
+  .bar label{font-size:12px;color:var(--muted)}
+  .seg{display:flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+  .seg button{border:0;background:transparent;color:var(--muted);font:12px var(--font);padding:5px 10px;cursor:pointer}
+  .seg button.on{background:var(--accent-soft);color:var(--text)}
+  button.ghost{border:1px solid var(--line);background:transparent;color:var(--text);border-radius:8px;
+      padding:5px 10px;font:12px var(--font);cursor:pointer}
+  .cols{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}
+  @media(max-width:1080px){.cols{grid-template-columns:1fr}}
+  .col{background:var(--panel2);border:1px solid var(--line2);border-radius:12px;padding:12px}
+  .col h2{font-size:13px;margin:0 0 2px;display:flex;gap:8px;align-items:center}
+  .col .note{color:var(--muted);font-size:11.5px;margin:0 0 10px}
+  .tag{font-size:10.5px;padding:1px 6px;border-radius:999px;border:1px solid var(--line);color:var(--muted)}
+  .stack{display:flex;flex-direction:column;gap:8px}
+
+  /* ─────────── 现状：两套 ─────────── */
+  .legacy-row{display:grid;grid-template-columns:22px 1fr auto;gap:8px;align-items:center;
+      background:var(--panel);border:1px solid var(--line2);border-radius:8px;padding:8px 10px}
+  .legacy-card{width:240px;background:var(--panel);border:1px solid var(--line2);border-radius:var(--radius);padding:10px}
+  .legacy-flag{font-size:10.5px;color:var(--warn)}
+
+  /* ─────────── 融合后的唯一组件（同一份 DOM，靠容器宽度与 mode 变形） ─────────── */
+  .sc{               /* SessionCard root */
+    background:var(--panel);border:1px solid var(--line2);border-radius:var(--radius);
+    padding:10px 12px;display:grid;gap:7px;position:relative;
+    container-type:inline-size;
+  }
+  .sc:hover{border-color:var(--line)}
+  .sc-head{display:grid;grid-template-columns:20px 1fr auto;gap:8px;align-items:center;min-width:0}
+  .sc-avatar{width:20px;height:20px;border-radius:6px;display:grid;place-items:center;
+      background:var(--accent-soft);font-size:12px}
+  .sc-title{font-weight:600;font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .sc-age{font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums}
+  .sc-actions{display:flex;gap:2px;opacity:0;transition:opacity .12s}
+  .sc:hover .sc-actions,.sc.is-open .sc-actions{opacity:1}
+  .act{width:20px;height:20px;border:0;background:transparent;color:var(--muted);border-radius:5px;
+      display:grid;place-items:center;cursor:pointer;font-size:11px}
+  .act:hover{background:var(--chip);color:var(--text)}
+  .act.danger:hover{color:var(--danger)}
+  .sc-meta{display:flex;gap:6px;align-items:center;flex-wrap:wrap;min-width:0}
+  .chip{display:inline-flex;align-items:center;gap:4px;height:17px;padding:0 6px;border-radius:5px;
+      background:var(--chip);border:1px solid var(--chip-line);font-size:10.5px;color:var(--text)}
+  .chip.ok{color:var(--ok)}.chip.work{color:var(--blue)}.chip.warn{color:var(--warn)}
+  .pill{border-radius:999px;padding:1px 7px;border:1px solid var(--chip-line);background:var(--chip);font-size:10.5px}
+  .dot{width:6px;height:6px;border-radius:50%;display:inline-block}
+  .sc-props{display:flex;gap:5px;flex-wrap:wrap}
+  .pchip{border-radius:5px;padding:1px 6px;font-size:10.5px;border:1px solid transparent}
+  .pchip.p-green{background:rgba(78,154,6,.14);color:var(--ok);border-color:rgba(78,154,6,.3)}
+  .pchip.p-blue{background:rgba(59,130,246,.14);color:var(--blue);border-color:rgba(59,130,246,.3)}
+  .pchip.p-purple{background:rgba(124,77,255,.16);color:var(--accent);border-color:rgba(124,77,255,.3)}
+  .sc-preview{font-size:11.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .sc-note{font-size:11.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .sc-metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:5px}
+  .m{border:1px solid var(--line2);border-radius:5px;padding:3px 5px;font-size:10px;color:var(--muted);
+     display:flex;flex-direction:column;gap:1px}
+  .m b{color:var(--text);font-size:11px;font-weight:600}
+  .sc-mini{display:flex;gap:1px;height:3px}
+  .sc-mini i{flex:1;border-radius:2px;background:var(--line)}
+  .sc-mini i.w{background:var(--blue)}.sc-mini i.d{background:var(--ok)}.sc-mini i.i{background:#666}
+
+  /* 容器查询：窄（看板列）时压缩信息，宽（列表行）时展开 —— 同一份 DOM */
+  @container (max-width: 300px){
+    .sc{background:var(--panel);padding:9px}
+    .sc-metrics{grid-template-columns:repeat(2,1fr)}
+    .sc-props .hide-narrow{display:none}
+    .sc-preview{display:none}
+  }
+
+  /* composer：row=内联展开 / card=浮层（同一份 markup） */
+  .composer{border-top:1px solid var(--line2);padding-top:7px;display:none;gap:6px}
+  .sc.is-open .composer{display:grid}
+  .composer textarea{width:100%;min-height:44px;resize:vertical;background:var(--panel2);color:var(--text);
+      border:1px solid var(--line);border-radius:7px;padding:6px 8px;font:12px var(--font)}
+  .composer .foot{display:flex;gap:8px;align-items:center;justify-content:space-between;font-size:11px;color:var(--muted)}
+  .composer .send{border:0;border-radius:7px;background:var(--accent);color:#fff;padding:4px 12px;font:12px var(--font);cursor:pointer}
+  .trip{display:flex;gap:6px;align-items:center;font-size:10.5px;color:var(--muted);margin-top:2px}
+  .trip .on{color:var(--ok)}
+  .pop{position:absolute;right:6px;top:calc(100% - 2px);width:300px;max-width:calc(100% - 12px);
+      background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:9px;
+      box-shadow:0 12px 30px rgba(0,0,0,.35);display:none;z-index:20}
+  .sc.is-open .pop{display:block}
+  .sc.is-open .trip{display:none}
+
+  /* 对照矩阵 */
+  table.matrix{width:100%;border-collapse:collapse;margin-top:8px;font-size:11.5px}
+  table.matrix th,table.matrix td{border:1px solid var(--line2);padding:5px 7px;text-align:left}
+  table.matrix th{background:var(--panel);color:var(--muted);font-weight:500}
+  .yes{color:var(--ok)}.no{color:var(--danger)}
+  .hint{font-size:11.5px;color:var(--muted);margin-top:10px;line-height:1.6}
+  .kbd{border:1px solid var(--line);border-radius:4px;padding:0 4px;font-size:10.5px}
+</style>
+</head>
+<body>
+
+<h1>SessionCard：列表卡 × 看板卡 → 单一组件</h1>
+<div class="sub">
+  一份 DOM，两种尺寸：容器宽度 ≥300px 走「行」形态（内联 composer），&lt;300px 走「看板卡」形态（浮层 composer）。
+  下方的卡片全部由 <b>同一个模板</b> 渲染 —— 切换宽度/主题/展开态即可看到它如何变形。
+</div>
+
+<div class="bar">
+  <label>看板列宽</label>
+  <div class="seg" id="segW">
+    <button data-w="220" class="on">220</button>
+    <button data-w="280">280</button>
+    <button data-w="360">360</button>
+  </div>
+  <label>主题</label>
+  <div class="seg" id="segTheme">
+    <button data-t="dark" class="on">暗</button>
+    <button data-t="light">亮</button>
+  </div>
+  <button class="ghost" id="btnExpand">切换展开态</button>
+  <button class="ghost" id="btnPop">看板卡用浮层 / 行用内联</button>
+  <span class="hint" id="hint"></span>
+</div>
+
+<div class="cols">
+  <!-- 左：现状（两套实现） -->
+  <section class="col">
+    <h2>现状：两套实现 <span class="tag">要退休</span></h2>
+    <p class="note">
+      列表行（<code>BlockRow</code>）与看板卡（<code>BoardCard</code>）各写一份：字段映射重复、chip/属性行重复、
+      动作区重复；composer 只在列表行有，看板卡刚补成浮层。改一处要记得改两处。
+    </p>
+    <div class="stack" id="legacyList">
+      <div class="legacy-flag">列表形态（BlockRow）</div>
+      <div class="legacy-row">
+        <span class="sc-avatar">🐚</span>
+        <div>
+          <div class="sc-title">agent resume 真机验证</div>
+          <div class="sc-preview">12/12 全绿，台账已入账</div>
+        </div>
+        <div style="display:flex;gap:2px">
+          <button class="act" title="恢复">⟳</button>
+          <button class="act" title="发消息">✈</button>
+          <button class="act" title="跳转">↗</button>
+        </div>
+      </div>
+      <div class="legacy-flag">看板形态（BoardCard，列宽 240）</div>
+      <div class="legacy-card">
+        <div class="sc-head">
+          <span class="sc-avatar">🐚</span>
+          <span class="sc-title">agent resume 真机验证</span>
+          <span class="sc-age">11m</span>
+        </div>
+        <div class="sc-meta" style="margin-top:6px">
+          <span class="chip ok"><span class="dot" style="background:var(--ok)"></span>Done 11m</span>
+          <span class="chip">pi</span>
+        </div>
+        <div class="sc-preview" style="margin-top:6px">12/12 全绿，台账已入账</div>
+        <div class="sc-metrics" style="margin-top:6px">
+          <div class="m"><b>128</b>消息</div><div class="m"><b>1.2M</b>体积</div>
+          <div class="m"><b>2h</b>存活</div><div class="m"><b>11m</b>闲置</div>
+        </div>
+      </div>
+      <p class="note" style="margin:6px 0 0">
+        差异清单（今天核到的）：列表行没有 4 格度量轨；看板卡没有 preview 之外的 note 行；
+        动作区两边图标顺序不同；属性 <code>hideName</code> 口径只在看板生效（列表行靠另一条分支）。
+      </p>
+    </div>
+  </section>
+
+  <!-- 右：融合（同一组件） -->
+  <section class="col">
+    <h2>融合：一个 <code>SessionCard</code> <span class="tag">建议</span></h2>
+    <p class="note">
+      同一模板 + 容器查询变形。动作区、状态 chip、属性胶囊、度量轨、composer 全部只有一份。
+      下排是「列表行宽度」渲染的同一组件。
+    </p>
+    <div class="stack">
+      <div class="legacy-flag">看板形态（宽度可切）</div>
+      <div id="boardSlot" style="display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap"></div>
+      <div class="legacy-flag" style="margin-top:6px">列表形态（同一模板，宽度 100%）</div>
+      <div id="rowSlot"></div>
+    </div>
+  </section>
+</div>
+
+<h2 style="font-size:13px;margin:22px 0 0">能力矩阵（融合后每项只有一个实现点）</h2>
+<table class="matrix">
+  <tr><th>能力</th><th>现状 · 列表行</th><th>现状 · 看板卡</th><th>融合后</th></tr>
+  <tr><td>点主体开会话详情</td><td class="yes">有</td><td class="yes">有</td><td class="yes">一份（热区白名单与卡一致）</td></tr>
+  <tr><td>跳转 / 备注 / 删会话 / 关块</td><td class="yes">有</td><td class="yes">有</td><td class="yes">一组 actions</td></tr>
+  <tr><td>恢复 agent（按会话 resme 到所在 Tab）</td><td class="no">无</td><td class="yes">刚加（11-23）</td><td class="yes">一份</td></tr>
+  <tr><td>composer 发送</td><td class="yes">内联展开</td><td class="yes">浮层（11-23）</td><td class="yes">同组件两种呈现</td></tr>
+  <tr><td>状态 chip / unread / seen</td><td class="yes">有（不同 variant）</td><td class="yes">有</td><td class="yes">variant 由容器宽度决定</td></tr>
+  <tr><td>属性胶囊（hideName 口径）</td><td class="no">另一条分支</td><td class="yes">有</td><td class="yes">一份（消灭口径漂移）</td></tr>
+  <tr><td>4 格度量轨 + mini 时间线</td><td class="no">无</td><td class="yes">有</td><td class="yes">窄宽时压成 2 格（容器查询）</td></tr>
+</table>
+
+<div class="hint">
+  <b>实现口径（写进任务/规范用）：</b><br>
+  · 组件：<code>frontend/app/session-overview/session-card.tsx</code>，
+  props = <code>{ card: OverviewSessionCard, expanded, onToggleExpand, actions }</code>；宽度不传 —— 由容器查询决定形态。<br>
+  · 数据：把今天的 <code>OverlayBoardCard</code> 与列表行各自的映射收成 <code>OverviewSessionCard</code>（boardCards memo 已有 90% 字段）。<br>
+  · 里程碑：① 抽组件并让看板走新组件（像素回归 79/79）→ ② 列表行切新组件（15/15 overview-ux 不退化）→ ③ 删旧渲染分支。<br>
+  · 风险控制：容器查询降级（Electron 已支持）→ 若不放心，用 <code>ResizeObserver</code> 打 <code>data-size</code> 属性，
+    两种方式行为一致，先按 <code>data-size</code> 落地更稳。
+</div>
+
+<script>
+const CARD = {
+  emoji: "🐚", title: "agent resume 真机验证", age: "11m",
+  status: { text: "Done 11m", tone: "ok" },
+  provider: "pi", project: "snorkeling",
+  tags: ["verify", "resume"],
+  props: [
+    { label: "进行中", cls: "p-blue" },
+    { label: "P1", cls: "p-purple" },
+    { label: "✓", cls: "p-green" },
+  ],
+  preview: "12/12 全绿，台账已入账",
+  note: "✎ 自动恢复走 AgentResumeCommand，不抢焦点",
+  metrics: [["128","消息"],["1.2M","体积"],["2h","存活"],["11m","闲置"]],
+  mini: ["w","w","i","d","d","i","w","d"],
+};
+
+const ACTIONS = [
+  { k: "restore", icon: "⟳", title: "恢复 agent（按会话恢复到所在 Tab，不抢焦点）" },
+  { k: "send",    icon: "✈", title: "发消息（composer）" },
+  { k: "jump",    icon: "↗", title: "跳转到块" },
+  { k: "note",    icon: "✎", title: "备注" },
+  { k: "del",     icon: "🗑", title: "删除会话文件", danger: true },
+  { k: "close",   icon: "✕", title: "关闭块" },
+];
+
+function cardHTML(id) {
+  const c = CARD;
+  return `
+  <div class="sc" id="${id}" data-expanded="false">
+    <div class="sc-head">
+      <span class="sc-avatar">${c.emoji}</span>
+      <span class="sc-title">${c.title}</span>
+      <span class="sc-age">${c.age}</span>
+    </div>
+    <div class="sc-meta">
+      <span class="chip ${c.status.tone}"><span class="dot" style="background:var(--${c.status.tone==='ok'?'ok':'blue'})"></span>${c.status.text}</span>
+      <span class="chip">${c.provider}</span>
+      <span class="chip">📁 ${c.project}</span>
+      ${c.tags.map((t)=>`<span class="pill">#${t}</span>`).join("")}
+    </div>
+    <div class="sc-props">
+      ${c.props.map((p)=>`<span class="pchip ${p.cls} hide-narrow">${p.label}</span>`).join("")}
+    </div>
+    <div class="sc-preview">${c.preview}</div>
+    <div class="sc-note">${c.note}</div>
+    <div class="sc-metrics">
+      ${c.metrics.map(([v,l])=>`<div class="m"><b>${v}</b>${l}</div>`).join("")}
+    </div>
+    <div class="sc-mini">${c.mini.map((s)=>`<i class="${s}"></i>`).join("")}</div>
+    <div class="sc-actions">
+      ${ACTIONS.map((a)=>`<button class="act ${a.danger?'danger':''}" data-act="${a.k}" title="${a.title}">${a.icon}</button>`).join("")}
+    </div>
+    <div class="composer">
+      <textarea placeholder="发给它…（Enter 发送 / Shift+Enter 换行 / Esc 收起）"></textarea>
+      <div class="foot">
+        <span>☑ 发送后等回复 · 超时不算失败</span>
+        <button class="send">发送</button>
+      </div>
+      <div class="trip"><span class="on">● 已提交</span><span>→ ○ 等回复</span><span>→ ○ 收到</span></div>
+    </div>
+    <div class="pop">
+      <textarea placeholder="发给它…（浮层：不撑列宽）"></textarea>
+      <div class="foot" style="margin-top:6px">
+        <span>☑ 等回复</span>
+        <button class="send">发送</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+let boardW = 220;
+let expanded = false;
+
+function renderBoard() {
+  const slot = document.getElementById("boardSlot");
+  slot.innerHTML = `<div style="width:${boardW}px">${cardHTML("cardA")}</div>
+                    <div style="width:${boardW}px">${cardHTML("cardB")}</div>`;
+  bind();
+  applyState();
+}
+function renderRow() {
+  document.getElementById("rowSlot").innerHTML = cardHTML("rowA");
+  bind();
+  applyState();
+}
+
+function applyState() {
+  document.querySelectorAll(".sc").forEach((el) => {
+    el.classList.toggle("is-open", expanded);
+  });
+}
+
+function bind() {
+  document.querySelectorAll(".sc").forEach((root) => {
+    // 主体点击 = 展开 composer（原型里用它演示，真实实现是开详情）
+    root.addEventListener("click", (e) => {
+      const btn = e.target.closest("[data-act]");
+      if (btn) { e.stopPropagation(); flash(btn); return; }
+      if (e.target.closest(".composer") || e.target.closest(".pop")) return;
+      root.classList.toggle("is-open");
+      updateHint();
+    });
+    root.querySelectorAll("textarea").forEach((ta) => {
+      ta.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") { root.classList.remove("is-open"); }
+        if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); flash(root.querySelector(".send")); }
+      });
+    });
+    root.querySelectorAll(".send").forEach((b) => b.addEventListener("click", (e) => { e.stopPropagation(); flash(b); }));
+  });
+  updateHint();
+}
+
+function flash(el) {
+  if (!el) return;
+  const old = el.style.outline;
+  el.style.outline = "2px solid var(--accent)";
+  setTimeout(() => { el.style.outline = old; }, 500);
+}
+
+function updateHint() {
+  const open = [...document.querySelectorAll(".sc")].filter((e) => e.classList.contains("is-open")).length;
+  document.getElementById("hint").textContent =
+    `展开 ${open} 张 · 列宽 ${boardW}px · 窄宽（<300）自动压成看板卡形态`;
+}
+
+document.querySelectorAll("#segW button").forEach((b) => b.addEventListener("click", () => {
+  document.querySelectorAll("#segW button").forEach((x) => x.classList.toggle("on", x === b));
+  boardW = Number(b.dataset.w);
+  renderBoard();
+}));
+document.querySelectorAll("#segTheme button").forEach((b) => b.addEventListener("click", () => {
+  document.querySelectorAll("#segTheme button").forEach((x) => x.classList.toggle("on", x === b));
+  document.documentElement.dataset.theme = b.dataset.t;
+}));
+document.getElementById("btnExpand").addEventListener("click", () => { expanded = !expanded; applyState(); });
+document.getElementById("btnPop").addEventListener("click", () => {
+  // 演示：看板卡浮层 vs 行内联 —— 容器查询已决定，这里只提示
+  alert("形态由容器宽度决定：\n· 宽度 <300px（看板列）→ composer 用浮层\n· 宽度 ≥300px（列表行）→ composer 内联展开\n同一份 DOM，无需两个组件。");
+});
+
+renderBoard();
+renderRow();
+</script>
+</body>
+</html>
