@@ -61,6 +61,9 @@
   .act{width:20px;height:20px;border:0;background:transparent;color:var(--muted);border-radius:5px;
       display:grid;place-items:center;cursor:pointer;font-size:11px}
   .act:hover{background:var(--chip);color:var(--text)}
+  .act em{font-style:normal;font-size:10.5px;margin-left:2px;display:none}
+  .act.is-send{color:var(--accent)}
+  @container (min-width:420px){ .act em{display:inline} }
   .act.danger:hover{color:var(--danger)}
   .sc-meta{display:flex;gap:6px;align-items:center;flex-wrap:wrap;min-width:0}
   .chip{display:inline-flex;align-items:center;gap:4px;height:17px;padding:0 6px;border-radius:5px;
@@ -105,6 +108,29 @@
       box-shadow:0 12px 30px rgba(0,0,0,.35);display:none;z-index:20}
   .sc.is-open .pop{display:block}
   .sc.is-open .trip{display:none}
+
+  /* 会话方块（消息/轮次方块条） */
+  .sc-blocks{display:flex;gap:3px;align-items:center;flex-wrap:wrap}
+  .sc-blocks .sq{width:14px;height:14px;border-radius:3px;background:var(--chip);border:1px solid var(--chip-line);
+      display:grid;place-items:center;font-size:8px;color:var(--muted);cursor:default}
+  .sc-blocks .sq.u{background:rgba(59,130,246,.18);border-color:rgba(59,130,246,.4);color:var(--blue)}
+  .sc-blocks .sq.a{background:rgba(78,154,6,.16);border-color:rgba(78,154,6,.35);color:var(--ok)}
+  .sc-blocks .sq.t{background:rgba(217,147,13,.16);border-color:rgba(217,147,13,.35);color:var(--warn)}
+  .sc-blocks .lbl{font-size:10px;color:var(--muted);margin-left:2px}
+  @container (max-width:300px){ .sc-blocks .sq{width:12px;height:12px;font-size:7px} .sc-blocks .lbl{display:none} }
+
+  /* 发送演示（四步状态） */
+  .demo{border:1px solid var(--line2);border-radius:12px;background:var(--panel2);padding:12px;margin-top:14px}
+  .demo h3{font-size:12.5px;margin:0 0 8px}
+  .steps{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+  @media(max-width:900px){.steps{grid-template-columns:repeat(2,1fr)}}
+  .step{border:1px solid var(--line2);border-radius:9px;background:var(--panel);padding:8px}
+  .step .n{font-size:10px;color:var(--muted)}
+  .step .t{font-size:11.5px;font-weight:600;margin:2px 0 5px}
+  .step .b{font-size:11px;color:var(--muted);line-height:1.5}
+  .minibox{border:1px solid var(--line);border-radius:6px;padding:5px 6px;font-size:10.5px;color:var(--muted);
+      background:var(--panel2);margin-top:4px}
+  .minibox.accent{border-color:var(--accent);color:var(--text)}
 
   /* 对照矩阵 */
   table.matrix{width:100%;border-collapse:collapse;margin-top:8px;font-size:11.5px}
@@ -202,6 +228,36 @@
   </section>
 </div>
 
+<div class="demo">
+  <h3>「发消息」到底怎么发（原型里没看清的，这里四步拆开）</h3>
+  <div class="steps">
+    <div class="step">
+      <div class="n">STEP 1</div><div class="t">鼠标移到卡片上</div>
+      <div class="b">右上角浮现动作区</div>
+      <div class="minibox">⟳ 恢复 &nbsp; <b>✈ 发消息</b> &nbsp; ↗ ✎ 🗑 ✕</div>
+    </div>
+    <div class="step">
+      <div class="n">STEP 2</div><div class="t">点「✈ 发消息」</div>
+      <div class="b">看板形态 → 卡片上方浮出面板（不撑列宽）<br/>列表形态 → 卡片下方原地展开</div>
+      <div class="minibox accent">textarea 自动聚焦 + ☑ 发送后等回复</div>
+    </div>
+    <div class="step">
+      <div class="n">STEP 3</div><div class="t">输入 + Enter</div>
+      <div class="b">Enter 发送 / Shift+Enter 换行 / Esc 收起</div>
+      <div class="minibox">「reply with exactly: CARD_OK」⏎</div>
+    </div>
+    <div class="step">
+      <div class="n">STEP 4</div><div class="t">行程条 + 回复回填</div>
+      <div class="b">发送中 → 已提交 → 等回复 → <b style="color:var(--ok)">收到回复</b></div>
+      <div class="minibox">超时不算失败（可「继续等」）；E_AGENT_NOT_READY 给「改为不等待」</div>
+    </div>
+  </div>
+  <div class="b" style="margin-top:8px;font-size:11px;color:var(--muted)">
+    原型交互提示：右侧「融合」列第一张看板卡<b>默认已展开</b>（点卡片主体即切换）；
+    浮层里输入文字按 Enter 会亮一下「发送」按钮 = 发出。
+  </div>
+</div>
+
 <h2 style="font-size:13px;margin:22px 0 0">能力矩阵（融合后每项只有一个实现点）</h2>
 <table class="matrix">
   <tr><th>能力</th><th>现状 · 列表行</th><th>现状 · 看板卡</th><th>融合后</th></tr>
@@ -239,6 +295,7 @@ const CARD = {
   note: "✎ 自动恢复走 AgentResumeCommand，不抢焦点",
   metrics: [["128","消息"],["1.2M","体积"],["2h","存活"],["11m","闲置"]],
   mini: ["w","w","i","d","d","i","w","d"],
+  msgBlocks: ["u","a","t","a","u","a","a","t","u","a","a","a"],
 };
 
 const ACTIONS = [
@@ -274,8 +331,14 @@ function cardHTML(id) {
       ${c.metrics.map(([v,l])=>`<div class="m"><b>${v}</b>${l}</div>`).join("")}
     </div>
     <div class="sc-mini">${c.mini.map((s)=>`<i class="${s}"></i>`).join("")}</div>
+
+    <!-- 会话方块：最近 N 条消息/轮次（u=你→agent, a=agent 回复, t=工具调用） -->
+    <div class="sc-blocks" title="会话方块：最近 12 条消息（蓝=你去消息 / 绿=agent 回复 / 黄=工具调用）">
+      ${c.msgBlocks.map((b,i)=>`<span class="sq ${b}" title="第 ${i+1} 条">${i+1}</span>`).join("")}
+      <span class="lbl">最近 ${c.msgBlocks.length} 条</span>
+    </div>
     <div class="sc-actions">
-      ${ACTIONS.map((a)=>`<button class="act ${a.danger?'danger':''}" data-act="${a.k}" title="${a.title}">${a.icon}</button>`).join("")}
+      ${ACTIONS.map((a)=>`<button class="act ${a.danger?'danger':''}${a.k==='send'?' is-send':''}" data-act="${a.k}" title="${a.title}"><span>${a.icon}</span><em>${a.k==='send'?'发消息':a.k==='restore'?'恢复':''}</em></button>`).join("")}
     </div>
     <div class="composer">
       <textarea placeholder="发给它…（Enter 发送 / Shift+Enter 换行 / Esc 收起）"></textarea>
