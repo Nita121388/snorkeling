@@ -3,6 +3,7 @@
 
 import { Button } from "@/app/element/button";
 import { Modal } from "@/app/modals/modal";
+import { useModalOpenSource } from "@/app/modals/modal-open-registry";
 import * as WOS from "@/app/store/wos";
 import { useWaveEnv, WaveEnv, WaveEnvSubset } from "@/app/waveenv/waveenv";
 import { cn } from "@/util/util";
@@ -235,8 +236,6 @@ export const TabTargetModal = React.memo(
         const { t } = useTranslation("tab");
         const emptyLabel = emptyLabelProp ?? t("tab:targetModal.noOtherTabs");
         const createLabel = createLabelProp ?? t("tab:targetModal.newTab");
-        const waveEnv = useWaveEnv<TabTargetModalEnv>();
-        const setModalOpen = jotai.useSetAtom(waveEnv.atoms.modalOpen);
         /** 正在执行：行 key + 动作 key。只知道「哪一行在跑」不够 —— 同一行现在有两个动作。 */
         const [working, setWorking] = React.useState<{ rowKey: string; actionKey: string } | null>(null);
         const [error, setError] = React.useState<string>(null);
@@ -245,10 +244,9 @@ export const TabTargetModal = React.memo(
             [workspace?.tabids, currentTabId]
         );
 
-        React.useEffect(() => {
-            setModalOpen(true);
-            return () => setModalOpen(false);
-        }, [setModalOpen]);
+        // modalOpen 收口到 modal-open-registry：本弹窗自带来源，和 modalsModel 栈、
+        // 以及所有直接渲染的 <Modal> 一起决定 final 值（任务 11-23-commontext-modal-focus）。
+        useModalOpenSource(true, "tab-target-modal");
 
         React.useEffect(() => {
             const handleKeyDown = (event: KeyboardEvent) => {
@@ -340,9 +338,7 @@ export const TabTargetModal = React.memo(
                                 actions={rowActions ?? []}
                                 actionLabel={t("tab:targetModal.create")}
                                 workingLabel={workingLabel}
-                                workingActionKey={
-                                    working?.rowKey === NewTabRowKey ? working.actionKey : null
-                                }
+                                workingActionKey={working?.rowKey === NewTabRowKey ? working.actionKey : null}
                                 disabled={busy && working?.rowKey !== NewTabRowKey}
                                 onRun={(action) => {
                                     if (rowActions == null || rowActions.length === 0) {
@@ -369,9 +365,7 @@ export const TabTargetModal = React.memo(
                                 rowActions={actionsFor(tabId)}
                                 actionLabel={actionLabel}
                                 workingLabel={workingLabel}
-                                workingActionKey={
-                                    working?.rowKey === tabId ? working.actionKey : null
-                                }
+                                workingActionKey={working?.rowKey === tabId ? working.actionKey : null}
                                 disabled={busy && working?.rowKey !== tabId}
                                 onRunAction={(action) => runTabAction(tabId, action.key, action)}
                                 onRunLegacy={() => runLegacyAction(tabId)}
@@ -379,7 +373,11 @@ export const TabTargetModal = React.memo(
                         ))
                     )}
                 </div>
-                {error && <div className="mt-3 text-xs text-error" data-error="">{error}</div>}
+                {error && (
+                    <div className="mt-3 text-xs text-error" data-error="">
+                        {error}
+                    </div>
+                )}
                 <div className="mt-4 flex w-full justify-end">
                     <Button className="grey ghost" onClick={onClose} disabled={busy}>
                         {t("tab:targetModal.cancel")}

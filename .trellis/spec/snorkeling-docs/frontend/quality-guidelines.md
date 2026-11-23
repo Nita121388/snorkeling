@@ -1019,3 +1019,33 @@ Windows/Electron 下「焦点逃逸（blur）」不是可靠的关闭信号：
 
 meta 行形状词汇（同一任务）：状态 = 唯一彩色胶囊；agent 类型 = 品牌标（`getAgentLogoByProvider`，品牌色只上图标）
 + 名称；项目 = folder 图标 + 名称；标签 = 迷你方片（radius 4、无色描边）。四类信息不得共用同一种胶囊几何。
+
+---
+
+## 弹窗 = 全仓唯一外壳 + modalOpen 仲裁（2026-11-23, task 11-23-commontext-modal-focus）
+
+「焦点丢了、打不进字、切 Tab 再切回来才好」这类问题，先分清**三层**，不要再去改输入框内部：
+
+1. **DOM 层**——焦点掉到 `body`。`atoms.modalOpen` 是 `keymodel.shouldDispatchToBlock` 与
+   `block.tsx focusFromPointerEnter` 的唯一开关；它以前只由 `ModalsRenderer` 写，导致
+   直接渲染 `<Modal>` 的弹窗（CommonText compose、AgentCardModal…）打开时它仍是 `false`：
+   焦点一掉到 body，按键就被派发给背后的聚焦块（终端会把字符写进 shell）。
+   **契约**：任何弹窗都经 `modal-open-registry`（`useModalOpenSource` / `setModalOpenSource`）
+   登记，atom 只由 `app.tsx` 的 `bindModalOpenSink` 写；直接 `globalStore.set(atoms.modalOpen, …)`
+   视为违规（多来源会互相覆盖）。新增 `<Modal>` 用法无需额外接线，外壳已登记。
+2. **外壳层**——`.modal-wrapper` 是铺满视口（含顶部 36px tab 栏）的固定层。它默认 `pointer-events:auto`，
+   会把 tab 栏与一切「弹窗外」区域吞掉：命中元素是 wrapper、既不切 Tab 也把输入框焦点 blur 到 body。
+   **契约**：wrapper `pointer-events:none`，`.modal` 与 `.modal-backdrop` 显式 `auto`；
+   不要再加全屏吃点击的遮罩层（见 SplitButton 注释里的层叠陷阱）。
+   即使外壳修好，弹窗内仍有非可聚焦死区（页脚空白、属性行、内边距）→ 需要「失焦回收」：
+   `onFocusCapture` 记最后可编辑元素，`onBlurCapture` 只在 `event.relatedTarget == null`
+   且 `document.activeElement === body` 时 rAF 回焦。焦点在弹窗内控件间移动不得干预。
+3. **窗口层**——每个 Tab 是独立 `WebContentsView`，它会在切换/回焦时莫名丢 webContents 焦点：
+   DOM 的 `activeElement` 仍是输入框、但键入收不到、点击也不出光标。**只有** `webContents.focus()`
+   能修，所以「切 Tab 再切回来」才是有效绕行。emain 里补 focus 的唯一出口是
+   `refocusActiveTabWebContents()`（0/10/30ms 三拍），`setActiveTab` 与 `on("focus")` 共用；
+   判定走纯函数 `shouldRefocusActiveView`（已聚焦/relaunching/无视图时不补，避免抢 DevTools 焦点）。
+
+判别法（10 秒）：出问题时先点输入框——**有光标 = DOM 层；无光标且切 Tab 才恢复 = 窗口层**。
+合成期（IME）另有一条：受控 textarea 在合成中被 effect 改写 `value` 会打断合成、光标丢，
+所以「联动 effect 重置详情字段」必须用 `compositionstart/end`（end 走 rAF）门控。

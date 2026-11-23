@@ -54,8 +54,50 @@ import {
     getOpenedThisLaunchTabIds,
     initCollapsedTabIdsStore,
     markRestoredWorkspaceTabsOpened,
+    shouldRefocusActiveView,
     WaveBrowserWindow,
 } from "./emain-window";
+
+// 窗口回焦时是否给当前 Tab 视图补 webContents focus（任务 11-23-commontext-modal-focus AC5）。
+// 用户侧症状：详情编辑时键入收不到、点输入框不出光标，只能切 Tab 再切回来——因为只有
+// 切 Tab 走 setActiveTab 的补 focus。这里锁住判定边界，防止补拍扩大成抢 DevTools 焦点。
+describe("shouldRefocusActiveView (window re-focus)", () => {
+    it("常规失焦：窗口活着、非 relaunch、有活动视图且未聚焦 → 补", () => {
+        expect(
+            shouldRefocusActiveView({
+                windowDestroyed: false,
+                relaunching: false,
+                hasActiveView: true,
+                activeIsFocused: false,
+            })
+        ).toBe(true);
+    });
+
+    it("窗口已销毁 / 正在 relaunch / 没有活动视图 → 不补", () => {
+        for (const patch of [{ windowDestroyed: true }, { relaunching: true }, { hasActiveView: false }]) {
+            expect(
+                shouldRefocusActiveView({
+                    windowDestroyed: false,
+                    relaunching: false,
+                    hasActiveView: true,
+                    activeIsFocused: false,
+                    ...patch,
+                })
+            ).toBe(false);
+        }
+    });
+
+    it("当前视图已经 focused → 不补（避免抢 DevTools / 输入法子窗口焦点）", () => {
+        expect(
+            shouldRefocusActiveView({
+                windowDestroyed: false,
+                relaunching: false,
+                hasActiveView: true,
+                activeIsFocused: true,
+            })
+        ).toBe(false);
+    });
+});
 
 describe("markRestoredWorkspaceTabsOpened (startup restore)", () => {
     it("marks every restored workspace tab id as opened this launch", () => {

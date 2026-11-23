@@ -5,12 +5,12 @@ import { NewInstallOnboardingModal } from "@/app/onboarding/onboarding";
 import { CurrentOnboardingVersion } from "@/app/onboarding/onboarding-common";
 import { UpgradeOnboardingModal } from "@/app/onboarding/onboarding-upgrade";
 import { ClientModel } from "@/app/store/client-model";
-import { globalStore } from "@/app/store/jotaiStore";
-import { atoms, globalPrimaryTabStartup } from "@/store/global";
+import { globalPrimaryTabStartup } from "@/store/global";
 import { modalsModel } from "@/store/modalmodel";
 import * as jotai from "jotai";
 import { useEffect } from "react";
 import * as semver from "semver";
+import { setModalOpenSource } from "./modal-open-registry";
 import { getModalComponent } from "./modalregistry";
 
 const ModalsRenderer = () => {
@@ -50,7 +50,9 @@ const ModalsRenderer = () => {
         }
     }, []);
     useEffect(() => {
-        globalStore.set(atoms.modalOpen, rtn.length > 0);
+        // 栈层与直接渲染的 <Modal> 共用 modalOpen 仲裁：这里只登记本来源，
+        // 不再直写 atom，避免"栈清空"把直接渲染的弹窗抹掉。
+        setModalOpenSource("modals-stack", rtn.length > 0);
     }, [rtn]);
 
     return <>{rtn}</>;

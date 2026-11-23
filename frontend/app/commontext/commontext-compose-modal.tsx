@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { Button } from "@/app/element/button";
-import { AppSelect } from "@/app/element/select";
 import { Input, InputGroup, InputRightElement } from "@/app/element/input";
+import { AppSelect } from "@/app/element/select";
 import { Modal } from "@/app/modals/modal";
 import { atoms } from "@/app/store/global";
 // R6 防御：agent emoji picker 的全屏 backdrop（z-index 10019）压过 .modal-wrapper(500)，
@@ -25,6 +25,8 @@ import { OpenCommonTextSearchEvent, type CommonTextSearchDetail } from "./common
 // 标签属性浮层：与 md 预览属性卡 / AISessions 属性面板共用的 Wolai 风格编辑器，
 // 避免同一个标签交互在三个面各自漂移。
 import { PropertyTagEditor, PropertyValuePopover } from "@/app/element/property-editor";
+import { i18n } from "@/i18n/config";
+import { useTranslation } from "react-i18next";
 import { commonTextFreshnessTier, formatCommonTextFreshnessCompact } from "./commontext-freshness";
 import { CommonTextFreshnessSquare } from "./commontext-freshness-square";
 import { copyCommonText } from "./commontext-insert";
@@ -52,9 +54,7 @@ import {
     type CommonTextItem,
     type CommonTextSortKey,
 } from "./commontext-model";
-import { i18n } from "@/i18n/config";
 import { PageIconSlot } from "./commontext-page-icon";
-import { useTranslation } from "react-i18next";
 import {
     materializePastedImages,
     pickPastedImages,
@@ -240,9 +240,7 @@ const CommonTextRow = memo(function CommonTextRowImpl({
                     >
                         <i
                             className={
-                                creatorKind === "agent"
-                                    ? "fa-solid fa-robot text-[8px]"
-                                    : "fa-solid fa-user text-[8px]"
+                                creatorKind === "agent" ? "fa-solid fa-robot text-[8px]" : "fa-solid fa-user text-[8px]"
                             }
                         />
                         <span className="min-w-0 truncate">{describeCommonTextCreatorName(item)}</span>
@@ -275,7 +273,10 @@ const CommonTextRow = memo(function CommonTextRowImpl({
             </div>
             {/* 右侧固定宽槽：「次数 + 更新时间」列常显。
                 R4 之后不再被 hover 插入按钮顶掉——行内不再提供插入动作。 */}
-            <div className="relative shrink-0 self-center w-[58px] h-7 flex items-center justify-end" data-commontext-meta="">
+            <div
+                className="relative shrink-0 self-center w-[58px] h-7 flex items-center justify-end"
+                data-commontext-meta=""
+            >
                 <div
                     className="flex flex-col items-end gap-0.5 whitespace-nowrap text-[10px] leading-none tabular-nums text-secondary"
                     title={metaTooltip}
@@ -467,6 +468,14 @@ const CommonTextComposeModal = memo(() => {
     // Tags 属性行的浮层编辑态：锚定值单元格，PropertyValuePopover portal 到 body。
     const [tagsEditing, setTagsEditing] = useState(false);
     const tagsValueRef = useRef<HTMLDivElement>(null);
+    // 详情区最后聚焦的可编辑控件：弹窗内点死区（页脚/属性行空白/外边距）会把焦点掉到 body，
+    // 由 onBlurCapture 回收到这里（任务 11-23-commontext-modal-focus，AC3）。
+    const lastEditableRef = useRef<HTMLElement>(null);
+    // 详情区合成期标记：合成中不重置 detailTitle/detailText（重置 = 拼音被打断 + 光标丢）。
+    // 合成结束后靠 detailCompositionTick 触发联动 effect 再校正一次。
+    const detailComposingRef = useRef(false);
+    const detailCompositionEndRafRef = useRef<number>(null);
+    const [detailCompositionTick, setDetailCompositionTick] = useState(0);
     const settings = useAtomValue(atoms.settingsAtom);
     const editorRef = useRef<HTMLTextAreaElement>(null);
     const searchInputRef = useRef<HTMLInputElement>(null);
@@ -623,10 +632,13 @@ const CommonTextComposeModal = memo(() => {
             if (searchCommitTimerRef.current != null) {
                 window.clearTimeout(searchCommitTimerRef.current);
             }
-            searchCommitTimerRef.current = window.setTimeout(() => {
-                searchCommitTimerRef.current = null;
-                commitPendingSearch();
-            }, immediate ? 0 : SEARCH_COMMIT_DEBOUNCE_MS);
+            searchCommitTimerRef.current = window.setTimeout(
+                () => {
+                    searchCommitTimerRef.current = null;
+                    commitPendingSearch();
+                },
+                immediate ? 0 : SEARCH_COMMIT_DEBOUNCE_MS
+            );
         },
         [commitPendingSearch]
     );
@@ -928,8 +940,13 @@ const CommonTextComposeModal = memo(() => {
 
     // detailId 与 selectedIndex 的联动：列表过滤变化、键盘导航移动、外部 detailId
     // 失效时，统一回退到 selectedIndex 指向的行，并丢弃就地编辑态草稿。
+    //
+    // 合成期守卫：中文输入法正在合字时不能重置 detailTitle/detailText —— 受控值被改写会
+    // 打断合成、光标当场丢失（composer 早就有同口径守卫，详情区到 2026-11-23 才补）。
+    // 合成结束后由 detailCompositionTick 触发本 effect 再校正一次。
     useEffect(() => {
         if (!state.open) return;
+        if (detailComposingRef.current) return;
         if (filteredItems.length === 0) {
             if (state.detailId != null || state.detailDirty) {
                 setState((cur) => ({
@@ -954,7 +971,7 @@ const CommonTextComposeModal = memo(() => {
                 detailDirty: false,
             }));
         }
-    }, [filteredItems, detailItem, state.detailId, state.detailDirty, state.open]);
+    }, [filteredItems, detailItem, state.detailId, state.detailDirty, state.open, detailCompositionTick]);
 
     useEffect(() => {
         if (!state.open) return;
@@ -992,9 +1009,7 @@ const CommonTextComposeModal = memo(() => {
         const node = listScrollRef.current;
         if (node == null) return;
         if (!COMMONTEXT_PERF_WINDOWING_ENABLED) {
-            node
-                .querySelector(`[data-common-text-index="${index}"]`)
-                ?.scrollIntoView({ block: "nearest" });
+            node.querySelector(`[data-common-text-index="${index}"]`)?.scrollIntoView({ block: "nearest" });
             return;
         }
         const targetTop = index * ROW_HEIGHT;
@@ -1083,6 +1098,10 @@ const CommonTextComposeModal = memo(() => {
             if (draftStatusFadeRef.current != null) {
                 window.clearTimeout(draftStatusFadeRef.current);
                 draftStatusFadeRef.current = null;
+            }
+            if (detailCompositionEndRafRef.current != null) {
+                window.cancelAnimationFrame(detailCompositionEndRafRef.current);
+                detailCompositionEndRafRef.current = null;
             }
             // 关闭弹窗已在 close() 里执行强制 flush，此处 React 卸载流不再重复 fire——
             // 避免组件已卸载却仍调用 setState（saveStatus / detailDirty）触发 React 卸载期 throw 白屏。
@@ -1386,7 +1405,9 @@ const CommonTextComposeModal = memo(() => {
             setStatus(i18n.t("commontext:status.copied"), "ok");
         } catch (err) {
             setStatus(
-                i18n.t("commontext:status.copyFailed", { error: (err as Error).message ?? i18n.t("commontext:status.unknown") }),
+                i18n.t("commontext:status.copyFailed", {
+                    error: (err as Error).message ?? i18n.t("commontext:status.unknown"),
+                }),
                 "err"
             );
         }
@@ -1400,7 +1421,9 @@ const CommonTextComposeModal = memo(() => {
             setStatus(i18n.t("commontext:status.copied"), "ok");
         } catch (err) {
             setStatus(
-                i18n.t("commontext:status.copyFailed", { error: (err as Error).message ?? i18n.t("commontext:status.unknown") }),
+                i18n.t("commontext:status.copyFailed", {
+                    error: (err as Error).message ?? i18n.t("commontext:status.unknown"),
+                }),
                 "err"
             );
         }
@@ -1415,7 +1438,9 @@ const CommonTextComposeModal = memo(() => {
             setStatus(i18n.t("commontext:status.deleted"), "ok");
         } catch (err) {
             setStatus(
-                i18n.t("commontext:status.deleteFailed", { error: (err as Error).message ?? i18n.t("commontext:status.unknown") }),
+                i18n.t("commontext:status.deleteFailed", {
+                    error: (err as Error).message ?? i18n.t("commontext:status.unknown"),
+                }),
                 "err"
             );
         }
@@ -1560,7 +1585,10 @@ const CommonTextComposeModal = memo(() => {
                 },
                 detailItem.id
             );
-            setStatus(detailItem.pinned ? i18n.t("commontext:status.unpinned") : i18n.t("commontext:status.pinned"), "ok");
+            setStatus(
+                detailItem.pinned ? i18n.t("commontext:status.unpinned") : i18n.t("commontext:status.pinned"),
+                "ok"
+            );
         } catch (err) {
             setStatus(
                 i18n.t("commontext:status.pinFailed", {
@@ -1803,6 +1831,50 @@ const CommonTextComposeModal = memo(() => {
         });
     };
 
+    // ── 详情区焦点保护（任务 11-23-commontext-modal-focus，AC3/AC4）──
+    // 弹窗内非可聚焦区域（页脚空白、属性行、内边距）点一下就把焦点丢到 body：此后
+    // 键入既放不进详情区、也不再是"看得见的地方在输"。这里只回收"掉到 body"那一种。
+    const isEditableTarget = (el: EventTarget | null): el is HTMLElement => {
+        if (!(el instanceof HTMLElement)) return false;
+        return el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable;
+    };
+    const handleModalFocusCapture = (event: React.FocusEvent<HTMLDivElement>) => {
+        if (isEditableTarget(event.target)) {
+            lastEditableRef.current = event.target;
+        }
+    };
+    const handleModalBlurCapture = (event: React.FocusEvent<HTMLDivElement>) => {
+        // 焦点在弹窗内控件之间移动（relatedTarget 非空）时不干预；只有掉到 body 才回收。
+        if (event.relatedTarget != null) return;
+        const last = lastEditableRef.current;
+        if (last == null) return;
+        requestAnimationFrame(() => {
+            if (!stateRef.current.open) return;
+            if (document.activeElement !== document.body) return;
+            if (!last.isConnected) return;
+            last.focus();
+        });
+    };
+    const handleDetailCompositionStart = () => {
+        if (detailCompositionEndRafRef.current != null) {
+            window.cancelAnimationFrame(detailCompositionEndRafRef.current);
+            detailCompositionEndRafRef.current = null;
+        }
+        detailComposingRef.current = true;
+    };
+    const handleDetailCompositionEnd = () => {
+        if (detailCompositionEndRafRef.current != null) {
+            window.cancelAnimationFrame(detailCompositionEndRafRef.current);
+        }
+        // 用 rAF 而非 setTimeout(0)：合成刚结束那一帧浏览器还要把结果落到 value 上，
+        // 同帧重算联动会拿到旧文本（composer 的 handleCompositionEnd 同因同法）。
+        detailCompositionEndRafRef.current = window.requestAnimationFrame(() => {
+            detailCompositionEndRafRef.current = null;
+            detailComposingRef.current = false;
+            setDetailCompositionTick((v) => v + 1);
+        });
+    };
+
     return (
         <Modal
             ref={modalRef}
@@ -1821,7 +1893,13 @@ const CommonTextComposeModal = memo(() => {
             onClose={close}
             onClickBackdrop={close}
         >
-            <div className="flex flex-col gap-2 flex-1 min-h-0" style={{ overflow: "hidden" }}>
+            <div
+                className="flex flex-col gap-2 flex-1 min-h-0"
+                style={{ overflow: "hidden" }}
+                data-commontext-modal-root=""
+                onFocusCapture={handleModalFocusCapture}
+                onBlurCapture={handleModalBlurCapture}
+            >
                 {/* Header —— 副标题已于 11-20（compose-polish R1）移除：弹窗自身的
                     交互已是自解释的，常驻教程文案只占纵向空间。 */}
                 <div className="shrink-0">
@@ -1955,11 +2033,7 @@ const CommonTextComposeModal = memo(() => {
                     >
                         <i className="fa fa-solid fa-eraser" />
                     </Button>
-                    <Button
-                        className="grey"
-                        onClick={handleSaveDialog}
-                        title={t("commontext:compose.addItem")}
-                    >
+                    <Button className="grey" onClick={handleSaveDialog} title={t("commontext:compose.addItem")}>
                         <i className="fa fa-solid fa-plus" />
                     </Button>
                     <Button className="grey" onClick={handleCopy} title={t("commontext:compose.copyEditor")}>
@@ -2260,121 +2334,131 @@ const CommonTextComposeModal = memo(() => {
                                         // 窗口化关闭时保留旧行 DOM，作为逐字节回滚基线。
                                         const metaTooltip = describeCommonTextTime(item);
                                         return (
-                                        <div
-                                            key={item.id}
-                                            data-common-text-index={index}
-                                            // 验证台按标题定位行：DOM 次序即真实排序结果，便于断言重排。
-                                            data-commontext-title={item.title}
-                                            className={
-                                                // shrink-0 与窗口化分支同因：同为 flex 列容器的子项，
-                                                // 不加会在行内容超出时被压缩（回滚基线样式必须一致）。
-                                                "shrink-0 group flex items-start gap-1.5 border-l-2 px-3 py-2 cursor-pointer transition-colors " +
-                                                (state.selectedIndex === index
-                                                    ? "border-actionsoftborder bg-actionsoft"
-                                                    : "border-transparent hover:bg-hoverbg")
-                                            }
-                                            // hover 仅高亮行、不联动右侧详情：避免鼠标在列表里扫过时右侧
-                                            // 详情随每一行跳变。详情只在 click 时进编辑态。这里绝不能
-                                            // setState(尤 selectedIndex)：每次 setState 触发整弹窗重渲染，
-                                            // 上方 editor 的 textarea 会被 React 重新过一遍 DOM，正在用
-                                            // 中文输入法合到一半的拼音就这一过被打飞，光标丢、字打不进。
-                                            // 视觉上鼠标 hover 走下面 "hover:bg-hoverbg" 兜底，无需这里做事。
-                                            onClick={() => handleListItemClick(item)}
-                                        >
-                                            <div className="pt-0.5 w-4 shrink-0 text-secondary">
-                                                {item.pinned ? (
-                                                    <i className="fa fa-solid fa-thumbtack text-[11px]" />
-                                                ) : null}
-                                            </div>
-                                            <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                                                <div className="flex min-w-0 items-center gap-1.5">
-                                                    <span className="flex min-w-0 flex-1 items-center gap-1.5">
-                                                        <span className="min-w-0 truncate text-xs font-medium">
-                                                            {item.title}
-                                                        </span>
-                                                        <CommonTextSyncDot item={item} />
-                                                    </span>
-                                                    <span
-                                                        data-commontext-creator-badge={getCommonTextCreatorKind(item)}
-                                                        title={describeCommonTextSource(item)}
-                                                        className={
-                                                            "ml-auto inline-flex max-w-[96px] shrink-0 items-center gap-1 rounded-sm border px-1 py-px text-[9.5px] leading-none " +
-                                                            (getCommonTextCreatorKind(item) === "agent"
-                                                                ? "border-sky-500/30 bg-sky-500/10 text-sky-300"
-                                                                : "border-orange-400/30 bg-orange-400/10 text-orange-300")
-                                                        }
-                                                    >
-                                                        <i
-                                                            className={
-                                                                getCommonTextCreatorKind(item) === "agent"
-                                                                    ? "fa-solid fa-robot text-[8px]"
-                                                                    : "fa-solid fa-user text-[8px]"
-                                                            }
-                                                        />
-                                                        <span className="min-w-0 truncate">{describeCommonTextCreatorName(item)}</span>
-                                                    </span>
-                                                </div>
-                                                <div className="flex min-w-0 items-center gap-1.5">
-                                                    <div className="min-w-0 flex-1 truncate text-[11px] leading-4 text-secondary">
-                                                        {makePreview(item.text)}
-                                                    </div>
-                                                    {(item.tags?.length ?? 0) > 0 && (
-                                                        <div className="mt-0 min-w-0 max-w-[52%] shrink-0 overflow-hidden">
-                                                            <SessionTagChips
-                                                                tags={item.tags?.slice(0, 4)}
-                                                                nowrap
-                                                                className="justify-end"
-                                                            />
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            </div>
-                                            {/* 右侧固定宽槽：「次数 + 更新时间」列常显（R4：行内插入按钮已移除）。
-                                                尺寸约束：次数行 10px + gap 2px + 方块 12px = 24px ≤ h-7(28px)。 */}
                                             <div
-                                                className="relative shrink-0 self-center w-[58px] h-7 flex items-center justify-end"
-                                                data-commontext-meta=""
+                                                key={item.id}
+                                                data-common-text-index={index}
+                                                // 验证台按标题定位行：DOM 次序即真实排序结果，便于断言重排。
+                                                data-commontext-title={item.title}
+                                                className={
+                                                    // shrink-0 与窗口化分支同因：同为 flex 列容器的子项，
+                                                    // 不加会在行内容超出时被压缩（回滚基线样式必须一致）。
+                                                    "shrink-0 group flex items-start gap-1.5 border-l-2 px-3 py-2 cursor-pointer transition-colors " +
+                                                    (state.selectedIndex === index
+                                                        ? "border-actionsoftborder bg-actionsoft"
+                                                        : "border-transparent hover:bg-hoverbg")
+                                                }
+                                                // hover 仅高亮行、不联动右侧详情：避免鼠标在列表里扫过时右侧
+                                                // 详情随每一行跳变。详情只在 click 时进编辑态。这里绝不能
+                                                // setState(尤 selectedIndex)：每次 setState 触发整弹窗重渲染，
+                                                // 上方 editor 的 textarea 会被 React 重新过一遍 DOM，正在用
+                                                // 中文输入法合到一半的拼音就这一过被打飞，光标丢、字打不进。
+                                                // 视觉上鼠标 hover 走下面 "hover:bg-hoverbg" 兜底，无需这里做事。
+                                                onClick={() => handleListItemClick(item)}
                                             >
+                                                <div className="pt-0.5 w-4 shrink-0 text-secondary">
+                                                    {item.pinned ? (
+                                                        <i className="fa fa-solid fa-thumbtack text-[11px]" />
+                                                    ) : null}
+                                                </div>
+                                                <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                                                    <div className="flex min-w-0 items-center gap-1.5">
+                                                        <span className="flex min-w-0 flex-1 items-center gap-1.5">
+                                                            <span className="min-w-0 truncate text-xs font-medium">
+                                                                {item.title}
+                                                            </span>
+                                                            <CommonTextSyncDot item={item} />
+                                                        </span>
+                                                        <span
+                                                            data-commontext-creator-badge={getCommonTextCreatorKind(
+                                                                item
+                                                            )}
+                                                            title={describeCommonTextSource(item)}
+                                                            className={
+                                                                "ml-auto inline-flex max-w-[96px] shrink-0 items-center gap-1 rounded-sm border px-1 py-px text-[9.5px] leading-none " +
+                                                                (getCommonTextCreatorKind(item) === "agent"
+                                                                    ? "border-sky-500/30 bg-sky-500/10 text-sky-300"
+                                                                    : "border-orange-400/30 bg-orange-400/10 text-orange-300")
+                                                            }
+                                                        >
+                                                            <i
+                                                                className={
+                                                                    getCommonTextCreatorKind(item) === "agent"
+                                                                        ? "fa-solid fa-robot text-[8px]"
+                                                                        : "fa-solid fa-user text-[8px]"
+                                                                }
+                                                            />
+                                                            <span className="min-w-0 truncate">
+                                                                {describeCommonTextCreatorName(item)}
+                                                            </span>
+                                                        </span>
+                                                    </div>
+                                                    <div className="flex min-w-0 items-center gap-1.5">
+                                                        <div className="min-w-0 flex-1 truncate text-[11px] leading-4 text-secondary">
+                                                            {makePreview(item.text)}
+                                                        </div>
+                                                        {(item.tags?.length ?? 0) > 0 && (
+                                                            <div className="mt-0 min-w-0 max-w-[52%] shrink-0 overflow-hidden">
+                                                                <SessionTagChips
+                                                                    tags={item.tags?.slice(0, 4)}
+                                                                    nowrap
+                                                                    className="justify-end"
+                                                                />
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                                {/* 右侧固定宽槽：「次数 + 更新时间」列常显（R4：行内插入按钮已移除）。
+                                                尺寸约束：次数行 10px + gap 2px + 方块 12px = 24px ≤ h-7(28px)。 */}
                                                 <div
-                                                    className="flex flex-col items-end gap-0.5 whitespace-nowrap text-[10px] leading-none tabular-nums text-secondary"
-                                                    title={metaTooltip}
+                                                    className="relative shrink-0 self-center w-[58px] h-7 flex items-center justify-end"
+                                                    data-commontext-meta=""
                                                 >
-                                                    <span
-                                                        data-commontext-usage={item.usagecount ?? 0}
-                                                        className={
-                                                            "inline-flex items-center gap-1 " +
-                                                            ((item.usagecount ?? 0) === 0 ? "text-muted" : "")
-                                                        }
-                                                        title={i18n.t("commontext:compose.usedTimes", { count: item.usagecount ?? 0 })}
+                                                    <div
+                                                        className="flex flex-col items-end gap-0.5 whitespace-nowrap text-[10px] leading-none tabular-nums text-secondary"
+                                                        title={metaTooltip}
                                                     >
-                                                        {/* 计数不再配图标：那个循环箭头读起来是「重来/重跑」，
+                                                        <span
+                                                            data-commontext-usage={item.usagecount ?? 0}
+                                                            className={
+                                                                "inline-flex items-center gap-1 " +
+                                                                ((item.usagecount ?? 0) === 0 ? "text-muted" : "")
+                                                            }
+                                                            title={i18n.t("commontext:compose.usedTimes", {
+                                                                count: item.usagecount ?? 0,
+                                                            })}
+                                                        >
+                                                            {/* 计数不再配图标：那个循环箭头读起来是「重来/重跑」，
                                                             与「这条被用过多少次」不是一回事。同一右槽第二行已改成
                                                             「方块 + 时间数字」的纯数字列，计数留纯数字反而最安静、
                                                             也对齐了 tabular-nums 的右边界。 */}
-                                                        {item.usagecount ?? 0}
-                                                    </span>
-                                                    <span
-                                                        data-commontext-updated=""
-                                                        className="inline-flex items-center gap-1"
-                                                    >
-                                                        {/* 图形 + 数字双出口：方块管「扫一眼比大小」（填充高度 + 浓度
+                                                            {item.usagecount ?? 0}
+                                                        </span>
+                                                        <span
+                                                            data-commontext-updated=""
+                                                            className="inline-flex items-center gap-1"
+                                                        >
+                                                            {/* 图形 + 数字双出口：方块管「扫一眼比大小」（填充高度 + 浓度
                                                             双通道，5 档在 12px 里都能分开），紧跟着的数字管「精确到
                                                             第几天」——悬停才会显形的时间等于没有时间，而 `4h ago`
                                                             那种整句在扫视时要逐个读字。取 `3d` / `12m` 这种最短形式，
                                                             先把 `ago` 去掉：同一列里所有值都是「多久以前」。 */}
-                                                        <CommonTextFreshnessSquare
-                                                            tier={commonTextFreshnessTier(item)}
-                                                            title={i18n.t("commontext:compose.updatedTitle", { time: compactCommonTextTime(item.updatedat, true) })}
-                                                            ariaLabel={i18n.t("commontext:compose.updatedAria", { time: formatSessionRelativeTime(item.updatedat) })}
-                                                        />
-                                                        <span data-commontext-updated-rel="" aria-hidden="true">
-                                                            {formatCommonTextFreshnessCompact(item.updatedat)}
+                                                            <CommonTextFreshnessSquare
+                                                                tier={commonTextFreshnessTier(item)}
+                                                                title={i18n.t("commontext:compose.updatedTitle", {
+                                                                    time: compactCommonTextTime(item.updatedat, true),
+                                                                })}
+                                                                ariaLabel={i18n.t("commontext:compose.updatedAria", {
+                                                                    time: formatSessionRelativeTime(item.updatedat),
+                                                                })}
+                                                            />
+                                                            <span data-commontext-updated-rel="" aria-hidden="true">
+                                                                {formatCommonTextFreshnessCompact(item.updatedat)}
+                                                            </span>
                                                         </span>
-                                                    </span>
+                                                    </div>
                                                 </div>
                                             </div>
-                                        </div>
-                                    );
+                                        );
                                     })}
                                     {COMMONTEXT_PERF_WINDOWING_ENABLED && listWindow.end < filteredItems.length && (
                                         <div
@@ -2429,6 +2513,8 @@ const CommonTextComposeModal = memo(() => {
                                         className="flex-1 min-w-0 h-8 px-1 -ml-1 rounded border border-transparent bg-transparent text-[17px] font-semibold leading-8 hover:bg-surface-soft focus:outline-none focus:border-border focus:bg-modalbg transition-colors"
                                         spellCheck={false}
                                         data-commontext-detail-title=""
+                                        onCompositionStart={handleDetailCompositionStart}
+                                        onCompositionEnd={handleDetailCompositionEnd}
                                     />
                                     <button
                                         type="button"
@@ -2519,7 +2605,9 @@ const CommonTextComposeModal = memo(() => {
                                                 className="-mx-1 min-w-0 flex-1 flex flex-wrap items-center gap-1 rounded px-1 py-0.5 text-[11px] leading-5 hover:bg-surface-soft transition-colors cursor-pointer"
                                             >
                                                 {detailTags.length === 0 ? (
-                                                    <span className="text-muted/70">{t("commontext:compose.tagsEmpty")}</span>
+                                                    <span className="text-muted/70">
+                                                        {t("commontext:compose.tagsEmpty")}
+                                                    </span>
                                                 ) : (
                                                     <SessionTagChips tags={detailTags} selectedTags={detailTags} />
                                                 )}
@@ -2559,6 +2647,8 @@ const CommonTextComposeModal = memo(() => {
                                                 detailDirty: true,
                                             }))
                                         }
+                                        onCompositionStart={handleDetailCompositionStart}
+                                        onCompositionEnd={handleDetailCompositionEnd}
                                         placeholder={t("commontext:compose.textToInsert")}
                                         className="w-full h-full min-h-0 resize-none rounded-lg border border-border bg-[var(--form-element-bg-color)] text-[var(--form-element-text-color)] text-[13.5px] font-mono p-[14px_16px] leading-[1.7] focus:outline-none focus:border-accent"
                                         spellCheck={false}

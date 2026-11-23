@@ -23,8 +23,9 @@
 import { Button } from "@/app/element/button";
 import { cn } from "@/util/util";
 import { forwardRef, useId } from "react";
-import { useTranslation } from "react-i18next";
 import ReactDOM from "react-dom";
+import { useTranslation } from "react-i18next";
+import { useModalOpenSource } from "./modal-open-registry";
 
 import "./modal.scss";
 
@@ -88,13 +89,15 @@ const Modal = forwardRef<HTMLDivElement, ModalProps>(
         const { t } = useTranslation("modals");
         const reactId = useId();
         const titleId = `modal-title-${reactId}`;
+        // 本弹窗挂载期间登记为「有弹窗打开」：键路由（keymodel.shouldDispatchToBlock）与
+        // 块的 focus-follows-cursor 都靠 atoms.modalOpen 判断，直接渲染 <Modal> 的弹窗
+        // （CommonText compose 等）以前不写这个 atom，焦点掉到 body 后按键会被派发给
+        // 背后的终端块并被写进 shell（任务 11-23-commontext-modal-focus）。
+        useModalOpenSource(true, "shell");
         const hasStructuredHeader = title != null || subtitle != null || headerExtra != null;
 
-        const backdropClick =
-            onClickBackdrop ?? (closeOnBackdrop && onClose != null ? onClose : undefined);
-        const renderBackdrop = (onClick?: () => void) => (
-            <div className="modal-backdrop" onClick={onClick}></div>
-        );
+        const backdropClick = onClickBackdrop ?? (closeOnBackdrop && onClose != null ? onClose : undefined);
+        const renderBackdrop = (onClick?: () => void) => <div className="modal-backdrop" onClick={onClick}></div>;
 
         const renderFooter = () => footer != null || onOk != null || onCancel != null;
 
@@ -115,12 +118,7 @@ const Modal = forwardRef<HTMLDivElement, ModalProps>(
                 {renderBackdrop(backdropClick)}
                 <div
                     ref={ref}
-                    className={cn(
-                        "modal",
-                        !padding && "modal--flush",
-                        !scrollBody && "modal--no-scroll",
-                        className
-                    )}
+                    className={cn("modal", !padding && "modal--flush", !scrollBody && "modal--no-scroll", className)}
                     style={style}
                     role="dialog"
                     aria-modal="true"
@@ -139,19 +137,19 @@ const Modal = forwardRef<HTMLDivElement, ModalProps>(
                                         {title}
                                     </div>
                                 ) : null}
-                                {subtitle != null ? (
-                                    <div className="modal-header__subtitle">{subtitle}</div>
-                                ) : null}
+                                {subtitle != null ? <div className="modal-header__subtitle">{subtitle}</div> : null}
                             </div>
-                            {headerExtra != null ? (
-                                <div className="modal-header__extra">{headerExtra}</div>
-                            ) : null}
+                            {headerExtra != null ? <div className="modal-header__extra">{headerExtra}</div> : null}
                             {onClose != null ? closeButton("modal-close--inline") : null}
                         </div>
                     ) : onClose != null ? (
                         // 老形状：✕ 绝对定位在右上角。仅为 20+ 个既有弹窗保留原版式，
                         // 新弹窗请用 title/subtitle 走结构化 header。
-                        <Button className="grey ghost modal-close-btn" onClick={onClose} title={t("modals:modal.closeEsc")}>
+                        <Button
+                            className="grey ghost modal-close-btn"
+                            onClick={onClose}
+                            title={t("modals:modal.closeEsc")}
+                        >
                             <i className="fa-sharp fa-solid fa-xmark"></i>
                         </Button>
                     ) : null}

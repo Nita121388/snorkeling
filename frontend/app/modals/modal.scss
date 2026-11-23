@@ -11,6 +11,11 @@
     justify-content: center;
     align-items: center;
     z-index: var(--zindex-modal-wrapper);
+    // 外壳不吃指针：它铺满整个视口（含顶部 36px 的 tab 栏），默认会吞掉所有点击。
+    // 历史 bug（2026-11-23 真机实测）：弹窗开着时点 tab 栏，命中元素是 .modal-wrapper，
+    // 结果既切不了 Tab（用户只能靠键盘绕行），又把弹窗内 textarea 的焦点 blur 到 body。
+    // 现在只由 backdrop（y≥36 的"点外部关闭"）与弹窗本体接管指针。
+    pointer-events: none;
 
     .modal-backdrop {
         position: fixed;
@@ -20,6 +25,7 @@
         bottom: 0;
         background-color: var(--modal-backdrop-color);
         z-index: var(--zindex-modal-backdrop);
+        pointer-events: auto;
     }
 }
 
@@ -30,6 +36,8 @@
 
     position: relative;
     z-index: var(--zindex-modal);
+    // 外壳 pointer-events:none 之后，弹窗本体要显式接管（样式从 wrapper 继承不到）。
+    pointer-events: auto;
     display: flex;
     flex-direction: column;
     align-items: flex-start;
@@ -111,7 +119,9 @@
         color: var(--secondary-text-color);
         font-size: 12px;
         cursor: pointer;
-        transition: background 120ms ease, color 120ms ease;
+        transition:
+            background 120ms ease,
+            color 120ms ease;
 
         &:hover {
             background: var(--hover-bg-color);

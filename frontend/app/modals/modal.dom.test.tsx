@@ -17,6 +17,7 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Modal, type ModalProps } from "./modal";
+import { bindModalOpenSink, modalOpenAny, resetModalOpenRegistryForTest } from "./modal-open-registry";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -120,6 +121,26 @@ describe("Modal shell contract", () => {
         const modal = modalEl()!;
         expect(modal.classList.contains("modal--flush")).toBe(false);
         expect(modal.classList.contains("modal--no-scroll")).toBe(false);
+    });
+
+    it("挂载期间登记为「有弹窗打开」，卸载后释放（modalOpen 仲裁）", () => {
+        // 直接渲染 <Modal> 的弹窗以前完全不写 atoms.modalOpen，导致焦点掉到 body 时
+        // 按键被派发给背后聚焦块（终端会把字符写进 shell）。外壳统一登记才能根治。
+        resetModalOpenRegistryForTest();
+        const sink = vi.fn();
+        bindModalOpenSink(sink);
+
+        mount({ title: "T" });
+        expect(modalOpenAny()).toBe(true);
+        expect(sink).toHaveBeenLastCalledWith(true);
+
+        act(() => root.unmount());
+        expect(modalOpenAny()).toBe(false);
+        expect(sink).toHaveBeenLastCalledWith(false);
+
+        bindModalOpenSink(null);
+        // afterEach 会再 unmount 一次：已卸载的 root 不再重复卸载。
+        root = createRoot(document.createElement("div"));
     });
 
     it("点 backdrop 默认不关闭", () => {

@@ -19,10 +19,10 @@ import {
 import { tmew } from "./emain-i18n";
 import { log } from "./emain-log";
 import { getElectronAppBasePath, isDev, unamePlatform } from "./emain-platform";
-import { createTabCollapseFileStore, TabCollapseStore } from "./tab-collapse-store";
 import { getOrCreateWebViewForTab, getWaveTabViewByWebContentsId, WaveTabView } from "./emain-tabview";
 import { delay, ensureBoundsAreVisible, waveKeyToElectronKey } from "./emain-util";
 import { ElectronWshClient } from "./emain-wsh";
+import { createTabCollapseFileStore, TabCollapseStore } from "./tab-collapse-store";
 import { updater } from "./updater";
 
 const DevInitTimeoutMs = 120000;
@@ -175,6 +175,23 @@ function markTabOpenedThisLaunch(tabId: string): boolean {
         changed = true;
     }
     return changed;
+}
+
+/**
+ * 窗口回焦时是否该给当前 Tab 视图补 webContents focus（纯函数，便于单测）。
+ *
+ * 不补的三种情况：窗口已销毁 / 正在 relaunch（此时视图在重建，抢焦点会打架）/
+ * 当前视图本来就 focused（无谓补拍会抢走 DevTools、输入法候选窗等子视图的焦点）。
+ */
+export function shouldRefocusActiveView(opts: {
+    windowDestroyed: boolean;
+    relaunching: boolean;
+    hasActiveView: boolean;
+    activeIsFocused: boolean;
+}): boolean {
+    if (opts.windowDestroyed || opts.relaunching) return false;
+    if (!opts.hasActiveView) return false;
+    return !opts.activeIsFocused;
 }
 
 export function calculateWindowBounds(
@@ -431,6 +448,20 @@ export class WaveBrowserWindow extends BaseWindow {
             setWasInFg(true);
             setWasActive(true);
             setTimeout(() => globalEvents.emit("windows-updated"), 50);
+            // 窗口回焦后，活动 Tab 视图可能仍停在 webContents 失焦状态：DOM 的
+            // activeElement 还显示在输入框上，但键入收不到（Electron WebContentsView 的
+            // 已知抖动）。用户侧表现为"编辑时焦点没了、点也点不进去，切 Tab 再切回来才好"，
+            // 因为只有切 Tab 会走 setActiveTab 的补 focus（任务 11-23-commontext-modal-focus）。
+            if (
+                shouldRefocusActiveView({
+                    windowDestroyed: this.isDestroyed(),
+                    relaunching: getGlobalIsRelaunching(),
+                    hasActiveView: this.activeTabView != null,
+                    activeIsFocused: this.activeTabView?.webContents?.isFocused() ?? false,
+                })
+            ) {
+                this.refocusActiveTabWebContents();
+            }
         });
         this.on("blur", () => {
             setTimeout(() => globalEvents.emit("windows-updated"), 50);
@@ -630,17 +661,27 @@ export class WaveBrowserWindow extends BaseWindow {
         }
 
         // something is causing the new tab to lose focus so it requires manual refocusing
-        tabView.webContents.focus();
-        setTimeout(() => {
-            if (tabView.webContents && this.activeTabView == tabView && !tabView.webContents.isFocused()) {
-                tabView.webContents.focus();
-            }
-        }, 10);
-        setTimeout(() => {
-            if (tabView.webContents && this.activeTabView == tabView && !tabView.webContents.isFocused()) {
-                tabView.webContents.focus();
-            }
-        }, 30);
+        this.refocusActiveTabWebContents();
+    }
+
+    /**
+     * 给当前 Tab 的 webContents 补 focus（0/10/30ms 三拍）。
+     *
+     * 历史经验：切 Tab 后新视图会莫名丢掉 webContents 焦点，必须手工补拍。
+     * 同一抖动也会在"窗口回焦"时发生（见 on("focus")），所以把节拍收成一处。
+     */
+    private refocusActiveTabWebContents(): void {
+        const view = this.activeTabView;
+        if (view == null) return;
+        const tryFocus = () => {
+            if (this.isDestroyed() || this.activeTabView !== view) return;
+            if (view.webContents == null || view.webContents.isFocused()) return;
+            view.webContents.focus();
+        };
+        tryFocus();
+        for (const delay of [10, 30]) {
+            setTimeout(tryFocus, delay);
+        }
     }
 
     private finalizePositioning() {

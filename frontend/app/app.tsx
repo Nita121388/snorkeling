@@ -1,8 +1,9 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-import { RootErrorBoundary } from "@/app/element/errorboundary";
 import { waveAIHasSelection } from "@/app/aipanel/waveai-focus-utils";
+import { RootErrorBoundary } from "@/app/element/errorboundary";
+import { bindModalOpenSink } from "@/app/modals/modal-open-registry";
 import { setMonacoTheme } from "@/app/monaco/monaco-env";
 import {
     clearBadgesForBlockOnFocus,
@@ -20,6 +21,7 @@ import { WaveEnvContext } from "@/app/waveenv/waveenv";
 import { makeWaveEnvImpl } from "@/app/waveenv/waveenvimpl";
 import { BlockPlacementController } from "@/app/workspace/block-placement-controller";
 import { Workspace } from "@/app/workspace/workspace";
+import { I18nProvider } from "@/i18n/I18nProvider";
 import { getLayoutModelForStaticTab } from "@/layout/index";
 import { ContextMenuModel } from "@/store/contextmenu";
 import { atoms, createBlock, getSettingsPrefixAtom, refocusNode } from "@/store/global";
@@ -35,11 +37,11 @@ import "overlayscrollbars/overlayscrollbars.css";
 import { useEffect, useRef } from "react";
 import { DndProvider } from "react-dnd";
 import { HTML5Backend } from "react-dnd-html5-backend";
+import { AgentEmojiPickerHost } from "./agent-persona/agent-emoji-picker-host";
 import { AppBackground } from "./app-bg";
-import { I18nProvider } from "@/i18n/I18nProvider";
 import { CommonTextComposeModal } from "./commontext/commontext-compose-modal";
 import { ClipboardFloatActions } from "./element/clipboard-float-actions";
-import { AgentEmojiPickerHost } from "./agent-persona/agent-emoji-picker-host";
+import { loadEmojiCatalog } from "./element/markdown-transform/emoji";
 import { CenteredDiv } from "./element/quickelems";
 import {
     getCopyContextTextFromDom,
@@ -47,7 +49,6 @@ import {
     makeSelectionSearchInFilesMenuItem,
 } from "./element/selection-copy-overlay";
 import { classifyMacOSFirstMouseTarget, shouldPassThroughMacOSFirstMouse } from "./macos-first-click";
-import { loadEmojiCatalog } from "./element/markdown-transform/emoji";
 
 import "./app.scss";
 
@@ -61,6 +62,9 @@ const App = ({ onFirstRender }: { onFirstRender: () => void }) => {
     const tabId = useAtomValue(atoms.staticTabId);
     const waveEnvRef = useRef(makeWaveEnvImpl());
     useEffect(() => {
+        // modalOpen 仲裁落地：所有直接渲染的 <Modal> 与 modalsModel 栈统一经
+        // modal-open-registry 计数，由这里唯一写 atoms.modalOpen（绑定即回放当前状态）。
+        bindModalOpenSink((open) => globalStore.set(atoms.modalOpen, open));
         onFirstRender();
         // Emoji picker first-open speed: while the app sits idle, pre-build the emoji
         // catalog (~2.6MB of dynamic imports + pinyin derivation, 200ms+) so the first
@@ -81,6 +85,7 @@ const App = ({ onFirstRender }: { onFirstRender: () => void }) => {
             })
         );
         return () => {
+            bindModalOpenSink(null);
             if (idle != null) window.cancelIdleCallback(idle);
             if (fallback != null) window.clearTimeout(fallback);
         };

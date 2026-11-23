@@ -17,11 +17,11 @@
 
 // @vitest-environment jsdom
 
+import { initI18n } from "@/i18n/config";
 import { Provider } from "jotai";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { initI18n } from "@/i18n/config";
 
 vi.mock("./commontext-page-icon", () => ({
     PageIconSlot: () => null,
@@ -662,9 +662,7 @@ describe("CommonTextComposeModal — compose polish (11-20)", () => {
     it("R5: synced detail status uses a lit cloud in accent and a compact relative time", async () => {
         globalStore.set(atoms.fullConfigAtom, {
             settings: {
-                "commontext:items": [
-                    { ...seedItems[0], syncstate: "synced", syncedrev: 3 },
-                ],
+                "commontext:items": [{ ...seedItems[0], syncstate: "synced", syncedrev: 3 }],
             },
         } as any);
         await openModal({ query: "Alpha" });
@@ -732,9 +730,7 @@ describe("CommonTextComposeModal — row height & filter bar (11-21)", () => {
         const tagsSlot = row.querySelector("[data-commontext-row-tags]") as HTMLElement | null;
         expect(tagsSlot).not.toBeNull();
         expect(tagsSlot!.getAttribute("data-commontext-row-tags")).toBe("5");
-        const chips = [...tagsSlot!.querySelectorAll(":scope > span")].map((el) =>
-            (el.textContent ?? "").trim()
-        );
+        const chips = [...tagsSlot!.querySelectorAll(":scope > span")].map((el) => (el.textContent ?? "").trim());
         expect(chips).toEqual(["alpha", "bravo", "charlie", "+2"]);
         // 完整标签列表走 tooltip：截断不丢语义
         expect(tagsSlot!.getAttribute("title")).toContain("alpha");
@@ -781,13 +777,9 @@ describe("CommonTextComposeModal — row height & filter bar (11-21)", () => {
         );
         expect(tagChip).toBeDefined();
         await click(tagChip!);
-        expect(document.querySelector('[data-commontext-creator="all"]')!.getAttribute("aria-pressed")).toBe(
-            "false"
-        );
+        expect(document.querySelector('[data-commontext-creator="all"]')!.getAttribute("aria-pressed")).toBe("false");
         await click(document.querySelector("[data-commontext-filter-reset]"));
-        expect(document.querySelector('[data-commontext-creator="all"]')!.getAttribute("aria-pressed")).toBe(
-            "true"
-        );
+        expect(document.querySelector('[data-commontext-creator="all"]')!.getAttribute("aria-pressed")).toBe("true");
         expect(document.querySelector("[data-commontext-filter-reset]")).toBeNull();
     });
 
@@ -820,5 +812,107 @@ describe("CommonTextComposeModal — row height & filter bar (11-21)", () => {
         const disabledSelect = document.querySelector("[data-commontext-sort]") as HTMLSelectElement | null;
         expect(disabledSelect!.disabled).toBe(true);
         expect(document.querySelector("[data-commontext-sort-relevance]")).not.toBeNull();
+    });
+});
+
+// ── 2026-11-23 commontext-modal-focus（AC3/AC4）─────────────────────────────
+// 真机排查结论：详情区的受控更新本身稳定，出问题的是"弹窗内点死区丢焦点到 body"与
+// "合成期被联动 effect 重置"。这里锁住两条兜底行为。
+describe("CommonTextComposeModal — 详情焦点保护 (11-23)", () => {
+    const detailTextarea = () =>
+        document.querySelector(
+            ".commontext-compose-modal textarea:not([data-commontext-composer])"
+        ) as HTMLTextAreaElement;
+
+    async function focusEl(el: HTMLElement): Promise<void> {
+        await act(async () => {
+            el.focus();
+        });
+    }
+
+    async function clickRow(title: string): Promise<void> {
+        await click(document.querySelector(`[data-commontext-title="${title}"]`));
+    }
+
+    async function flushFrames(): Promise<void> {
+        await act(async () => {
+            await new Promise((r) => setTimeout(r, 40));
+        });
+    }
+
+    it("焦点掉到 body 时回收到详情 textarea", async () => {
+        await openModal();
+        await clickRow("Alpha standup");
+        const ta = detailTextarea();
+        await focusEl(ta);
+        expect(document.activeElement).toBe(ta);
+
+        // 模拟"点弹窗内死区（页脚空白 / 属性行 / 内边距）"：焦点掉到 body，
+        // focusout 的 relatedTarget 为 null。
+        await act(async () => {
+            ta.blur();
+            ta.dispatchEvent(new FocusEvent("focusout", { bubbles: true }));
+        });
+        expect(document.activeElement).toBe(document.body);
+
+        await flushFrames();
+        expect(document.activeElement).toBe(detailTextarea());
+    });
+
+    it("焦点在弹窗内控件之间移动时不干预", async () => {
+        await openModal();
+        await clickRow("Alpha standup");
+        const ta = detailTextarea();
+        await focusEl(ta);
+
+        // relatedTarget 非空 = 用户主动点/切到弹窗内另一个控件（这里用 composer 代指）
+        const other = composer();
+        await act(async () => {
+            ta.dispatchEvent(new FocusEvent("focusout", { bubbles: true, relatedTarget: other }));
+        });
+        await flushFrames();
+        expect(document.activeElement).toBe(ta);
+    });
+
+    it("合成期间联动 effect 不重置详情字段，合成结束后再校正", async () => {
+        await openModal();
+        await clickRow("Bravo refund");
+        const ta = detailTextarea();
+        expect(ta.value).toBe("Bravo refund policy");
+        await focusEl(ta);
+
+        // 用户正在详情区改字
+        await act(async () => {
+            const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!;
+            setter.call(ta, "Bravo refund policy + draft");
+            ta.dispatchEvent(new Event("input", { bubbles: true }));
+        });
+        expect(ta.value).toBe("Bravo refund policy + draft");
+
+        // 开始中文合成
+        await act(async () => {
+            ta.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }));
+        });
+
+        // 合成中让列表过滤把当前条目挤出去（正常情况下联动 effect 会立刻重置详情字段）
+        await typeIntoComposer("Alpha standup");
+        await act(async () => {
+            await new Promise((r) => setTimeout(r, 200));
+        });
+        expect(detailTextarea().value).toBe("Bravo refund policy + draft");
+
+        // 合成结束 → effect 重新跑一次，按最新数据校正（切到 Alpha）
+        await act(async () => {
+            ta.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true, data: "草稿" }));
+        });
+        await flushFrames();
+        await act(async () => {
+            await new Promise((r) => setTimeout(r, 60));
+        });
+        const after = document.querySelector(
+            ".commontext-compose-modal textarea:not([data-commontext-composer])"
+        ) as HTMLTextAreaElement | null;
+        // 列表只剩 Alpha（composer 过滤），详情应校正到 Alpha，且不再保留已废弃的 Bravo 草稿
+        expect(after?.value).toBe("Alpha standup notes");
     });
 });
