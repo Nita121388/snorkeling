@@ -1,3 +1,5 @@
+> **Confirmed: 2026-11-23 @nita**
+
 # PRD：看板卡补齐能力 — 恢复 agent + composer
 
 > 父：`11-23-session-surface-fixes-1123`（优先级序 4，M）
@@ -5,6 +7,13 @@
 ## Goal
 
 Overview **看板卡**与列表行能力对齐：能「恢复 agent」、能直接发消息，不用切回列表。
+
+## 已拍板（2026-11-23 nita：ok go）
+
+- **D1 = A**：本轮只做「块在、agent 挂了 / 会话可重开」的恢复 —— 即用
+  `AgentResumeCommand` 把**卡片对应的会话**恢复到卡片所在 tab 的新块（不抢焦点）。
+  「会话在、块已关」的孤卡（看板目前没有这种卡）归 `11-23-session-card-unify`。
+- **D2 = 浮层面板**：看板卡的 composer 用 FloatingPortal 浮层盖在卡上，不撑列宽。
 
 ## 需求
 

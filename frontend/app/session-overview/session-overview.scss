@@ -1758,10 +1758,31 @@
 
 .session-overview-board-card:hover .session-overview-board-card-actions,
 .session-overview-board-card:focus-within .session-overview-board-card-actions {
-    max-width: 72px;
+    /* 11-23：动作区从 3 枚（定位/删除/关闭）到 5 枚（+恢复/发消息）；
+       5*20 + 4*4 = 116px，旧的 72px 会把新增两枚裁掉（overflow: hidden）。 */
+    max-width: 128px;
     margin-left: 0;
     opacity: 1;
     pointer-events: auto;
+}
+
+/* 恢复失败原地提示（11-23-board-card-actions R3）：⚠ code · msg + [重试]，不弹窗。
+   展开后在卡头下方占一行，卡高会多一行（仅失败时，正常态不占位）。 */
+.session-overview-board-card-restore-error {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 6px;
+    margin-top: 6px;
+    color: var(--error-color, #ef4444);
+    font-size: 10.5px;
+}
+
+.session-overview-board-card-restore-error-text {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 /* 定宽头像：emoji 只放大字形（盒子仍 13px，同 agent-persona 契约），logo 用品牌色，缺失时 robot 兜底。 */
@@ -3271,7 +3292,9 @@
     }
 }
 
-.session-overview-card-send-composer {
+// composer 根：11-23 起列表行内（is-inline，行为/样式与 11-22 版一致）与看板浮层
+// （is-popover，外层由 .session-overview-board-send-popover 供壳）共用。
+.session-overview-card-send-panel {
     display: flex;
     min-width: 0;
     flex-direction: column;
@@ -3440,4 +3463,19 @@
     &:hover {
         background: rgb(from var(--main-text-color) r g b / 0.06);
     }
+}
+
+/* ── 看板卡 composer 浮层（11-23-board-card-actions，PRD D2） ──
+   FloatingPortal 落在 body、fixed 钉在卡右上：盖在卡上，不撑列宽。
+   宽 320 / max-height 60vh 由内联 style 定，这里只管壳与滚动。 */
+.session-overview-board-send-popover {
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+    box-sizing: border-box;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: var(--panel-bg-color, var(--main-bg-color));
+    box-shadow: 0 8px 24px rgb(0 0 0 / 0.2);
+    padding: 8px;
 }

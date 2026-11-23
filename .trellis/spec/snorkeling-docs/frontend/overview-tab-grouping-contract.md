@@ -86,3 +86,17 @@ setCollapsed({ ...collapsed, [tabId]: !cur });
   `planNewTab` 层直接拒绝（`template-unsupported`），不靠按钮 disabled 兜底。
 - 验证台已知竞态：profile 列表来自异步 `FindCommand`，agent radio 挂载初期短暂 disabled——
   台子必须等 radio 可用再点，不能当产品 bug 报。
+
+## 10. 看板卡动作（11-23-board-card-actions）
+
+- 能力判定是纯函数 `boardCardCapabilities`（`overview-board-card-actions.ts`）：
+  非 agent → 双 false；agent 但 `sessionId === ""` → 双 false；
+  agent + sessionId → `canRestore` 恒 true（恢复=建新块，不依赖旧块），
+  `canSend` 额外要求 `blockId !== ""`（发送必须有 PTY 目标）。
+- 「恢复」= `AgentResumeCommand({identifier: sessionId, tab: card.tabId, nofocus:true, wait:true})`
+  —— 恢复到**卡片所在 Tab 的新块**，不是替换旧卡（旧卡仍在，属预期）。
+- 「发消息」= `CardSendPanel variant="popover"`（FloatingPortal + `placement:"bottom-end"`，
+  宽 320、`modal:false` 不抢焦点）；列表行同一个组件 `variant="inline"`。
+  **逻辑不得复制**：请求/超时/映射全部来自 `overview-card-send.ts`。
+- 两枚热区必须在 `.session-overview-board-card-actions` 容器内（已 stopPropagation），
+  卡片主体点击仍是开详情。

@@ -56,6 +56,7 @@ import { buildAddAgentLaunchContext } from "./overview-add-agent";
 import { OverviewAddAgentModal, type AddAgentSubmitRequest } from "./overview-add-agent-modal";
 import { OverviewNewTabModal, type NewTabSubmitRequest } from "./overview-new-tab-modal";
 import { OverviewBoard } from "./overview-board";
+import type { BoardCardResumeOutcome } from "./overview-board";
 import {
     normalizeBoardTags,
     OVERVIEW_BOARD_ENABLED,
@@ -75,15 +76,7 @@ import {
     type OverviewViewMode,
     type OverviewViewModeImplemented,
 } from "./overview-board-model";
-import {
-    buildCardSendRequest,
-    cardSendRpcTimeoutMs,
-    CardSendPhaseLabelKey,
-    CardSendPhaseTone,
-    isAgentNotReadyCode,
-    outcomeFromSend,
-    type CardSendResult,
-} from "./overview-card-send";
+import { CardSendContext, CardSendPanel, useCardSendState } from "./overview-card-send-panel";
 import { OverviewTimeline } from "./overview-timeline";
 import { buildTabGroups, type OverviewTabGroup } from "./overview-tab-groups";
 import {
@@ -1789,242 +1782,17 @@ function RowMetaChips({ summary }: { summary: SessionSummary | null }) {
     );
 }
 
-// ───────────────────────── 卡片展开 + composer 发送（11-22-overview-card-send） ─────────────────────────
+// ───────────────────────── 卡片展开 + composer 发送（11-22-overview-card-send / 11-23 抽到共享面板） ─────────────────────────
 //
-// 状态全部挂在面板级（design §4）：`expandedBlockId` 互斥（同时只有一张卡展开）、
-// `draftByBlock` 存草稿、`sendByBlock` 存行程/结果、`waitReply` 是「发送后等回复」勾选，
-// 全部不持久化。映射与请求组装在 `overview-card-send.ts`（vitest 锁签名），这里只管交互与渲染。
-//
-// 热区纪律：行内既有热区（跳转/备注/关闭/消息方块/输入框）全部 stopPropagation，
-// 展开只认「行主体空白区」的点击 —— 看板卡曾因缺少这层保护，点动作按钮顺带把卡片也展开了。
-
-type CardSendEntry = CardSendResult | "sending";
-
-type CardSendSubmitOverrides = {
-    /** 显式覆盖「等回复」勾选（失败重试用同一值，「改为不等待」用 false+dispatch）。 */
-    waitReply?: boolean;
-    /** 异步派发（失败逃生口「改为不等待」）：async:true，立即返回 queued。 */
-    dispatch?: boolean;
-};
-
-type CardSendState = {
-    expandedBlockId: string | null;
-    draftByBlock: Record<string, string>;
-    sendByBlock: Record<string, CardSendEntry>;
-    sendingStartedAt: Record<string, number>;
-    waitReply: boolean;
-    setWaitReply: (value: boolean) => void;
-    toggleExpanded: (blockId: string) => void;
-    collapse: () => void;
-    setDraft: (blockId: string, text: string) => void;
-    submit: (block: OverviewBlock, text: string, overrides?: CardSendSubmitOverrides) => void;
-    retry: (block: OverviewBlock, overrides?: CardSendSubmitOverrides) => void;
-    continueWait: (block: OverviewBlock) => void;
-    cancelWait: (block: OverviewBlock) => void;
-    retryRead: (block: OverviewBlock) => void;
-};
-
-const CardSendContext = React.createContext<CardSendState | null>(null);
-
-function removeRecordKey<T>(record: Record<string, T>, key: string): Record<string, T> {
-    if (!(key in record)) return record;
-    const next = { ...record };
-    delete next[key];
-    return next;
-}
-
-function useCardSendState(reload: () => void): CardSendState {
-    const [expandedBlockId, setExpandedBlockId] = useState<string | null>(null);
-    const [draftByBlock, setDraftByBlock] = useState<Record<string, string>>({});
-    const [sendByBlock, setSendByBlock] = useState<Record<string, CardSendEntry>>({});
-    const [sendingStartedAt, setSendingStartedAt] = useState<Record<string, number>>({});
-    const [waitReply, setWaitReply] = useState(true);
-    // 引用镜像：回调里要读最新值，但不想为此每次渲染都换函数引用。
-    const waitReplyRef = useRef(waitReply);
-    waitReplyRef.current = waitReply;
-    const draftRef = useRef(draftByBlock);
-    draftRef.current = draftByBlock;
-    // 每次发送一个序号：只认最后一次结果（用户可能失败后立即「改为不等待」重发）。
-    const sendSeqRef = useRef<Record<string, number>>({});
-
-    const applyOutcome = React.useCallback((blockId: string, outcome: CardSendResult) => {
-        setSendByBlock((current) => ({ ...current, [blockId]: outcome }));
-        setSendingStartedAt((current) => removeRecordKey(current, blockId));
-    }, []);
-
-    const runSend = React.useCallback(
-        (block: OverviewBlock, text: string, overrides?: CardSendSubmitOverrides) => {
-            const blockId = block.blockId;
-            const useWaitReply = overrides?.waitReply ?? waitReplyRef.current;
-            const built = buildCardSendRequest({
-                blockId,
-                text,
-                waitReply: useWaitReply,
-                dispatch: overrides?.dispatch === true,
-            });
-            // 空文本在 UI 层就被禁发；这里再兑底一次（纯函数返回 ok:false，不投递）。
-            if (!built.ok) return;
-            const seq = (sendSeqRef.current[blockId] ?? 0) + 1;
-            sendSeqRef.current[blockId] = seq;
-            setSendByBlock((current) => ({ ...current, [blockId]: "sending" }));
-            setSendingStartedAt((current) => ({ ...current, [blockId]: Date.now() }));
-            // 等回复的窗口必须放大 RPC timeout（agent-roundtrip-contract §3），
-            // 否则 60s 等待会被默认 8s 超时假杀。
-            const timeout = useWaitReply ? cardSendRpcTimeoutMs(built.req.replywaitms) : 60_000;
-            RpcApi.AgentSendCommand(TabRpcClient, built.req, { timeout })
-                .then((rtn) => {
-                    if (sendSeqRef.current[blockId] !== seq) return;
-                    const outcome = outcomeFromSend(rtn ?? null);
-                    applyOutcome(blockId, outcome);
-                    // 只有真发出去才清稿：失败时保留原文，[重试] 才能原样再发一次。
-                    if (outcome.phase !== "failed") {
-                        setDraftByBlock((current) => removeRecordKey(current, blockId));
-                    }
-                    if (outcome.phase === "replied" || outcome.phase === "timeout") {
-                        reload();
-                    }
-                })
-                .catch((error) => {
-                    if (sendSeqRef.current[blockId] !== seq) return;
-                    const outcome = outcomeFromSend(null, error);
-                    console.warn("[overview-card-send] 发送失败", {
-                        blockId,
-                        code: outcome.errorCode,
-                        error,
-                    });
-                    applyOutcome(blockId, outcome);
-                });
-        },
-        [applyOutcome, reload]
-    );
-
-    const retry = React.useCallback(
-        (block: OverviewBlock, overrides?: CardSendSubmitOverrides) => {
-            // 失败时草稿未清（见 runSend），原样重发；「改为不等待」只换投递模式。
-            runSend(block, draftRef.current[block.blockId] ?? "", overrides);
-        },
-        [runSend]
-    );
-
-    const continueWait = React.useCallback(
-        (block: OverviewBlock) => {
-            const blockId = block.blockId;
-            const sessionId = block.sessionId;
-            if (!sessionId) return;
-            setSendingStartedAt((current) => ({ ...current, [blockId]: Date.now() }));
-            // 超时后的「继续等」只等状态落回 idle，不重发消息（重发 = 重复投递）。
-            RpcApi.SessionWaitCommand(
-                TabRpcClient,
-                { identifier: sessionId, blockid: blockId, until: "idle", timeoutms: 60_000 },
-                { timeout: 75_000 }
-            )
-                .then((rtn) => {
-                    setSendingStartedAt((current) => removeRecordKey(current, blockId));
-                    if (rtn?.matched !== true) return;
-                    setSendByBlock((current) => {
-                        const prev = current[blockId];
-                        const base = prev != null && prev !== "sending" ? prev : outcomeFromSend(null);
-                        return {
-                            ...current,
-                            [blockId]: {
-                                ...base,
-                                phase: "replied",
-                                warnings: [],
-                                waitedMs: rtn.waitedms ?? base.waitedMs,
-                            },
-                        };
-                    });
-                    reload();
-                })
-                .catch((error) => {
-                    console.warn("[overview-card-send] 继续等失败", { blockId, error });
-                    setSendingStartedAt((current) => removeRecordKey(current, blockId));
-                });
-        },
-        [reload]
-    );
-
-    const cancelWait = React.useCallback((block: OverviewBlock) => {
-        setSendByBlock((current) => removeRecordKey(current, block.blockId));
-        setSendingStartedAt((current) => removeRecordKey(current, block.blockId));
-    }, []);
-
-    const retryRead = React.useCallback(
-        (block: OverviewBlock) => {
-            // reply-empty：答复存在但索引没跟上；強刷 detail（refreshSeq → forceRefresh）。
-            setSendByBlock((current) => {
-                const prev = current[block.blockId];
-                if (prev == null || prev === "sending") return current;
-                return {
-                    ...current,
-                    [block.blockId]: {
-                        ...prev,
-                        warnings: prev.warnings.filter((warning) => warning !== "reply-empty"),
-                    },
-                };
-            });
-            reload();
-        },
-        [reload]
-    );
-
-    const toggleExpanded = React.useCallback((blockId: string) => {
-        // 互斥：再点同一张卡 = 收起；面板同一时刻只有一张卡展开。
-        setExpandedBlockId((current) => (current === blockId ? null : blockId));
-    }, []);
-
-    return useMemo<CardSendState>(
-        () => ({
-            expandedBlockId,
-            draftByBlock,
-            sendByBlock,
-            sendingStartedAt,
-            waitReply,
-            setWaitReply,
-            toggleExpanded,
-            collapse: () => setExpandedBlockId(null),
-            setDraft: (blockId, text) => setDraftByBlock((current) => ({ ...current, [blockId]: text })),
-            submit: (block, text, overrides) => runSend(block, text, overrides),
-            retry,
-            continueWait,
-            cancelWait,
-            retryRead,
-        }),
-        [
-            expandedBlockId,
-            draftByBlock,
-            sendByBlock,
-            sendingStartedAt,
-            waitReply,
-            runSend,
-            retry,
-            continueWait,
-            cancelWait,
-            retryRead,
-            toggleExpanded,
-        ]
-    );
-}
+// composer 的状态机与发送链路已搬到 `overview-card-send-panel.tsx`（`CardSendContext` /
+// `useCardSendState` / `<CardSendPanel>`）：列表行与看板浮层共用同一份草稿、行程与
+// 「发送后等回复」勾选，这里只消费。热区纪律不变：行内既有热区（跳转/备注/关闭/消息方块/
+// 输入框）全部 stopPropagation，展开只认「行主体空白区」的点击。
 
 function truncateCardSendText(text: string, maxChars: number): string {
     const normalized = text.replace(/\s+$/g, "");
     if (normalized.length <= maxChars) return normalized;
     return `${normalized.slice(0, maxChars)}…`;
-}
-
-function useSendingSeconds(startedAt: number | undefined): number {
-    const [elapsed, setElapsed] = useState(0);
-    useEffect(() => {
-        if (startedAt == null) {
-            setElapsed(0);
-            return;
-        }
-        const tick = () => setElapsed(Math.max(0, Math.floor((Date.now() - startedAt) / 1000)));
-        tick();
-        const timer = window.setInterval(tick, 1000);
-        return () => window.clearInterval(timer);
-    }, [startedAt]);
-    return elapsed;
 }
 
 function CardSendAttrRow(props: { label: string; value: string; title?: string }) {
@@ -2050,13 +1818,9 @@ function CardSendExpander({
 }) {
     const { t } = useTranslation("session-overview");
     const cardSend = React.useContext(CardSendContext);
-    const textareaRef = useRef<HTMLTextAreaElement | null>(null);
     const blockId = block.blockId;
-    const draft = cardSend?.draftByBlock[blockId] ?? "";
     const entry = cardSend?.sendByBlock[blockId];
-    const sending = entry === "sending";
     const result = entry != null && entry !== "sending" ? entry : null;
-    const elapsedSecs = useSendingSeconds(cardSend?.sendingStartedAt[blockId]);
     const lastReply = useMemo(() => {
         const messages = readableMessages(detail);
         for (let i = messages.length - 1; i >= 0; i--) {
@@ -2064,13 +1828,6 @@ function CardSendExpander({
         }
         return messages.length > 0 ? messages[messages.length - 1] : null;
     }, [detail]);
-    // 展开即聚焦输入框，但不切激活块/不切 Tab：只 focus，不碰 layout/focus API。
-    useEffect(() => {
-        const node = textareaRef.current;
-        if (node == null) return;
-        const timer = window.setTimeout(() => node.focus({ preventScroll: true }), 0);
-        return () => window.clearTimeout(timer);
-    }, [blockId]);
 
     const meta = (block.block?.meta ?? {}) as Record<string, unknown>;
     const modelLabel =
@@ -2080,12 +1837,6 @@ function CardSendExpander({
     ).trim();
     const sessionKey = (summary?.key ?? block.sessionId ?? "").trim();
     const tags = normalizeBoardTags(summary?.tags);
-
-    const draftEmpty = draft.trim() === "";
-    const submitDraft = () => {
-        if (cardSend == null || draftEmpty) return;
-        cardSend.submit(block, draft);
-    };
 
     return (
         <div
@@ -2159,144 +1910,9 @@ function CardSendExpander({
                     </span>
                 </div>
             ) : null}
-            {/* composer：Enter 发送 / Shift+Enter 换行 / Esc 收起 */}
-            <div className="session-overview-card-send-composer">
-                <textarea
-                    ref={textareaRef}
-                    className="session-overview-card-send-input"
-                    data-overview-card-send-input={blockId}
-                    placeholder={t("session-overview:panel.cardSendPlaceholder")}
-                    value={draft}
-                    spellCheck={false}
-                    aria-label={t("session-overview:panel.cardSendPlaceholder")}
-                    onChange={(event) => cardSend?.setDraft(blockId, event.target.value)}
-                    onKeyDown={(event) => {
-                        event.stopPropagation();
-                        if (event.key === "Escape") {
-                            cardSend?.collapse();
-                            return;
-                        }
-                        if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
-                            event.preventDefault();
-                            submitDraft();
-                        }
-                    }}
-                />
-                <div className="session-overview-card-send-footer">
-                    <label className="session-overview-card-send-wait">
-                        <input
-                            type="checkbox"
-                            data-overview-card-send-wait={blockId}
-                            checked={cardSend?.waitReply ?? true}
-                            onChange={(event) => cardSend?.setWaitReply(event.target.checked)}
-                        />
-                        <span>{t("session-overview:panel.cardSendWaitReply")}</span>
-                    </label>
-                    {/* 行程徽章：发送中显秒数，结果按 phase 上色（replied 绿 / timeout 黄 / failed 红 / unconfirmed 橙） */}
-                    {sending ? (
-                        <span className="session-overview-card-send-badge is-pending">
-                            <i className={makeIconClass("spinner", false)} />
-                            <span>{i18n.t("session-overview:panel.cardSendSending", { secs: elapsedSecs })}</span>
-                        </span>
-                    ) : result != null ? (
-                        <span
-                            className={cn("session-overview-card-send-badge", `is-${CardSendPhaseTone[result.phase]}`)}
-                        >
-                            <span>{i18n.t(CardSendPhaseLabelKey[result.phase])}</span>
-                            {result.phase === "timeout" ? (
-                                <span className="session-overview-card-send-badge-note">
-                                    {Math.floor(result.waitedMs / 1000)}s
-                                </span>
-                            ) : null}
-                        </span>
-                    ) : null}
-                    <button
-                        type="button"
-                        className="session-overview-card-send-submit"
-                        data-overview-card-send-submit={blockId}
-                        disabled={sending || draftEmpty}
-                        onClick={(event) => {
-                            event.stopPropagation();
-                            submitDraft();
-                        }}
-                    >
-                        <span>{t("session-overview:panel.cardSendSubmit")}</span>
-                    </button>
-                </div>
-                {/* R3.3 失败不弹窗：原地 ⚠ <code> <msg> [重试]；E_AGENT_NOT_READY 额外给 [改为不等待] */}
-                {result?.phase === "failed" ? (
-                    <div className="session-overview-card-send-alert is-danger" role="alert">
-                        <span className="session-overview-card-send-alert-text">
-                            {"⚠ "}
-                            {result.errorCode ? `${result.errorCode} ` : ""}
-                            {result.errorMessage ?? ""}
-                        </span>
-                        <button
-                            type="button"
-                            className="session-overview-card-send-alert-button"
-                            onClick={(event) => {
-                                event.stopPropagation();
-                                cardSend?.retry(block);
-                            }}
-                        >
-                            {t("session-overview:panel.cardSendRetry")}
-                        </button>
-                        {isAgentNotReadyCode(result.errorCode) ? (
-                            <button
-                                type="button"
-                                className="session-overview-card-send-alert-button"
-                                onClick={(event) => {
-                                    event.stopPropagation();
-                                    cardSend?.retry(block, { waitReply: false, dispatch: true });
-                                }}
-                            >
-                                {t("session-overview:panel.cardSendNoWait")}
-                            </button>
-                        ) : null}
-                    </div>
-                ) : null}
-                {/* 超时不箅失败（agent-roundtrip-contract §3）：停在等回复，给 [继续等] [取消] */}
-                {result?.phase === "timeout" ? (
-                    <div className="session-overview-card-send-alert is-warn">
-                        <button
-                            type="button"
-                            className="session-overview-card-send-alert-button"
-                            onClick={(event) => {
-                                event.stopPropagation();
-                                cardSend?.continueWait(block);
-                            }}
-                        >
-                            {t("session-overview:panel.cardSendContinueWait")}
-                        </button>
-                        <button
-                            type="button"
-                            className="session-overview-card-send-alert-button"
-                            onClick={(event) => {
-                                event.stopPropagation();
-                                cardSend?.cancelWait(block);
-                            }}
-                        >
-                            {t("session-overview:panel.cardSendCancelWait")}
-                        </button>
-                    </div>
-                ) : null}
-                {/* R4.2 reply-empty：答复存在但索引没跟上，给 [重试读取] */}
-                {result != null && result.warnings.includes("reply-empty") ? (
-                    <div className="session-overview-card-send-alert is-warn">
-                        <span className="session-overview-card-send-alert-text">{"⚠ reply-empty"}</span>
-                        <button
-                            type="button"
-                            className="session-overview-card-send-alert-button"
-                            onClick={(event) => {
-                                event.stopPropagation();
-                                cardSend?.retryRead(block);
-                            }}
-                        >
-                            {t("session-overview:panel.cardSendRetryRead")}
-                        </button>
-                    </div>
-                ) : null}
-            </div>
+            {/* composer（共享面板，11-23 抽出）：Enter 发送 / Shift+Enter 换行 / Esc 收起；
+                发送/重试/改为不等待/继续等全在 overview-card-send-panel.tsx，列表行为零变化。 */}
+            <CardSendPanel variant="inline" autoFocus blockId={blockId} sessionId={block.sessionId} />
         </div>
     );
 }
@@ -3196,6 +2812,36 @@ function SessionOverviewPanel({ blockId, model }: ViewComponentProps<SessionOver
         },
         [blocks, model, sessionAction.deletingSessionId, sessionService]
     );
+    /**
+     * 看板卡「恢复」（11-23-board-card-actions R1.1 / design §3）：按会话恢复到卡片所在 Tab 的
+     * 新块，不抢焦点（nofocus）。成功 bump refreshSeq（组会带出新块，旧卡仍在 —— 恢复=再开一个块，
+     * 不是替换）；失败只回传 code/msg，由卡片原地 ⚠ [重试]，不弹窗（R3）。
+     */
+    const handleResumeBoardCard = React.useCallback(
+        async (card: OverviewBoardCard): Promise<BoardCardResumeOutcome> => {
+            try {
+                await RpcApi.AgentResumeCommand(
+                    TabRpcClient,
+                    {
+                        identifier: card.sessionId,
+                        tab: card.tabId,
+                        nofocus: true,
+                        wait: true,
+                        waitms: 8000,
+                    },
+                    { timeout: 60_000 }
+                );
+                model.refresh();
+                return { ok: true, code: null, message: "" };
+            } catch (error) {
+                const rawMessage = error instanceof Error ? error.message : String(error);
+                const code = /\bE_[A-Z_]+/.exec(rawMessage)?.[0] ?? null;
+                const message = code == null ? rawMessage : rawMessage.replace(new RegExp(`^\\s*${code}\\s*:?\\s*`), "");
+                return { ok: false, code, message: message.trim() !== "" ? message.trim() : rawMessage.trim() };
+            }
+        },
+        [model]
+    );
     const highlightedBlockId = selectedBlockInOverview
         ? selectedBlockId
         : currentBlockInOverview
@@ -3678,6 +3324,7 @@ function SessionOverviewPanel({ blockId, model }: ViewComponentProps<SessionOver
                                 onJumpCard={handleJumpBoardCard}
                                 onCloseCard={handleCloseBoardCard}
                                 onDeleteSession={handleDeleteBoardSession}
+                                onResumeCard={handleResumeBoardCard}
                                 deletingSessionId={sessionAction.deletingSessionId}
                                 onAddAgent={openAddAgent}
                             />

@@ -1,0 +1,17 @@
+{
+  "g1": {
+    "at": "2026-11-23T05:35:25Z",
+    "by": "nita",
+    "verdict": "confirmed",
+    "prdHash": "64262dc0c180"
+  },
+  "g2": {
+    "redProof": "loop/red/F-1123-board-card-actions.txt",
+    "at": "2026-11-23T05:35:26Z"
+  },
+  "g5": {
+    "ok": true,
+    "executedAt": "2026-11-23T05:35:26Z",
+    "by": "main"
+  }
+}
