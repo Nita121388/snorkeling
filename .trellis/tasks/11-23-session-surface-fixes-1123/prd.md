@@ -5,13 +5,13 @@
 
 ## 问题清单与优先级（nita 已确认按此顺序，2026-11-23）
 
-| 序 | 子包 | 问题 | 为什么这个位置 | 规模 |
-|---|---|---|---|---|
-| 1 | `11-23-commontext-create-send` | CommonText「新建 agent 并发送」文本发了没出去（静默丢消息） | 唯一"成功假象"型 bug：UI 说已发、对方收不到、无报错；改动极小 | S |
-| 2+3 | `11-23-overview-refresh-1123` | ①恢复的会话在 Overview 看板没卡 ②Tab 新增 agent 在 Overview 看不到 ③Tab 悬浮卡对激活 Tab 新增内容不刷新 | 三症状疑同根（块集合变化未触发重算/订阅）；先一次复现台三断言定性，再一个修复包 | S |
-| 4 | `11-23-board-card-actions` | 看板卡缺「恢复 agent」+ composer | 纯增量功能，复用已交付 RPC（agent resume / agent send） | M |
-| 5 | `11-23-session-card-unify` | 列表卡与看板卡融合成单组件 | 纯重构，收益是维护性；依赖序 4 落地后做，像素回归兜底 | M-L |
-| 6 | `11-23-manual-paste-submit-guard` | 手工粘贴+回车被 pi 启动期吞掉 | 可选；上游 TUI 行为，只能加提示 | S |
+| 序 | 子包 | 问题 | 为什么这个位置 | 规模 | 状态（2026-11-23 午后） |
+| 1 | `11-23-commontext-create-send` | CommonText「新建 agent 并发送」文本发了没出去（静默丢消息） | 唯一"成功假象"型 bug：UI 说已发、对方收不到、无报错；改动极小 | S | ✅ 已修入库 `79cf281db`，人工验证过 |
+| 1b | `11-23-agentsend-submit-budget` | 提交确认 45s 次数上限绕过时间预算 + 派发回执谎报成功 | 修序 1 时真机挖出的更深根因 | S | ✅ 已修入库 `6e73a4be7` |
+| 2+3 | `11-23-overview-refresh-1123` | ①恢复的会话在 Overview 没卡 ②Tab 新增 agent 看不到 ③悬浮卡不刷新（疑同根） | 三症状共享一个"块集合变化未订阅"假设；一次复现台/人工5步定性 | S | ⏳ **等 nita 的 5 步人工复现结果**（`manual-verification.md`） |
+| 4 | `11-23-board-card-actions` | 看板卡缺「恢复 agent」+ composer | 纯增量功能，复用已交付 RPC | M | ✅ 代码入库 `b5f08dc7c`，**等 nita 8 步人工验证**（`manual-verification.md`） |
+| 5 | `11-23-session-card-unify` | 列表卡与看板卡融合成单组件 | 纯重构，收益是维护性；依赖序 4 | M-L | 🎨 原型成稿（`6dd2720c6`），**待确认"会话方块"口径 A/B/C**（`notes-20261123.md`） |
+| 6 | `11-23-manual-paste-submit-guard` | 手工粘贴+回车被吞的提示 | 可选；上游 TUI 行为，只能加提示 | S | ⬜ 未动工，最低优先级 |
 
 ## 已核实的证据快照（2026-11-23 上午，防复查重复劳动）
 

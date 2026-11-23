@@ -23,7 +23,8 @@
     "11-23-overview-refresh-1123",
     "11-23-board-card-actions",
     "11-23-session-card-unify",
-    "11-23-manual-paste-submit-guard"
+    "11-23-manual-paste-submit-guard",
+    "11-23-agentsend-submit-budget"
   ],
   "parent": null,
   "relatedFiles": [],
