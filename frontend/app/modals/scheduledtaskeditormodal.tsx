@@ -148,7 +148,12 @@ function ScheduledTaskEditorModal({ task, isNew, onSave }: ScheduledTaskEditorMo
                         </Field>
 
                         <Field label={t("modals:scheduledTask.fieldHero")}>
-                            <select className={inputCls} value={heroId} onChange={(e) => set("hero", e.target.value)}>
+                            <select
+                                className={inputCls}
+                                data-scheduled-task-hero
+                                value={heroId}
+                                onChange={(e) => set("hero", e.target.value)}
+                            >
                                 {heroOptions.map((opt) => (
                                     <option key={opt.value || "__none__"} value={opt.value}>
                                         {opt.label}

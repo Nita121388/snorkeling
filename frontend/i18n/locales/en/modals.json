@@ -137,6 +137,27 @@
         "descShell": "Restarting the shell will terminate the currently running command and start a new one.",
         "restart": "Restart"
     },
+    "schedTaskManager": {
+        "title": "Scheduled Tasks",
+        "subtitle": "Create, edit, pause, and run tasks right here — no extra block needed",
+        "count": "{{count}} task(s)",
+        "newTask": "New Task",
+        "loading": "Loading…",
+        "queued": "Queued: {{name}}",
+        "statusPending": "pending",
+        "toggleLabel": "Toggle {{name}}",
+        "empty": {
+            "title": "No scheduled tasks yet",
+            "description": "Click “New Task” to create the first one. It keeps running on schedule even after you close this dialog."
+        },
+        "actions": {
+            "edit": "Edit",
+            "runNow": "Run now",
+            "delete": "Delete",
+            "confirmDelete": "Delete",
+            "cancelDelete": "Cancel"
+        }
+    },
     "scheduledTask": {
         "newTitle": "New Scheduled Task",
         "editTitle": "Edit Scheduled Task",

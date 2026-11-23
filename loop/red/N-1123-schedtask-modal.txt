@@ -1,0 +1,30 @@
+(node:44611) [DEP0205] DeprecationWarning: `module.register()` is deprecated. Use `module.registerHooks()` instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+
+ RUN  v3.2.4 /Users/nita/Primary/projects/snorkeling
+
+(node:44615) ExperimentalWarning: localStorage is not available because --localstorage-file was not provided.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+⎯⎯⎯⎯⎯⎯ Failed Suites 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  frontend/app/modals/scheduledtask-modal.test.tsx [ frontend/app/modals/scheduledtask-modal.test.tsx ]
+Error: Failed to resolve import "./scheduledtask-manager-modal" from "frontend/app/modals/scheduledtask-modal.test.tsx". Does the file exist?
+  Plugin: vite:import-analysis
+  File: /Users/nita/Primary/projects/snorkeling/frontend/app/modals/scheduledtask-modal.test.tsx:44:0
+  32 |  const __vi_import_6__ = await import("react-dom/client");
+  33 |  const __vi_import_7__ = await import("./modal-open-registry");
+  34 |  const __vi_import_8__ = await import("./scheduledtask-manager-modal");
+     |                                       ^
+  35 |  
+  36 |  // Copyright 2026, Command Line Inc.
+ ❯ TransformPluginContext._formatLog node_modules/vite/dist/node/chunks/dep-Dq2t6Dq0.js:42553:41
+ ❯ TransformPluginContext.error node_modules/vite/dist/node/chunks/dep-Dq2t6Dq0.js:42550:16
+ ❯ normalizeUrl node_modules/vite/dist/node/chunks/dep-Dq2t6Dq0.js:40529:23
+ ❯ node_modules/vite/dist/node/chunks/dep-Dq2t6Dq0.js:40648:37
+ ❯ TransformPluginContext.transform node_modules/vite/dist/node/chunks/dep-Dq2t6Dq0.js:40575:7
+ ❯ EnvironmentPluginContainer.transform node_modules/vite/dist/node/chunks/dep-Dq2t6Dq0.js:42348:18
+ ❯ loadAndTransform node_modules/vite/dist/node/chunks/dep-Dq2t6Dq0.js:35740:27
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+

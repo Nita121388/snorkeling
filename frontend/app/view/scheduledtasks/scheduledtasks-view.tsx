@@ -8,36 +8,8 @@ import { i18n } from "@/i18n/config";
 import * as jotai from "jotai";
 import * as React from "react";
 import { useTranslation } from "react-i18next";
-import { describeCron } from "./cron-describe";
+import { describeSchedule, schedTaskStatusColorClass } from "./schedtask-shared";
 import type { ScheduledTasksViewModel } from "./scheduledtasks-model";
-
-function describeSchedule(s: ScheduledTaskScheduleType): string {
-    switch (s?.type) {
-        case "cron":
-            return describeCron(s.cronExpr);
-        case "interval": {
-            const secs = s.intervalMs ? s.intervalMs / 1000 : null;
-            if (secs == null) return i18n.t("scheduledtasks:schedule.unknownInterval");
-            if (secs < 60) return i18n.t("scheduledtasks:schedule.everySeconds", { count: secs });
-            if (secs % 3600 === 0) return i18n.t("scheduledtasks:schedule.everyHours", { count: secs / 3600 });
-            return i18n.t("scheduledtasks:schedule.everyMinutes", { count: secs / 60 });
-        }
-        case "daily":
-            return i18n.t("scheduledtasks:schedule.dailyAt", { time: s.timeOfDay ?? "" });
-        case "weekly": {
-            const weekdayKeys = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"] as const;
-            const d = s.dayOfWeek;
-            const wd = d >= 0 && d <= 6 ? i18n.t(`scheduledtasks:weekday.${weekdayKeys[d]}`) : String(d ?? "?");
-            return i18n.t("scheduledtasks:schedule.weeklyOn", { day: wd, time: s.timeOfDay ?? "" });
-        }
-        case "once":
-            return s.runAt
-                ? i18n.t("scheduledtasks:schedule.onceAt", { time: s.runAt })
-                : i18n.t("scheduledtasks:schedule.once");
-        default:
-            return s?.type ?? "-";
-    }
-}
 
 function agentLabel(agentCatalog: AgentProfileInfo[], name: string | undefined): string {
     if (name == null || name === "") {
@@ -58,19 +30,7 @@ function modelLabel(
     return found?.label ?? model;
 }
 
-function statusColor(status?: string): string {
-    switch (status) {
-        case "success":
-            return "text-[var(--success)]";
-        case "error":
-        case "timeout":
-            return "text-[var(--error)]";
-        case "running":
-            return "text-accent";
-        default:
-            return "text-muted";
-    }
-}
+const statusColor = schedTaskStatusColorClass;
 
 export const ScheduledTasksView: React.FC<ViewComponentProps<ScheduledTasksViewModel>> = React.memo(
     function ScheduledTasksView({ blockId: _blockId, blockRef: _blockRef, contentRef: _contentRef, model }) {

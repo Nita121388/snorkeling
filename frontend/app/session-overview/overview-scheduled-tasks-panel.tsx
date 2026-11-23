@@ -20,6 +20,7 @@ import { loadHeroRoster } from "@/app/store/hero-roster";
 import { modalsModel } from "@/app/store/modalmodel";
 import { RpcApi } from "@/app/store/wshclientapi";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
+import { schedTaskStatusColorVar } from "@/app/view/scheduledtasks/schedtask-shared";
 import type { HeroRosterEntry } from "@/app/workspace/hero-launch";
 import { i18n } from "@/i18n/config";
 import { cn, makeIconClass } from "@/util/util";
@@ -32,20 +33,8 @@ import {
     type ScheduledTaskWithHero,
 } from "./overview-scheduled-tasks";
 
-/** 上次状态 → 颜色（与 scheduledtasks-view 的 statusColor 同口径）。 */
-function statusColor(status: string): string {
-    switch (status) {
-        case "success":
-            return "var(--success)";
-        case "error":
-        case "timeout":
-            return "var(--error)";
-        case "running":
-            return "var(--accent-color)";
-        default:
-            return "var(--secondary-text-color)";
-    }
-}
+/** 上次状态 → 颜色（收口到 scheduledtasks 共享模块，与 block 视图同口径）。 */
+const statusColor = schedTaskStatusColorVar;
 
 export function OverviewScheduledTasksSection(): React.JSX.Element | null {
     const { t } = useTranslation("session-overview");

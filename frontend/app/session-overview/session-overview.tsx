@@ -3293,6 +3293,17 @@ function SessionOverviewPanel({ blockId, model }: ViewComponentProps<SessionOver
                             <i className={makeIconClass("plus", false)} />
                             <span>{t("session-overview:panel.newTab")}</span>
                         </button>
+                        {/* 定时任务：管理面弹窗化后的工具栏入口（不需要建块） */}
+                        <button
+                            type="button"
+                            className="session-overview-filter-button"
+                            data-overview-schedtask-manager=""
+                            onClick={() => modalsModel.pushModal("ScheduledTaskManagerModal", {})}
+                            title={t("session-overview:schedTasks.openManager")}
+                        >
+                            <i className={makeIconClass("clock", false)} />
+                            <span>{t("session-overview:schedTasks.openManager")}</span>
+                        </button>
                         <label className="session-overview-limit">
                             <span>{t("session-overview:panel.messages")}</span>
                             <input

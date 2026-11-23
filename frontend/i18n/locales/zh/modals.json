@@ -137,6 +137,27 @@
         "descShell": "重启 shell 将终止当前正在运行的命令，并启动一条新命令。",
         "restart": "重启"
     },
+    "schedTaskManager": {
+        "title": "定时任务",
+        "subtitle": "新建、编辑、启停与立即运行都在这里完成，不需要新建块",
+        "count": "共 {{count}} 个任务",
+        "newTask": "新建任务",
+        "loading": "加载中…",
+        "queued": "已排队：{{name}}",
+        "statusPending": "待运行",
+        "toggleLabel": "启停 {{name}}",
+        "empty": {
+            "title": "还没有定时任务",
+            "description": "点「新建任务」创建第一个；创建后即使关掉弹窗也会按时执行。"
+        },
+        "actions": {
+            "edit": "编辑",
+            "runNow": "立即运行",
+            "delete": "删除",
+            "confirmDelete": "确认删除",
+            "cancelDelete": "取消"
+        }
+    },
     "scheduledTask": {
         "newTitle": "新建定时任务",
         "editTitle": "编辑定时任务",

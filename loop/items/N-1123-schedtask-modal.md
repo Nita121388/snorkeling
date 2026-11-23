@@ -27,10 +27,10 @@ createdAt: "2026-11-23T11:17:37Z"
 
 ## 验收判据
 
-- [ ] `npx vitest run frontend/app/view/scheduledtasks >/dev/null 2>&1 && echo VT_SCHEDVIEW_OK` → `VT_SCHEDVIEW_OK`
+- [ ] `npx eslint frontend/app/modals frontend/app/view/scheduledtasks frontend/app/store/modalmodel.ts >/dev/null 2>&1 && echo ESLINT_SCHED_OK` → `ESLINT_SCHED_OK`
 - [ ] `npx vitest run frontend/app/modals >/dev/null 2>&1 && echo VT_MODALS_OK` → `VT_MODALS_OK`
 - [ ] `npx vitest run frontend/app/modals/scheduledtask-modal.test.tsx >/dev/null 2>&1 && echo VT_MODAL_OK` → `VT_MODAL_OK`
-- [ ] `npm run i18n:check >/dev/null 2>&1 && echo I18N_OK` → `I18N_OK`
+- [ ] `node scripts/i18n/check-parity.mjs >/dev/null 2>&1 && echo I18N_PARITY_OK` → `I18N_PARITY_OK`
 
 ## 记录
 

@@ -4,5 +4,14 @@
     "by": "nita",
     "verdict": "confirmed",
     "prdHash": "d39ee76fce33"
+  },
+  "g2": {
+    "redProof": "loop/red/N-1123-schedtask-modal.txt",
+    "at": "2026-11-23T14:24:47Z"
+  },
+  "g5": {
+    "ok": true,
+    "executedAt": "2026-11-23T14:24:47Z",
+    "by": "compliance"
   }
 }

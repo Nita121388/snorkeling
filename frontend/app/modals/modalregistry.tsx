@@ -23,6 +23,7 @@ import { EditOriginsModal } from "./edit-origins-modal";
 import { FileConflictModal } from "./file-conflict-modal";
 import { NoteDirectoryModal } from "./notedirectorymodal";
 import { RestartConfirmModal } from "./restartconfirmmodal";
+import { ScheduledTaskManagerModal } from "./scheduledtask-manager-modal";
 import { ScheduledTaskEditorModal } from "./scheduledtaskeditormodal";
 import { UnsavedFileModal } from "./unsavedfilemodal";
 import { UserInputModal } from "./userinputmodal";
@@ -55,6 +56,7 @@ const modalRegistry: { [key: string]: React.ComponentType<any> } = {
     [ConfirmModal.displayName || "ConfirmModal"]: ConfirmModal,
     [EditOriginsModal.displayName || "EditOriginsModal"]: EditOriginsModal,
     [ScheduledTaskEditorModal.displayName || "ScheduledTaskEditorModal"]: ScheduledTaskEditorModal,
+    [ScheduledTaskManagerModal.displayName || "ScheduledTaskManagerModal"]: ScheduledTaskManagerModal,
 };
 
 export const getModalComponent = (key: string): React.ComponentType<any> | undefined => {
