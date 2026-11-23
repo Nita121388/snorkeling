@@ -2272,6 +2272,31 @@
     scroll-snap-align: start;
 }
 
+/* ---- 跨 Tab 拖拽（11-23）：拖起态 + 落点高亮 ----
+   只在拖拽过程中出现（data-drop-target 由拖起态决定），静态看板视觉 0 变化。
+   颜色全部走 token，不硬编码。 */
+.session-overview-board-card.is-dragging {
+    border-color: rgb(from var(--accent-color) r g b / 0.55);
+    opacity: 0.55;
+}
+
+.session-overview-board-column.is-drop-target {
+    border-radius: 10px;
+    outline: 1px dashed rgb(from var(--accent-color) r g b / 0.35);
+    outline-offset: 2px;
+    transition: outline-color 120ms ease, background-color 120ms ease;
+}
+
+.session-overview-board-column.is-drop-active {
+    outline: 1px solid rgb(from var(--accent-color) r g b / 0.85);
+    background: rgb(from var(--accent-color) r g b / 0.08);
+}
+
+/* 0 卡 Tab 的落点占位：拖拽态才渲染，给一个最小可命中高度。 */
+.session-overview-board-column.is-drop-target-empty {
+    min-height: 96px;
+}
+
 /* 空列占位：列头仍常显（给出「看板有这几列」的结构感），列体给一句 muted 提示。 */
 .session-overview-board-empty {
     display: flex;

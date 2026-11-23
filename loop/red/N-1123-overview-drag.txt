@@ -1,0 +1,20 @@
+=== N-1123-overview-drag 红证（2026-11-23，实现前实测）
+CMD: npx vitest run frontend/app/session-overview/overview-board-drag.test.tsx
+ ✓ frontend/app/session-overview/overview-board-drag.test.tsx > overview-drag-intent: payload > round-trips blockId and fromTabId 1ms
+ ✓ frontend/app/session-overview/overview-board-drag.test.tsx > overview-drag-intent: payload > rejects empty and malformed payloads instead of half-parsing 0ms
+ ✓ frontend/app/session-overview/overview-board-drag.test.tsx > overview-drag-intent: drop resolution > moves when the target tab differs from the source tab 0ms
+ ✓ frontend/app/session-overview/overview-board-drag.test.tsx > overview-drag-intent: drop resolution > does nothing when dropped back on the source tab (same-tab) 0ms
+ ✓ frontend/app/session-overview/overview-board-drag.test.tsx > overview-drag-intent: drop resolution > does nothing without a target tab or without a payload 0ms
+ ✓ frontend/app/session-overview/overview-board-drag.test.tsx > overview-drag-intent: threshold and blocked origins > treats sub-threshold movement as a click and past-threshold as a drag 0ms
+ ✓ frontend/app/session-overview/overview-board-drag.test.tsx > overview-drag-intent: threshold and blocked origins > blocks drag from interactive controls and card hotzones 0ms
+ ✓ frontend/app/session-overview/overview-board-drag.test.tsx > OverviewBoard cross-tab drag (DOM) > renders no drop targets while idle 36ms
+ × frontend/app/session-overview/overview-board-drag.test.tsx > OverviewBoard cross-tab drag (DOM) > renders a drop target for every tab (including empty ones) while dragging 10ms
+   → expected  to have a length of 2 but got +0
+ × frontend/app/session-overview/overview-board-drag.test.tsx > OverviewBoard cross-tab drag (DOM) > calls onMoveCard once with the target tab when dropped on another tab 4ms
+   → expected null not to be null
+ × frontend/app/session-overview/overview-board-drag.test.tsx > OverviewBoard cross-tab drag (DOM) > never calls onMoveCard for same-tab drops, blank space, or a stale payload 4ms
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 3 ⎯⎯⎯⎯⎯⎯⎯
+AssertionError: expected  to have a length of 2 but got +0
+AssertionError: expected null not to be null
+ Test Files  1 failed (1)
+      Tests  3 failed | 8 passed (11)

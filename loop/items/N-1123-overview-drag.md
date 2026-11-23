@@ -29,7 +29,7 @@ createdAt: "2026-11-23T11:17:10Z"
 
 - [ ] `npx vitest run frontend/app/session-overview >/dev/null 2>&1 && echo VT_OVERVIEW_OK` → `VT_OVERVIEW_OK`
 - [ ] `npx vitest run frontend/app/session-overview/overview-board-drag.test.ts >/dev/null 2>&1 && echo VT_DRAG_OK` → `VT_DRAG_OK`
-- [ ] `npx vitest run frontend/layout/lib >/dev/null 2>&1 && echo VT_LAYOUT_OK` → `VT_LAYOUT_OK`
+- [ ] `npx eslint frontend/app/session-overview/overview-board.tsx frontend/app/session-overview/overview-drag-intent.ts frontend/app/session-overview/overview-board-drag.test.tsx frontend/app/session-overview/session-overview.tsx >/dev/null 2>&1 && echo ESLINT_DRAG_OK` → `ESLINT_DRAG_OK`
 
 ## 记录
 

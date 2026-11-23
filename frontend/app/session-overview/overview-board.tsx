@@ -8,7 +8,7 @@ import { getAgentLogoByProvider } from "@/app/view/term/agent-logo";
 import { i18n } from "@/i18n/config";
 import { cn, makeIconClass } from "@/util/util";
 import { autoUpdate, FloatingPortal, offset, shift, useDismiss, useFloating, useInteractions } from "@floating-ui/react";
-import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type DragEvent, type PointerEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { AgentStatusChip } from "./agent-status-chip";
 import { parseBoardTabColumnKey, shouldShowAddAgent } from "./overview-add-agent";
@@ -33,6 +33,14 @@ import {
     type BoardSnapshot,
 } from "./overview-board-motion";
 import { CardSendPanel } from "./overview-card-send-panel";
+import {
+    decodeDragPayload,
+    encodeDragPayload,
+    isDragBlockedOrigin,
+    isDragDisplacementBeyondThreshold,
+    resolveDropIntent,
+    type DragPayload,
+} from "./overview-drag-intent";
 import type { OverviewTimelineSegment } from "./overview-timeline-model";
 import { SessionMetrics } from "./session-metrics";
 import "./session-overview.scss";
@@ -157,6 +165,16 @@ export type OverviewBoardProps = {
      * 不传 = 看板不提供新建入口（测试/嵌入场景）。
      */
     onAddAgent?: (tabId: string, tabName: string) => void;
+    /**
+     * 跨 Tab 拖拽的落点执行（11-23 拍板）：只在 `group="tab"` 生效。
+     * 面板层传 `waveEnv.services.object.MoveBlockToTab` 的封装；不传 = 看板不提供拖拽。
+     */
+    onMoveCard?: (blockId: string, toTabId: string) => void;
+    /**
+     * 全部 Tab（含 0 卡的），拖拽态渲染空列落点用。0 卡 Tab 必须能落 ——
+     * 「把卡放进新建空 Tab」是本需求主用例；静态时不渲染，看板视觉 0 变化。
+     */
+    tabTargets?: readonly { tabId: string; tabName: string }[];
 };
 
 /** 恢复结果：ok=true（RPC 成功，面板已刷）；ok=false 时 code/msg 供卡片内联展示。 */
@@ -222,6 +240,9 @@ function BoardCardImpl({
     onResumeCard,
     onOpenSendPanel,
     miniSegments,
+    onDragStartCard,
+    isDragging,
+    onPointerDownCard,
 }: {
     card: OverviewBoardCard;
     status: AgentStatus | null;
@@ -239,6 +260,15 @@ function BoardCardImpl({
     onResumeCard?: (card: OverviewBoardCard) => Promise<BoardCardResumeOutcome>;
     /** 「发消息」→ 打开看板级 composer 浮层（引稳的 useCallback，看板提供）。 */
     onOpenSendPanel?: (card: OverviewBoardCard, anchor: HTMLElement) => void;
+    /**
+     * 跨 Tab 拖拽（11-23）：卡片 dragstart 交给看板统一处理（payload / 阈值 / 热区排除都在
+     * 看板层，卡片只管把事件转上去）。不传 = 卡片不可拖（非 tab 分组 / 嵌入场景）。
+     */
+    onDragStartCard?: (event: DragEvent<HTMLDivElement>) => void;
+    /** 拖起态视觉（看板层按当前拖拽 blockId 判定）。 */
+    isDragging?: boolean;
+    /** pointerdown 起点采样（看板层用它算位移阈值，<6px 视为点击）。 */
+    onPointerDownCard?: (event: PointerEvent<HTMLDivElement>) => void;
     /**
      * 卡片底部迷你时间线的段（毫秒）。不传 = 不画迷你条。
      * 由面板侧用 `buildTimelineSegments(row)` 算好传下来 —— 看板本身不做时间推导。
@@ -337,7 +367,7 @@ function BoardCardImpl({
 
     return (
         <div
-            className="session-overview-board-card"
+            className={cn("session-overview-board-card", isDragging && "is-dragging")}
             data-block-id={card.blockId}
             // 动效层（OverviewBoard 的 useLayoutEffect）读这两个属性
             data-board-block-id={card.blockId}
@@ -345,6 +375,9 @@ function BoardCardImpl({
             data-agent-like={card.isAgentLike ? "true" : "false"}
             role="button"
             tabIndex={0}
+            draggable={onDragStartCard != null}
+            onDragStart={onDragStartCard}
+            onPointerDown={onDragStartCard != null ? onPointerDownCard : undefined}
             onClick={handleCardClick}
             onKeyDown={(event) => {
                 // 热区自己的键盘行为（emoji 按钮 / 动作按钮上的 Enter）不能冒泡到这里
@@ -686,6 +719,8 @@ export function OverviewBoard({
     onAckStatus,
     onResumeCard,
     onAddAgent,
+    onMoveCard,
+    tabTargets,
 }: OverviewBoardProps) {
     const { t } = useTranslation("session-overview");
     // 状态分组常显 5 列（空列给占位）；tab / provider 分组只显示有卡的列。
@@ -698,6 +733,101 @@ export function OverviewBoard({
     const prevSnapshotRef = useRef<BoardSnapshot | null>(null);
     const armedRef = useRef(false);
     const [landing, setLanding] = useState<BoardLanding>(EmptyLanding);
+
+    // ---- 跨 Tab 拖拽（11-23 拍板：拖到目标 Tab 组 / 空 Tab 松手 = 移动块） ----
+    // 只对 `group="tab"` 生效：status/provider 是派生列，没有"目标 Tab"可言。
+    // 落点判定在纯函数层（overview-drag-intent.ts），这里只做 DOM 接线与状态。
+    const dragEnabled = group === "tab" && onMoveCard != null;
+    const [dragPayload, setDragPayload] = useState<DragPayload | null>(null);
+    const [hoverTabId, setHoverTabId] = useState<string | null>(null);
+    const hoverTabRef = useRef<string | null>(null);
+    // pointerdown 起点：dragstart 时用它算真实位移，<阈值 视为点击（不启动拖拽）。
+    const pointerOriginRef = useRef<{ x: number; y: number } | null>(null);
+
+    const resetDrag = useCallback(() => {
+        hoverTabRef.current = null;
+        setHoverTabId(null);
+        setDragPayload(null);
+    }, []);
+
+    const handleCardPointerDown = useCallback(
+        (event: PointerEvent<HTMLDivElement>) => {
+            if (!dragEnabled) return;
+            pointerOriginRef.current = { x: event.clientX, y: event.clientY };
+        },
+        [dragEnabled]
+    );
+
+    const handleCardDragStart = useCallback(
+        (card: OverviewBoardCard) => (event: DragEvent<HTMLDivElement>) => {
+            if (!dragEnabled) {
+                event.preventDefault();
+                return;
+            }
+            const origin = pointerOriginRef.current;
+            pointerOriginRef.current = null;
+            // 有起点记录才做阈值判定（真实指针路径必然有；合成事件/测试可省略）。
+            if (origin != null && !isDragDisplacementBeyondThreshold(event.clientX - origin.x, event.clientY - origin.y)) {
+                event.preventDefault();
+                return;
+            }
+            // 内部交互控件（按钮/链接/输入/可编辑区/[data-card-interactive]）不启动拖拽，
+            // 与点击热区同一份判定（isCardHotzone）。
+            if (
+                isCardHotzone(event.target, event.currentTarget) ||
+                isDragBlockedOrigin({
+                    tagName: (event.target as Element | null)?.tagName ?? "",
+                    isContentEditable: (event.target as HTMLElement | null)?.isContentEditable === true,
+                })
+            ) {
+                event.preventDefault();
+                return;
+            }
+            const payload = { blockId: card.blockId, fromTabId: card.tabId };
+            event.dataTransfer?.setData("text/plain", encodeDragPayload(payload));
+            if (event.dataTransfer) event.dataTransfer.effectAllowed = "move";
+            setDragPayload(payload);
+        },
+        [dragEnabled]
+    );
+
+    const handleColumnDragOver = useCallback(
+        (tabId: string | null) => (event: DragEvent<HTMLElement>) => {
+            if (!dragEnabled || tabId == null || dragPayload == null) return;
+            // 只有我们发起的拖拽才认领：外部拖入（文件/文本）不改变任何状态。
+            event.preventDefault();
+            if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
+            if (hoverTabRef.current !== tabId) {
+                hoverTabRef.current = tabId;
+                setHoverTabId(tabId);
+            }
+        },
+        [dragEnabled, dragPayload]
+    );
+
+    const handleColumnDragLeave = useCallback((tabId: string | null) => () => {
+        if (tabId == null) return;
+        if (hoverTabRef.current !== tabId) return;
+        hoverTabRef.current = null;
+        setHoverTabId(null);
+    }, []);
+
+    const handleColumnDrop = useCallback(
+        (tabId: string | null) => (event: DragEvent<HTMLElement>) => {
+            if (!dragEnabled) return;
+            event.preventDefault();
+            const raw = event.dataTransfer?.getData("text/plain") ?? "";
+            const payload = dragPayload ?? decodeDragPayload(raw);
+            const intent = resolveDropIntent(payload, tabId);
+            resetDrag();
+            // 同 Tab / 空白 / 坏载荷 → 0 次变更（PRD 硬要求）。
+            if (intent.kind === "move") onMoveCard?.(intent.blockId, intent.toTabId);
+        },
+        [dragEnabled, dragPayload, onMoveCard, resetDrag]
+    );
+
+    const handleBoardDragEnd = useCallback(() => resetDrag(), [resetDrag]);
+    const handleBoardDrop = useCallback(() => resetDrag(), [resetDrag]);
 
     // 看板级单一 composer 浮层（design §4）：同一时刻最多一个打开；不开 = 不收集任何草稿。
     // 卡片侧只传「点开的块 + 它自己的 DOM 当作锚点」（按钮在卡内，锚点自然跟卡）。
@@ -858,12 +988,28 @@ export function OverviewBoard({
             role="group"
             aria-label={t("session-overview:board.groupLabel")}
             ref={boardRef}
+            onDragEnd={handleBoardDragEnd}
+            onDrop={handleBoardDrop}
         >
-            {columns.map((column) => (
+            {columns.map((column) => {
+                // 拖拽落点：tab 分组的列 key 就是 `tab:<id>`；其它分组没有目标 Tab。
+                const columnTabId = dragEnabled ? parseBoardTabColumnKey(column.key) : null;
+                const isDropTarget = dragPayload != null && columnTabId != null;
+                return (
                 <section
                     key={column.key}
-                    className={cn("session-overview-board-column", column.blocks.length === 0 && "is-empty")}
+                    className={cn(
+                        "session-overview-board-column",
+                        column.blocks.length === 0 && "is-empty",
+                        isDropTarget && "is-drop-target",
+                        isDropTarget && hoverTabId === columnTabId && "is-drop-active"
+                    )}
                     data-column-key={column.key}
+                    data-drop-target={isDropTarget ? columnTabId : undefined}
+                    data-drop-active={isDropTarget && hoverTabId === columnTabId ? "true" : undefined}
+                    onDragOver={dragEnabled ? handleColumnDragOver(columnTabId) : undefined}
+                    onDragLeave={dragEnabled ? handleColumnDragLeave(columnTabId) : undefined}
+                    onDrop={dragEnabled ? handleColumnDrop(columnTabId) : undefined}
                     aria-label={i18n.t("session-overview:board.columnAria", {
                         title: column.title,
                         count: column.blocks.length,
@@ -912,6 +1058,9 @@ export function OverviewBoard({
                                     onResumeCard={onResumeCard}
                                     onOpenSendPanel={openSendPanel}
                                     miniSegments={miniTimelines?.[card.blockId]}
+                                    onDragStartCard={dragEnabled ? handleCardDragStart(card) : undefined}
+                                    onPointerDownCard={dragEnabled ? handleCardPointerDown : undefined}
+                                    isDragging={dragPayload?.blockId === card.blockId}
                                 />
                             ))
                         )}
@@ -925,7 +1074,48 @@ export function OverviewBoard({
                         ) : null}
                     </div>
                 </section>
-            ))}
+                );
+            })}
+            {/* 拖拽态的空 Tab 落点（0 卡 Tab 不参与列分组，但必须能接住卡片）：
+                静态不渲染 —— 看板默认视觉 0 变化。 */}
+            {dragEnabled && dragPayload != null
+                ? (tabTargets ?? [])
+                      .filter((target) => !columnKeys.includes(`tab:${target.tabId}`))
+                      .map((target) => (
+                          <section
+                              key={`drop-${target.tabId}`}
+                              className={cn(
+                                  "session-overview-board-column",
+                                  "is-empty",
+                                  "is-drop-target",
+                                  "is-drop-target-empty",
+                                  hoverTabId === target.tabId && "is-drop-active"
+                              )}
+                              data-drop-target={target.tabId}
+                              data-drop-empty="true"
+                              data-drop-active={hoverTabId === target.tabId ? "true" : undefined}
+                              onDragOver={handleColumnDragOver(target.tabId)}
+                              onDragLeave={handleColumnDragLeave(target.tabId)}
+                              onDrop={handleColumnDrop(target.tabId)}
+                              aria-label={i18n.t("session-overview:board.columnAria", {
+                                  title: target.tabName,
+                                  count: 0,
+                              })}
+                          >
+                              <h3 className="session-overview-board-column-head">
+                                  <span className="session-overview-board-column-title">{target.tabName}</span>
+                                  <span className="session-overview-board-column-count" role="status">
+                                      0
+                                  </span>
+                              </h3>
+                              <div className="session-overview-board-cards">
+                                  <div className="session-overview-board-empty">
+                                      {t("session-overview:board.columnEmpty")}
+                                  </div>
+                              </div>
+                          </section>
+                      ))
+                : null}
             {/* composer 浮层：单一实例、挂在看板根下（React 树仍在 CardSendContext.Provider 内）；
                 DOM 由 FloatingPortal 落到 body，不会撑列宽。 */}
             {sendPanelCard != null && sendPanelAnchor != null ? (

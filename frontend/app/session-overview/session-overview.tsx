@@ -2842,6 +2842,20 @@ function SessionOverviewPanel({ blockId, model }: ViewComponentProps<SessionOver
         },
         [model]
     );
+    // 跨 Tab 拖拽（11-23）：落点执行 = 既有 ObjectService.MoveBlockToTab（与块菜单「移动到 Tab」同一条后端路径）。
+    const handleMoveBoardCard = React.useCallback(
+        (blockId: string, toTabId: string) => {
+            ObjectService.MoveBlockToTab(blockId, toTabId, false).catch((error: unknown) => {
+                console.warn("[overview-drag] 移动块到 Tab 失败", { blockId, toTabId, error });
+            });
+        },
+        []
+    );
+    // 拖拽态空 Tab 落点用的全量 Tab（含 0 卡 Tab；displayedTabGroups 已含全部 Tab 的组头口径）。
+    const boardTabTargets = React.useMemo(
+        () => displayedTabGroups.map((group) => ({ tabId: group.tabId, tabName: group.tabName })),
+        [displayedTabGroups]
+    );
     const highlightedBlockId = selectedBlockInOverview
         ? selectedBlockId
         : currentBlockInOverview
@@ -3327,6 +3341,8 @@ function SessionOverviewPanel({ blockId, model }: ViewComponentProps<SessionOver
                                 onResumeCard={handleResumeBoardCard}
                                 deletingSessionId={sessionAction.deletingSessionId}
                                 onAddAgent={openAddAgent}
+                                onMoveCard={handleMoveBoardCard}
+                                tabTargets={boardTabTargets}
                             />
                         )
                     ) : displayedTabGroups.length === 0 ? (

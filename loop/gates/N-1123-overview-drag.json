@@ -4,5 +4,14 @@
     "by": "nita",
     "verdict": "confirmed",
     "prdHash": "4b93ae0af1df"
+  },
+  "g2": {
+    "redProof": "loop/red/N-1123-overview-drag.txt",
+    "at": "2026-11-23T12:59:01Z"
+  },
+  "g5": {
+    "ok": true,
+    "executedAt": "2026-11-23T12:59:01Z",
+    "by": "compliance"
   }
 }
