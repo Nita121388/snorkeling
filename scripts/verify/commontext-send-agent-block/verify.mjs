@@ -11,14 +11,23 @@
 //   5. Type 下拉：真实点击触发行 → 二级菜单可见可命中 → 真实点选「新建 Tab」→ 主行回写；
 //   6. Folder 下拉：同上，真实点选一个候选目录 → 主行回写「已选」；
 //   7. 面板外真实点击 / Escape 都能关；
-//   8. 点「发送」→ 弹窗关闭 + 新 agent block 建立 + pending input 在 TUI 就绪后自动注入。
+//   8. 点「发送」→ 弹窗关闭 + 新 agent block 建立 + **文本真的送达**（后端 agentsend；
+//      2026-11-23 起 create 路径不再走前端 pending-input，事件断言换成端到端送达）；
+//   9. 送达证据三件套：派发回执 state=confirmed（submittedat>0）/ TUI xterm buffer 里出现
+//      标记串 / waveapp.log 出现 `[agentsend] <blockid> submit confirm … confirmed=true`；
+//      反证：`snorkeling:pending-input-injected` 事件一条都不出现（前端 paste 链已退役）。
 //
 //   node scripts/verify/commontext-send-agent-block/verify.mjs            # 干净实例 → 跑 → 自动关
 //   node scripts/verify/commontext-send-agent-block/verify.mjs --attach   # 复用已起实例
+//   node scripts/verify/commontext-send-agent-block/verify.mjs --log=<path>  # 覆盖后端日志路径
 //   node scripts/verify/commontext-send-agent-block/verify.mjs --keep-open
 //   node scripts/verify/commontext-send-agent-block/verify.mjs --dry
 //
 // 退出码：0 全绿 / 1 断言失败 / 2 环境错误。
+
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { connectToTarget, listPageTargets } from "../lib/cdp.mjs";
 import { DEFAULTS, ensureInstance } from "../lib/launch.mjs";
@@ -31,7 +40,19 @@ const attach = argv.includes("--attach");
 const keepOpen = argv.includes("--keep-open");
 const dry = argv.includes("--dry");
 
-const reporter = createReporter({ area: AREA, mode: attach ? "attach" : "launch+reset" });
+const here = path.dirname(fileURLToPath(import.meta.url));
+const repoRoot = path.resolve(here, "../../..");
+// 后端日志：本台实例的 WAVETERM_DATA_HOME 被 dev-isolated 重定向到 .runcfg/<profile>/data，
+// 不是 %LOCALAPPDATA%\snorkeling。--attach 到别的 profile 时用 --log=<path> 覆盖。
+const logArg = argv.find((a) => a.startsWith("--log="));
+const logPath =
+  logArg != null ? logArg.slice("--log=".length) : path.join(repoRoot, ".runcfg", DEFAULTS.profile, "data", "waveapp.log");
+
+const reporter = createReporter({
+  area: AREA,
+  mode: attach ? "attach" : "launch+reset",
+  meta: { profile: DEFAULTS.profile, cdpPort: DEFAULTS.cdpPort, vitePort: DEFAULTS.vitePort, logPath },
+});
 let instance = null;
 
 const MARKER = `VERIFY-CSAB-${Date.now()}`;
@@ -163,10 +184,63 @@ const INJECT_EVENTS = `(() => ({
     fallback: window.__csabFallback ?? [],
 }))()`;
 
+// 送达证据（替代旧的 injected 事件断言）：
+//   1) 派发回执（后端状态机）：AgentDispatchListCommand 里有我们这条文本的记录，state=confirmed；
+//   2) TUI 真实回显：window.term.getScrollbackContent() 里出现标记串；
+//   3) 后端日志：waveapp.log 里该块出现 submit confirm confirmed=true。
+const DISPATCH_LIST = `(async () => {
+    const { RpcApi } = await import("/frontend/app/store/wshclientapi.ts");
+    const { TabRpcClient } = await import("/frontend/app/store/wshrpcutil.ts");
+    try {
+        const records = await RpcApi.AgentDispatchListCommand(TabRpcClient, { limit: 20 });
+        return { ok: true, records: Array.isArray(records) ? records : [] };
+    } catch (error) {
+        return { ok: false, error: String(error?.message ?? error), records: [] };
+    }
+})()`;
+
+const TERM_TAIL = `(() => {
+    try {
+        const text = window.term?.getScrollbackContent?.() ?? "";
+        return text.length > 8000 ? text.slice(-8000) : text;
+    } catch (e) {
+        return "";
+    }
+})()`;
+
+const decodeText64 = (text64) => {
+  try {
+    return Buffer.from(String(text64 ?? ""), "base64").toString("utf8");
+  } catch {
+    return "";
+  }
+};
+
+const findDispatch = (records, marker) =>
+  (records ?? []).find((rec) => decodeText64(rec?.text64).includes(marker)) ?? null;
+
+function logSize() {
+  try {
+    return readFileSync(logPath).length;
+  } catch {
+    return 0;
+  }
+}
+
+function readLogTail(fromByte) {
+  try {
+    return readFileSync(logPath).subarray(Math.max(0, fromByte)).toString("utf8");
+  } catch {
+    return "";
+  }
+}
+
 if (dry) {
-  reporter.log("dry-run: 依赖解析成功（未启动 GUI）");
+  reporter.log(`dry-run: 依赖解析成功（未启动 GUI）；日志路径 ${logPath}`);
   reporter.check("deps-resolve", true, "lib/{cdp,launch,report,probes}.mjs");
-  reporter.finish({ cleanup: null });
+  reporter.check("log-path-resolved", logPath.endsWith("waveapp.log"), logPath);
+  // dry 只解析依赖，不进台账（台账记的是「真验过一次」）。
+  reporter.finish({ cleanup: null, ledger: false });
 }
 
 try {
@@ -450,6 +524,7 @@ try {
   );
 
   await client.evaluate(ARM_INJECT_EVENTS);
+  const preSendLogOffset = logSize();
   const beforeTerm = await client.evaluate(NEW_TERM_PROBE);
   const baselineBlockId = beforeTerm?.blockId ?? "";
   const sendPoint = await client.evaluate(`(() => {
@@ -500,34 +575,84 @@ try {
     newTerm != null && newTerm.blockId !== "" && newTerm.blockId !== baselineBlockId,
     `baseline=${baselineBlockId} new=${newTerm?.blockId ?? "(none)"}`
   );
+  const newBlockId = newTerm?.blockId ?? "";
 
-  // 9. pending input 在 TUI 就绪后自动注入
-  const injectEvents = await waitForProbe(
+  // 9. 文本真的送达（2026-11-23 起 create 路径走后端 agentsend：就绪门 + paste + 回车 +
+  //    confirmSubmit）。旧的 `snorkeling:pending-input-injected` 事件断言已失效——前端 paste
+  //    链对这一路彻底退役，所以换成更强的端到端证据：派发回执 confirmed + TUI 回显 + 后端日志；
+  //    同时把旧事件保留为**反证**（一条都不该出现）。
+  // 后端日志基线在发送前采样（preSendLogOffset）。
+  const dispatchProbe = await waitForProbe(
     client,
-    INJECT_EVENTS,
-    (ev) => ev?.injected?.some((detail) => detail.blockId !== baselineBlockId),
-    { timeoutMs: 90000, intervalMs: 1000 }
+    DISPATCH_LIST,
+    (res) => {
+      if (res?.ok !== true) return false;
+      const rec = findDispatch(res.records, MARKER);
+      return rec != null && rec.state === "confirmed";
+    },
+    { timeoutMs: 240000, intervalMs: 2000 }
   );
-  const injectedHit = injectEvents?.injected?.find((detail) => detail.blockId !== baselineBlockId);
+  const dispatchRecord = findDispatch(dispatchProbe?.records ?? [], MARKER);
   reporter.check(
-    "pending-input-injected",
-    injectedHit != null,
-    injectedHit != null
-      ? `blockId=${injectedHit.blockId} length=${injectedHit.length}`
-      : `injected=${JSON.stringify(injectEvents?.injected ?? [])} fallback=${JSON.stringify(injectEvents?.fallback ?? [])}`
+    "send-dispatch-confirmed",
+    dispatchRecord != null && dispatchRecord.state === "confirmed" && (dispatchRecord.submittedat ?? 0) > 0 && !dispatchRecord.error,
+    JSON.stringify({
+      dispatchid: dispatchRecord?.dispatchid ?? "",
+      blockid: dispatchRecord?.blockid ?? "",
+      state: dispatchRecord?.state ?? "",
+      submittedat: dispatchRecord?.submittedat ?? 0,
+      submitretries: dispatchRecord?.submitretries ?? 0,
+      error: dispatchRecord?.error ?? "",
+      listError: dispatchProbe?.error ?? "",
+    })
   );
   reporter.check(
-    "pending-input-no-fallback",
-    (injectEvents?.fallback ?? []).length === 0,
-    JSON.stringify(injectEvents?.fallback ?? [])
+    "send-dispatch-targets-new-block",
+    dispatchRecord != null && dispatchRecord.blockid === newBlockId,
+    `recordBlock=${dispatchRecord?.blockid ?? ""} newBlock=${newBlockId}`
   );
-  await reporter.shot(client, "05-injected");
+
+  const termTail = await waitForProbe(client, TERM_TAIL, (text) => String(text ?? "").includes(MARKER), {
+    timeoutMs: 240000,
+    intervalMs: 2000,
+  });
+  reporter.check(
+    "send-text-visible-in-tui",
+    String(termTail ?? "").includes(MARKER),
+    `markerHits=${String(termTail ?? "").split(MARKER).length - 1} tailLen=${String(termTail ?? "").length}`
+  );
+  await reporter.shot(client, "05-delivered");
+
+  // 反证：前端 pending-input 链一条事件都不该出现（修复前这里是主判据）。
+  const pendingEvents = await client.evaluate(INJECT_EVENTS);
+  reporter.check(
+    "pending-input-chain-not-used",
+    (pendingEvents?.injected ?? []).length === 0 && (pendingEvents?.fallback ?? []).length === 0,
+    `injected=${JSON.stringify(pendingEvents?.injected ?? [])} fallback=${JSON.stringify(pendingEvents?.fallback ?? [])}`
+  );
+
+  // 后端日志：本次修复的核心证据（create 路径此前根本不经过后端，[agentsend] 0 条）。
+  const logSegment = readLogTail(preSendLogOffset);
+  reporter.check("agentsend-log-readable", logSegment.length > 0, `${logPath}（新写入 ${logSegment.length} 字节）`);
+  reporter.check(
+    "agentsend-log-injected",
+    newBlockId !== "" && new RegExp(`\\[agentsend\\] ${newBlockId} injected \\d+ bytes`).test(logSegment),
+    `block=${newBlockId}`
+  );
+  const submitLine = newBlockId === ""
+    ? null
+    : new RegExp(`\\[agentsend\\] ${newBlockId} submit confirm retries=(\\d+) confirmed=(\\w+)`).exec(logSegment);
+  reporter.check(
+    "agentsend-log-submit-confirmed",
+    submitLine != null && submitLine[2] === "true",
+    submitLine != null ? submitLine[0] : `no submit confirm line for block ${newBlockId}`
+  );
 
   reporter.finish({
     skipped: [
       "existing（已存在聚焦 agent block 直接注入）路径：干净实例默认无 agent block，未覆盖；由单测 resolveSendTarget 覆盖",
       "远程 connection 目标：本轮为本地-only",
-      "TUI 输入框文本回显：不同 CLI 首启提示（claude 目录信任 / codex 升级提示）会吞按键，改为断言 pending-input-injected 事件；由 term.tsx + pending-input 单测共同保证",
+      "agent 回复内容：本台只断言「文本真的进了 TUI + 派发回执 confirmed + 后端日志提交确认」；回复正文由 commontext-create-send 台断言（需要独立 profile 与更长预算）",
       "暗色/单色主题截图：本轮只留亮色证据，主题切换由 theme-monochrome area 覆盖",
     ],
     cleanup: () => {

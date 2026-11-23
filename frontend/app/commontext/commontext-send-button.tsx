@@ -4,7 +4,7 @@
 // CommonText Send 目标选择器：split button（主键按当前配置直接发送）+ popover（目标卡 + Agent/Tab/目录三行常显 + 确认）。
 // 设计依据：design/prototypes/commontext/commontext-send-compact/（v2）
 // 规则：只有 Agent Block（term + agent:* meta）才能作为「已存在」目标；其余组合都会新建 agent block，
-// 文本经 pending-input 排队，TUI 就绪后由 term 视图注入。
+// 文本经后端 agentsend 投递（就绪门 + paste + 回车 + 提交确认，与 existing 路径同一入口；R10 同款，2026-11-23）。
 // 目录候选随所选 Tab（collectAgentLaunchTargetsInTab），切 Tab 后 folder 重置为跟随。
 
 import { useAgentPersonas } from "@/app/agent-persona/use-agent-personas";
@@ -47,7 +47,6 @@ import {
     type FolderCandidate,
     type SendTabSelection,
 } from "./commontext-send-target";
-import { mountPendingInputTab, registerPendingInput } from "./pending-input";
 
 // ───────────────────────── 共享配置（弹窗内多处 Send 共用） ─────────────────────────
 
@@ -210,8 +209,8 @@ export function previewSendTarget(input: {
 // ───────────────────────── 执行 ─────────────────────────
 
 /**
- * 执行一次 Send。existing → 直接注入聚焦块；create → 建块 + pending input 排队。
- * 返回 true 表示已成功发起（注入可能仍在后台等待 TUI 就绪）。
+ * 执行一次 Send。existing → 直接注入聚焦块；create → 建块 + 后端 agentsend 投递。
+ * 返回 true 表示已成功发起（提交确认由后端异步完成，见 [agentsend] 日志）。
  */
 export async function executeCommonTextSend(input: {
     text: string;
@@ -285,12 +284,8 @@ export async function executeCommonTextSend(input: {
     const activation = planSendActivation(background);
     try {
         let blockId: string;
-        /** create 路径要对齐的 Tab（用于隐藏挂载）；null = 当前 Tab 已激活，无需挂载 */
-        let targetTabId: string | null = null;
         if (config.tab.kind === "current") {
             blockId = await createBlock(blockDef, false);
-            const activeTabId = globalStore.get(atoms.staticTabId);
-            targetTabId = activeTabId === "" ? null : activeTabId;
         } else if (config.tab.kind === "existing") {
             const targetTabIdOfConfig = config.tab.tabId;
             blockId = await ObjectService.CreateBlockInTab(
@@ -302,7 +297,6 @@ export async function executeCommonTextSend(input: {
             );
             // 后台执行：绝不切 Tab。旧行为：建块后把用户视线切过去。
             if (activation.frontActivateTab) getApi().setActiveTab(targetTabIdOfConfig);
-            targetTabId = targetTabIdOfConfig;
         } else {
             const workspace = globalStore.get(atoms.workspace);
             if (workspace?.oid == null) {
@@ -317,13 +311,35 @@ export async function executeCommonTextSend(input: {
             );
             blockId = result.blockid;
             if (activation.frontActivateTab) getApi().setActiveTab(result.tabid);
-            targetTabId = result.tabid;
         }
-        // 先建块成功、再登记队列（评审：失败时不留空 entry），最后才把 Tab 加入隐藏挂载。
-        registerPendingInput(blockId, cleanText);
-        if (background && targetTabId != null && targetTabId !== globalStore.get(atoms.staticTabId)) {
-            mountPendingInputTab(targetTabId, blockId);
-        }
+        // 建块成功后再发起投递（失败不留空 entry）。后端 agentsend 与 existing 路径同一入口：
+        // 就绪门 + paste + 回车 + confirmSubmit（补回车），前端不再 paste、不再固定延迟回车。
+        fireAndForget(async () => {
+            try {
+                const sendResult = await RpcApi.AgentSendCommand(TabRpcClient, {
+                    blockid: blockId,
+                    text64: stringToBase64(cleanText),
+                    submit: true,
+                    async: true,
+                    wait: true,
+                    waitms: 120000,
+                    requester: "desktop",
+                });
+                if (sendResult?.submitconfirmed === false) {
+                    console.warn("[commontext] 新建 agent 消息已放入输入框但未确认提交", { blockId });
+                    onStatus?.(i18n.t("commontext:send.submitUnconfirmed"), "err");
+                }
+            } catch (error) {
+                const errorMessage = (error as Error)?.message ?? i18n.t("commontext:send.unknownError");
+                const failureText = i18n.t("commontext:send.sendFailed", { error: errorMessage });
+                // 翻译层没插值（未装载语言包 / 测试 mock）时补上原始错误，保证报错可定位。
+                onStatus?.(
+                    failureText.includes(errorMessage) ? failureText : `${failureText} [${errorMessage}]`,
+                    "err"
+                );
+                console.warn("[commontext] 新建 agent 发送失败", { blockId, error });
+            }
+        });
         onStatus?.(
             background
                 ? i18n.t("commontext:send.sentBackground", { agent: preview.profileLabel })

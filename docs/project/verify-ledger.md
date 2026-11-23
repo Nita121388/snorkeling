@@ -305,3 +305,12 @@
 | 2026-11-22 09:23 | overview-board | ✅ 79/79 | launch+reset | `20261122T09185-overviewboard` | working-tree |
 | 2026-11-22 11:27 | overview-ux | ❌ 14/15 | launch+reset | `20261122T11211-overview-ux` | feb7bf6e8 |
 | 2026-11-22 11:36 | overview-ux | ✅ 15/15 | launch+reset | `20261122T11302-overview-ux` | feb7bf6e8 |
+| 2026-11-23 00:35 | commontext-source-notion | ❌ fatal（未跑） | launch+reset | `20261123T00284-commontext-source-notion` | 529f1cadd |
+| 2026-11-23 01:41 | commontext-create-send | ❌ fatal（未跑） | launch+reset | `20261123T01384-commontext-create-send` | 06c4b0628 |
+| 2026-11-23 01:49 | commontext-create-send | ❌ fatal（未跑） | launch+reset | `20261123T01480-commontext-create-send` | 06c4b0628 |
+| 2026-11-23 01:50 | commontext-create-send | ❌ 9/10（fatal） | launch+reset | `20261123T01453-commontext-create-send` | f105f5910 |
+| 2026-11-23 02:03 | commontext-create-send | ❌ 17/21 | launch+reset | `20261123T01504-commontext-create-send` | d15ab3c72 |
+| 2026-11-23 02:39 | commontext-create-send | ❌ 9/10（fatal） | launch+reset | `20261123T02325-commontext-create-send` | d15ab3c72 |
+| 2026-11-23 02:54 | commontext-create-send | ❌ fatal（未跑） | launch+reset | `20261123T02540-commontext-create-send` | d15ab3c72 |
+| 2026-11-23 02:54 | commontext-create-send | ❌ 10/14（fatal） | launch+reset | `20261123T02395-commontext-create-send` | d15ab3c72 |
+| 2026-11-23 11:05 | commontext-create-send | ✅ 人工验证通过（自动台 3 轮被环境打断：启动器 exit=201 / CDP evaluate 超时 / profile 目录被占用） | manual | nita 手动：CommonText 新建 agent 并发送，消息送达且 agent 回复 | uncommitted |

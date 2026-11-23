@@ -1,3 +1,5 @@
+> **Confirmed: 2026-11-23 @nita**
+
 # PRD：CommonText 新建 agent 后文本发不出去
 
 > 父：`11-23-session-surface-fixes-1123`（优先级序 1，S）

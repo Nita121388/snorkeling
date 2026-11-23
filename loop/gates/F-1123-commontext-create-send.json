@@ -1,0 +1,17 @@
+{
+  "g1": {
+    "at": "2026-11-23T00:58:39Z",
+    "by": "nita",
+    "verdict": "confirmed",
+    "prdHash": "56f3e267303b"
+  },
+  "g2": {
+    "redProof": "loop/red/F-1123-commontext-create-send.txt",
+    "at": "2026-11-23T00:58:39Z"
+  },
+  "g5": {
+    "ok": true,
+    "executedAt": "2026-11-23T00:58:40Z",
+    "by": "main"
+  }
+}

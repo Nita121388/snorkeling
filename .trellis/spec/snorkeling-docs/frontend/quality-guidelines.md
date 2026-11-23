@@ -1049,3 +1049,15 @@ meta 行形状词汇（同一任务）：状态 = 唯一彩色胶囊；agent 类
 判别法（10 秒）：出问题时先点输入框——**有光标 = DOM 层；无光标且切 Tab 才恢复 = 窗口层**。
 合成期（IME）另有一条：受控 textarea 在合成中被 effect 改写 `value` 会打断合成、光标丢，
 所以「联动 effect 重置详情字段」必须用 `compositionstart/end`（end 走 rAF）门控。
+
+## Agent 文本注入：只有一条合法路径（2026-11-23）
+
+向 agent 块注入文本**必须**走 `AgentSendCommand`（后端：就绪门 → bracketed paste → 回车 →
+`confirmSubmit` 补回车确认 → 三段回执）。
+
+- **禁止**前端「`terminal.paste` + 固定延迟 `submitTermInput`」再用到 agent 块：agent TUI 冷启动
+  （pi `npm view`、codex `npm install -g`）会吞回车，文字留在输入框且**没有任何失败信号**
+  （2026-11-23 CommonText create 路径实测丢消息）。
+- `commontext/pending-input.ts` 仅保留给**远端**块（后端 agentsend 拒绝远端）；本地 create/existing
+  两条路径都必须走 `AgentSendCommand`，`wait:true, waitms:120000`（冷启动 40s+）。
+- 发送结果必须按 `submitconfirmed` 判定成败；不要只看 RPC 是否返回、更不能只看回执 `state=confirmed`。
