@@ -139,3 +139,26 @@ node E:/primary/projects/loop/queue.mjs prove --id <id>
 ```
 
 对应 `scripts/use-local-env.ps1` 的 bash 翻译；判据本身仍写裸 `go test/go build`。
+
+### L-0007 子代理 managed worktree 完成即销毁——收工前必须落盘补丁（2026-11-23）
+
+pi-subagents 的 `worktree: true` 隔离：子代理**结束（含超时失败）后 worktree 立即销毁**，
+未提交改动全部丢失（实测 2026-11-23：emoji 包完成即销毁、drag 包 30min 超时销毁，两家改动都没了）。
+
+派工纪律（按序取第一条）：
+
+1. **主树当时只有这一个写者 → 不用 worktree，直接主树写**（子代理照旧禁 git 写/禁台账；
+   主代理同时不碰其白名单文件）。单写者下零丢失、零搬运。
+2. **必须并行（多写者）→ 派工词里硬性规定收工落盘**：`git add -N . && git diff > <主树外绝对路径>/<id>.diff`，
+   确认非空才算完成。补丁目录放仓库外（如 `~/Primary/projects/<repo>-loop-handoffs/`），避免脏主树。
+3. 补丁拿回来由主代理 `git apply` + 主树复跑判据（不信子代理自述绿）。
+
+### L-0008 判据命令不要 `| tail -N` 配期望 `passed`——输出行会被切掉造成假红（2026-11-23）
+
+vitest 输出里 `Tests  N passed` 之后还有 Duration / JUNIT 行（共 3+ 行）；
+`cmd: "npx vitest run ... | tail -3"` + `expect: "passed"` 永远判红（实测 N-1123 首次 prove 全红，
+实际 822/822 绿）。
+
+- 判据形态一律 `"<命令> >/dev/null 2>&1 && echo <MARKER>` → `expect: <MARKER>`（退出码才是真相，
+  marker 保证输出可断言；与 L-0006 的三种期望形态兼容）。
+- 需要计数时才开管道（如 `grep -c`），且期望值按实测锁定，不用 `tail`。
