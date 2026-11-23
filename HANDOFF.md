@@ -1,5 +1,107 @@
 # HANDOFF — 接手必读（2026-11-23 更新）
 
+## 2026-11-23：文件夹索引徽标（实验插件）— 原型+方案就绪，未开工
+
+> 用户布置（2026-11-23）：Files 树按文件夹内索引显示状态徽标；要可插拔实验特性；要支持用户自定义脚本；
+> 要支持 agent 定向刷新某个 tab 的某个 Block。**三个功能点合成一个包**。
+> **前置**：D1-D5 未拍板 → 不要直接改代码。按 loop 规矩先建工作项
+> （`node loop/queue.mjs create` 或等价流程），它是新交互面，H 门需白天签。
+
+| 项 | 内容 |
+|---|---|
+| 方案页 | `docs/answers/folder-index-icon-badges-20261123.html`（可折叠版解释页） |
+| 原型 | `design/prototypes/files-preview/folder-index-badges/`（▲ 设计活跃，README 有玩法/差异/判据） |
+| 镜像源 | `frontend/app/view/preview/preview-explorer.tsx`, `frontend/app/treeview/treeview.tsx` |
+| 刷新通道候选 | `pkg/wshrpc/wshrpctypes.go:60-61` 已有 `ControllerResyncCommand` / `ControllerRedrawCommand` |
+
+**三个功能点**
+
+1. **索引状态表**：目录内 `index.md` 写明每个文件状态（🔄 会改版 / 🧊 冻结 / 🔒 只读 / 🗄 归档），树图标长徽标。
+2. **用户自定义脚本**：`.index/badges.js` 导出 `decorate(entry)`，返回 `{ status }` 或 `{ emoji, label, color, title }`；合并策略 = 脚本 > 表格 > 无徽标。
+3. **Agent 定向刷新 Block**：`refreshBlock(tab, block)` 让装饰缓存失效重算，agent 改完索引后用户立刻看到效果；watch 自动刷新为可选增强。
+
+**待拍板（原型右侧可直接对比，定了才开工）**
+
+| 编号 | 决策 | 我的推荐 |
+|---|---|---|
+| D1 | 索引物形态：`index.md` 表格 / `.index/` 多文件 | `index.md` 表格 |
+| D2 | 徽标画法：前缀 emoji / 角标叠加 / 只改颜色 | 前缀 emoji |
+| D3 | 「只读」徽标：🔒 / 📁 | 🔒（📁 与文件夹图标撞形） |
+| D4 | 脚本形态与执行：独立 `badges.js` + worker / index.md 内嵌 | 独立文件 + sandbox worker |
+| D5 | 刷新通道：新增 `refreshBlock` RPC / 复用 Resync | 新增语义化 RPC，内部委托既有命令 |
+
+**判据（命令 → 期望输出，均为可机验数字；夜间开发照此验收）**
+
+1. 总开关关：Files 树 DOM 与现状 **0 差异**，`data-badge` 节点数 = **0**。
+2. 开 + 示例索引 6 条：`data-badge` 节点数 = **6**。
+3. 索引缺失/坏表格：报错 **0**，徽标 **0**，树照常渲染。
+4. 脚本源：草案 2 项 🔄、陈旧 3 项 ⏳；单条抛错时其余徽标数**不减**。
+5. Agent 改索引后 `refreshBlock`：**2s 内**徽标数与新索引一致（rev+1，toast 一次）。
+6. 单元测试：`parseIndexDoc` / `runUserScript` / 合并策略 ≥ **25 断言**全绿（用例蓝本在原型 README）。
+
+**隔离四道**：开关默认关（关时零 IO）/ 任一数据源失败返回空 Map（无徽标不报错）/ 纯前端读文件（不改 `FileInfo` 与后端 RPC）/ 脚本 worker 限时执行（单条失败只跳过该条）。
+
+## 2026-11-23（晚·新批次）：Hero 定时执行 + Overview 拖拽 + 定时任务弹窗 + Hero 折叠栏图标（已拍板，待开工）
+
+> nita 2026-11-23 15:11-15:12 布置 4 条，**方案已确认**（2026-11-23 晚，采用推荐项）：
+> Hero 定时走「方案 A：复用现有 ScheduledTask 系统 + 加 `hero` 字段」，默认 `mode=block`，
+> 看板用「独立定时任务展示区」（不挂在 hero 卡上）。
+> 开工前先走 loop 门链建工作项（新交互面 → 需要 H 门白天签，夜间只做已批部分）。
+
+### 现状锚点（不要重复造轮子）
+
+| 组件 | 位置 |
+|---|---|
+| 调度/补跑/cron | `pkg/scheduler/`（`scheduler.go` InProcess、`catchup.go` 启动补跑、`schedulespec.go` CLI/MCP 口径） |
+| 任务模型 | `pkg/wconfig/settingsconfig.go:176` `ScheduledTaskType`（已有 agentProfile/model/prompt/workdir/**mode(headless\|block)**/tab/schedule） |
+| 落块执行 | `pkg/wshrpc/wshserver/scheduledtask.go` `launchBlockForTask`（`AgentLaunchRequest` **目前不传 hero meta**） |
+| Hero 登场语义 | `frontend/app/workspace/hero-launch.ts`（cwd=hero home + block meta `hero`/`hero:name`，后端需镜像这部分） |
+| 任务编辑弹窗 | `frontend/app/modals/scheduledtaskeditormodal.tsx`（已在 `modalregistry.tsx` 注册） |
+| 任务 Block 视图 | `frontend/app/view/scheduledtasks/*`（本次要弹窗化） |
+| Overview 卡片=块 | `frontend/app/session-overview/overview-board.tsx`，Tab 分组 `overview-tab-groups.ts` |
+| Hero 分组折叠栏 | `frontend/app/view/aisessions/session-group.tsx:100`（组头固定画 `fa-folder`；`heroId` 字段已有，见 `utils.ts:groupSessionsByProject`） |
+
+### 1. Hero 定时执行（方案 A）
+
+- `ScheduledTaskType` 加可选 `hero`（hero id）。选了 hero 的任务：
+  `workdir` 默认 `<hero root>/<id>`；provider/model 默认取 `hero.json`（任务可覆盖）；
+  `mode=block` 建块时注入 `hero` / `hero:name` meta（后端镜像 `buildHeroLaunchBlockDef`），headless 模式同样 cwd=hero home。
+- 调度、启动补跑、配额（agent 10 个）、CLI/MCP 全部复用，不新建调度器。
+- **Overview 独立「定时任务」区**：hero emoji + 任务名 + 下次运行时间 + 上次状态 + 启停开关；点击打开编辑弹窗。
+- 判据：
+  1. `go test ./pkg/scheduler/... ./pkg/wshrpc/wshserver/...` 全绿；新增单测 ≥ **10 断言**（hero 字段读取/覆盖优先级/meta 注入）。
+  2. 任务带 hero + `mode=block` 到点运行后：新建块 meta 含 `hero=<id>` 且 `hero:name` 非空，`cmd:cwd` = hero home。
+  3. `mode=headless` + hero：日志目录 `~/.snorkeling/scheduledtask-runs/` 新增 **1** 个文件，进程 cwd 记录为 hero home。
+  4. Overview 定时任务区：有 N 个 enabled 任务时渲染 **N** 张卡；禁用任务仍列出但状态置灰（数量不变）。
+  5. 下次运行时间文案与 `GetNextRunTime` 一致（同一 task 前后端取值差 < **1s**）。
+
+### 2. Overview：Agent Card 跨 Tab 拖拽
+
+- 卡片=block 投影，拖到目标 Tab 组（含折叠组头）松手 = `MoveBlock(blockId, tabId)`。
+- 判据：
+  1. 拖 A→B：`tab(B).blockids` 含该 block 且 **+1**、`tab(A).blockids` **-1**，块数守恒。
+  2. 拖到当前所在 Tab 或空白处：**0** 次 RPC 调用（无变更）。
+  3. 折叠组头 drop 热区可命中：DOM 断言 `data-drop-target` 存在且拖放后组计数 **+1**。
+  4. 单元测试 `overview-board-drag*.test.ts` ≥ **12 断言**全绿。
+
+### 3. 定时任务弹窗化（对齐 CommonText）
+
+- 把 `scheduledtasks` Block 视图的管理面（列表 + 新建 + 编辑）整体搬进一个 CommonText 式弹窗；入口换成工具栏按钮/命令，不再靠建块。
+- 判据：
+  1. 打开弹窗后 `atoms.modalOpen === true`（走 `modal-open-registry` 登记来源），关闭后恢复。
+  2. 与 CommonText compose 同款 chrome（同一 `Modal` 组件 + 标题/关闭/快捷键），无页面跳转、无新建块。
+  3. 增删改后列表数即时 **±1**（不刷新整块）。
+  4. i18n：zh/en 两套 key 全齐，`npm run check:i18n`（或等价）**0 miss**。
+
+### 4. Hero 折叠栏只留 emoji icon
+
+- `session-group.tsx` 组头：`group.heroId != null` 时不渲染 `fa-folder`/`fa-folder-open`，只显示 emoji（hero 自身 emoji，回落 🎭）+ 名称。普通项目组**不变**。
+- 判据：
+  1. hero 组头 DOM：`fa-folder`/`fa-folder-open` 节点数 = **0**，emoji 字符节点数 = **1**。
+  2. 普通项目组：icon 仍为 `fa-folder(-open)`，数量 **1**（不回归）。
+  3. 未归类组（`fa-inbox`）不受影响。
+  4. 单测 `session-group*.test.tsx` +2 用例全绿。
+
 ## 2026-11-23（晚）：晚间开发清单（nita 布置：优先卡片融合，其余在案）
 
 > 原型已出：`design/prototypes/overview-dashboard/session-card-unify/`（▲ 设计活跃，README 有实现口径与三步里程碑）。
