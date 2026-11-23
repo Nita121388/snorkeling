@@ -1,0 +1,879 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>原型 — 文件夹索引徽标（folder-index badges）</title>
+<style>
+    /* ── 色板：对齐 Snorkeling 暗色主题变量（近似值，原型用） ───────────── */
+    :root {
+        --bg: #1a1c1e;
+        --panel: #212427;
+        --panel-2: #26292d;
+        --border: #33373c;
+        --border-70: rgba(51, 55, 60, 0.7);
+        --text: #d8dcdf;
+        --muted: #8a9097;
+        --hover: #2c3034;
+        --accent: #3b82f6;
+        --overlay-bg: #141618;
+
+        --st-wip: #e0a83a;       /* 会改版：琥珀 */
+        --st-frozen: #5cb8d6;    /* 冻结：冰蓝 */
+        --st-readonly: #9aa2ab;  /* 只读：灰 */
+        --st-archive: #a78bfa;   /* 归档：紫 */
+        --error: #e05555;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; }
+    body {
+        background: var(--bg);
+        color: var(--text);
+        font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+        font-size: 13px;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+    }
+
+    /* ── 顶部说明条（原型专属，非镜像） ─────────────────────────────────── */
+    .proto-banner {
+        padding: 8px 14px;
+        background: linear-gradient(90deg, rgba(59,130,246,0.12), transparent);
+        border-bottom: 1px solid var(--border);
+        display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    }
+    .proto-banner .tag {
+        font-size: 11px; padding: 2px 8px; border-radius: 10px;
+        background: rgba(59,130,246,0.18); color: var(--accent);
+        border: 1px solid rgba(59,130,246,0.35);
+    }
+    .proto-banner .desc { color: var(--muted); font-size: 12px; }
+
+    .layout { flex: 1; display: flex; min-height: 0; }
+
+    /* ── 左：Files Preview Block（镜像真实 DOM 结构，见 README） ───────── */
+    .files-block {
+        flex: 1.4;
+        display: flex; flex-direction: column; min-width: 430px;
+        border-right: 1px solid var(--border);
+    }
+    .block-header {
+        height: 38px; flex: none;
+        display: flex; align-items: center; gap: 8px;
+        padding: 0 10px;
+        border-bottom: 1px solid var(--border);
+        background: var(--panel);
+    }
+    .block-header .block-title { font-size: 12px; font-weight: 600; color: var(--muted); }
+    .tree-scroll { flex: 1; overflow: auto; padding: 6px 4px; }
+
+    /* treeview 行结构：row = chevron + icon + badge + label （+ suffix） */
+    .tree-row {
+        display: flex; align-items: center;
+        height: 26px; padding: 0 6px;
+        border-radius: 5px;
+        cursor: pointer; user-select: none;
+        white-space: nowrap;
+    }
+    .tree-row:hover { background: var(--hover); }
+    .tree-row.selected { background: #2e3742; }
+    .tree-row .chevron {
+        width: 14px; height: 14px; flex: none;
+        display: inline-flex; align-items: center; justify-content: center;
+        color: var(--muted); font-size: 9px;
+        transition: transform 0.12s ease;
+        margin-right: 5px;
+    }
+    .tree-row.expanded .chevron { transform: rotate(90deg); }
+    .tree-row .spacer { display: inline-block; flex: none; }
+
+    /* 图标容器：角标模式的锚点 */
+    .icon-wrap { position: relative; flex: none; display: inline-flex; margin-right: 6px; line-height: 1; }
+    .icon-wrap svg { display: block; }
+
+    /* 角标（overlay 模式） */
+    .icon-overlay {
+        position: absolute; right: -5px; top: -5px;
+        font-size: 8px; line-height: 1;
+        background: var(--panel);
+        border-radius: 50%;
+        padding: 1px;
+    }
+
+    .st-badge { flex: none; margin-right: 4px; font-size: 11px; line-height: 1; }
+    .tree-row .label {
+        overflow: hidden; text-overflow: ellipsis;
+        font-size: 12.5px;
+    }
+    .tree-row .label.readonly { color: var(--muted); }
+
+    /* 状态色（color 模式） */
+    .c-wip      { color: var(--st-wip); }
+    .c-frozen   { color: var(--st-frozen); }
+    .c-readonly { color: var(--st-readonly); }
+    .c-archive  { color: var(--st-archive); }
+
+    /* hover tooltip —— 索引备注 / 脚本规则来源 */
+    .tooltip {
+        position: fixed; z-index: 50; pointer-events: none;
+        background: var(--overlay-bg); border: 1px solid var(--border);
+        border-radius: 6px; padding: 6px 9px;
+        font-size: 12px; max-width: 260px;
+        box-shadow: 0 4px 14px rgba(0,0,0,0.4);
+        display: none;
+    }
+    .tooltip .tt-title { font-weight: 600; margin-bottom: 2px; }
+    .tooltip .tt-note { color: var(--muted); }
+    .tooltip .tt-src {
+        margin-top: 4px; padding-top: 3px; border-top: 1px solid var(--border);
+        font-size: 10.5px; color: var(--muted);
+    }
+    .src-script { color: var(--st-wip); }
+    .src-index  { color: var(--st-frozen); }
+
+    /* ── 右：控制面板（原型专属） ───────────────────────────────────────── */
+    .side { flex: 1; min-width: 400px; display: flex; flex-direction: column; overflow: auto; }
+    .side-section { border-bottom: 1px solid var(--border); padding: 12px 14px; }
+    .side-section > h3 {
+        font-size: 11px; font-weight: 600; text-transform: uppercase;
+        letter-spacing: 0.08em; color: var(--muted); margin-bottom: 10px;
+    }
+    .side-section > h3 code { text-transform: none; letter-spacing: 0; }
+    .setting-row { display: flex; align-items: center; justify-content: space-between; padding: 5px 0; gap: 10px; }
+    .setting-row .name { font-size: 12.5px; }
+    .setting-row .name code { font-size: 11px; color: var(--muted); font-family: Consolas, monospace; }
+    .setting-row .hint { display: block; font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+    .switch { position: relative; width: 34px; height: 18px; flex: none; cursor: pointer; }
+    .switch input { display: none; }
+    .switch .track {
+        position: absolute; inset: 0; border-radius: 9px;
+        background: var(--border); transition: background 0.15s;
+    }
+    .switch .thumb {
+        position: absolute; top: 2px; left: 2px; width: 14px; height: 14px;
+        border-radius: 50%; background: #cfd4d8; transition: left 0.15s;
+    }
+    .switch input:checked ~ .track { background: var(--accent); }
+    .switch input:checked ~ .thumb { left: 18px; }
+
+    .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+    .seg button {
+        background: var(--panel); color: var(--muted); border: none;
+        font-size: 12px; padding: 5px 10px; cursor: pointer;
+    }
+    .seg button + button { border-left: 1px solid var(--border); }
+    .seg button.on { background: rgba(59,130,246,0.22); color: var(--accent); }
+
+    /* index.md / badges.js 编辑区 */
+    .doc-editor {
+        width: 100%; height: 165px;
+        background: var(--overlay-bg); border: 1px solid var(--border);
+        border-radius: 6px; color: var(--text);
+        font-family: Consolas, "Courier New", monospace; font-size: 12px;
+        padding: 8px 10px; resize: vertical; line-height: 1.55;
+        outline: none;
+    }
+    .doc-editor:focus { border-color: var(--accent); }
+    .parse-status {
+        margin-top: 8px; font-size: 12px; display: flex; align-items: center; gap: 6px;
+        min-height: 16px; flex-wrap: wrap;
+    }
+    .parse-status .dot { width: 7px; height: 7px; border-radius: 50%; flex: none; }
+    .parse-status.ok .dot { background: #4ade80; }
+    .parse-status.err .dot { background: var(--error); }
+    .parse-status.none .dot { background: var(--muted); }
+    .legend { display: flex; flex-wrap: wrap; gap: 8px 16px; margin-top: 10px; font-size: 12px; }
+    .legend span b { font-weight: 600; }
+
+    /* Agent 刷新面板 */
+    .target-line { font-size: 12px; color: var(--muted); margin-bottom: 10px; }
+    .target-line code { color: var(--text); }
+    .btn-row { display: flex; gap: 8px; flex-wrap: wrap; }
+    .abtn {
+        background: var(--panel); color: var(--text);
+        border: 1px solid var(--border); border-radius: 6px;
+        font-size: 12px; padding: 6px 10px; cursor: pointer;
+    }
+    .abtn:hover { background: var(--hover); }
+    .abtn.primary { border-color: rgba(59,130,246,0.5); color: var(--accent); }
+    .rev-line { margin-top: 10px; font-size: 11.5px; color: var(--muted); font-family: Consolas, monospace; }
+
+    /* 插件面板 */
+    .provider { border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; margin-bottom: 8px; }
+    .provider:last-child { margin-bottom: 0; }
+    .provider .p-head { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+    .provider .p-badge {
+        font-size: 10px; padding: 1px 6px; border-radius: 8px;
+        background: rgba(74,222,128,0.15); color: #4ade80; border: 1px solid rgba(74,222,128,0.3);
+    }
+    .provider .p-badge.off { background: rgba(138,144,151,0.12); color: var(--muted); border-color: var(--border); }
+    .provider .p-desc { font-size: 11px; color: var(--muted); margin-top: 4px; }
+    .provider.future { opacity: 0.55; border-style: dashed; }
+
+    /* toast：模拟刷新事件的系统通知（真实 UI 中是 toast 通知中心） */
+    #toast {
+        position: fixed; left: 14px; bottom: 14px; z-index: 60;
+        background: var(--overlay-bg); border: 1px solid var(--border);
+        border-radius: 8px; padding: 8px 12px;
+        font-size: 12px; max-width: 420px;
+        box-shadow: 0 6px 18px rgba(0,0,0,0.45);
+        opacity: 0; transform: translateY(6px);
+        transition: opacity 0.18s ease, transform 0.18s ease;
+        pointer-events: none;
+    }
+    #toast.show { opacity: 1; transform: translateY(0); }
+    #toast .t-title { font-weight: 600; margin-bottom: 2px; }
+    #toast .t-body { color: var(--muted); font-family: Consolas, monospace; font-size: 11px; }
+    #toast.warn .t-title { color: var(--st-wip); }
+</style>
+</head>
+<body>
+
+<!-- 原型说明条（不属于真实 UI） -->
+<div class="proto-banner">
+    <span class="tag">原型 PROTOTYPE</span>
+    <span class="desc">文件夹索引徽标 — 三个功能点：① <code>index.md</code> 状态表 ② <code>badges.js</code> 用户自定义脚本（脚本可覆盖表格）③ Agent 改完索引后定向刷新 Block。右侧可调开关、样式、索引、脚本与刷新。</span>
+</div>
+
+<div class="layout">
+    <!-- ══════ 左：Files Preview Block（镜像 preview-explorer + treeview DOM） ══════ -->
+    <div class="files-block">
+        <div class="block-header">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="var(--muted)"><path d="M1.5 3.5A1.5 1.5 0 0 1 3 2h3.2l1.4 1.8H13a1.5 1.5 0 0 1 1.5 1.5v7A1.5 1.5 0 0 1 13 14H3a1.5 1.5 0 0 1-1.5-1.5v-9z"/></svg>
+            <span class="block-title">MyDocs</span>
+        </div>
+        <div class="tree-scroll" id="tree"></div>
+    </div>
+
+    <!-- ══════ 右：控制面板（原型专属） ══════ -->
+    <div class="side">
+
+        <div class="side-section">
+            <h3>实验开关（Preview 设置）</h3>
+            <div class="setting-row">
+                <span class="name">索引徽标 <code>preview.folderIndexBadges</code>
+                    <span class="hint">总开关，默认关闭。关闭时不读索引、不跑脚本，树零影响。</span>
+                </span>
+                <label class="switch"><input type="checkbox" id="opt-enabled"><span class="track"></span><span class="thumb"></span></label>
+            </div>
+            <div class="setting-row" style="margin-top:6px">
+                <span class="name">启用自定义脚本 <code>badges.js</code>
+                    <span class="hint">数据源 2：脚本决定每个文件项的显示逻辑，可覆盖索引表格。</span>
+                </span>
+                <label class="switch"><input type="checkbox" id="opt-script"><span class="track"></span><span class="thumb"></span></label>
+            </div>
+            <div class="setting-row" style="margin-top:6px">
+                <span class="name">模拟索引缺失
+                    <span class="hint">打开 = index.md 不存在 / 读不出：表格源静默降级，脚本源不受影响。</span>
+                </span>
+                <label class="switch"><input type="checkbox" id="opt-missing"><span class="track"></span><span class="thumb"></span></label>
+            </div>
+        </div>
+
+        <div class="side-section">
+            <h3>徽标样式（待拍板 D2）</h3>
+            <div class="setting-row">
+                <span class="name">绘制方式</span>
+                <div class="seg" id="opt-style">
+                    <button data-style="prefix" class="on">图标前缀 emoji</button>
+                    <button data-style="overlay">图标角标叠加</button>
+                    <button data-style="color">只改颜色</button>
+                </div>
+            </div>
+            <div class="setting-row">
+                <span class="name">「只读」徽标（待拍板 D3）</span>
+                <div class="seg" id="opt-readonly-emoji">
+                    <button data-emoji="🔒" class="on">🔒 推荐</button>
+                    <button data-emoji="📁">📁 原案</button>
+                </div>
+            </div>
+            <div class="legend" id="legend"></div>
+        </div>
+
+        <div class="side-section">
+            <h3>Agent 触发刷新（功能点 ③）</h3>
+            <div class="target-line">
+                刷新目标：<code>tab: tab-2</code> · <code>block: files-7</code>（Files · MyDocs）
+            </div>
+            <div class="btn-row">
+                <button class="abtn" id="btn-agent-edit">模拟 Agent 改写 index.md</button>
+                <button class="abtn primary" id="btn-refresh">Agent 调用 Block 刷新</button>
+            </div>
+            <div class="setting-row" style="margin-top:10px">
+                <span class="name">文件 watch 自动刷新
+                    <span class="hint">真实实现可选：后端 watch 到索引/脚本变更时自动失效缓存并重算。</span>
+                </span>
+                <label class="switch"><input type="checkbox" id="opt-watch"><span class="track"></span><span class="thumb"></span></label>
+            </div>
+            <div class="rev-line" id="rev-line"></div>
+        </div>
+
+        <div class="side-section">
+            <h3>数据源 1：索引文档 <code>MyDocs/index.md</code>（可编辑）</h3>
+            <textarea class="doc-editor" id="index-doc" spellcheck="false"></textarea>
+            <div class="parse-status" id="index-status">
+                <span class="dot"></span><span class="msg"></span>
+            </div>
+        </div>
+
+        <div class="side-section">
+            <h3>数据源 2：用户脚本 <code>MyDocs/.index/badges.js</code>（可编辑）</h3>
+            <textarea class="doc-editor" id="script-doc" spellcheck="false"></textarea>
+            <div class="parse-status" id="script-status">
+                <span class="dot"></span><span class="msg"></span>
+            </div>
+        </div>
+
+        <div class="side-section">
+            <h3>目录装饰提供者（插件接口）</h3>
+            <div class="provider" id="provider-folderindex">
+                <div class="p-head">
+                    <b>FolderIndexBadges</b>
+                    <span class="p-badge">active</span>
+                    <span style="color:var(--muted);font-size:11px;margin-left:auto" id="stat-index"></span>
+                </div>
+                <div class="p-desc">数据源 1：读目录内 index.md，解析状态表。失败返回空 Map，不报错。</div>
+            </div>
+            <div class="provider" id="provider-userscript" style="margin-top:8px">
+                <div class="p-head">
+                    <b>UserScriptBadges</b>
+                    <span class="p-badge off">disabled</span>
+                    <span style="color:var(--muted);font-size:11px;margin-left:auto" id="stat-script"></span>
+                </div>
+                <div class="p-desc">数据源 2：sandbox 里跑 badges.js，每个文件项调用一次 decorate(entry)。单条失败只跳过该条。</div>
+            </div>
+            <div class="provider future" style="margin-top:8px">
+                <div class="p-head">
+                    <b>GitBadges</b>
+                    <span class="p-badge off">future</span>
+                </div>
+                <div class="p-desc">同一 DecorationProvider 接口的未来实现示例：读 git status 给文件树加 VCS 徽标。</div>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<div class="tooltip" id="tooltip">
+    <div class="tt-title"></div><div class="tt-note"></div><div class="tt-src"></div>
+</div>
+<div id="toast"><div class="t-title"></div><div class="t-body"></div></div>
+
+<script>
+"use strict";
+
+/* ─────────────────────────────────────────────────────────────────────
+ * 原型数据。真实实现中：
+ *  - treeData 来自后端 FileInfo（wsh rpc），此处为演示目录
+ *  - 数据源 1（表格）：插件解析 index.md 的结果
+ *  - 数据源 2（脚本）：sandbox 执行 badges.js 的 decorate(entry) 结果
+ *  - 刷新链路：Agent 改完索引/脚本后定向刷新 Block（tab + block 路由）
+ * 合并策略：脚本结论 > 索引表格 > 无徽标
+ * ───────────────────────────────────────────────────────────────────── */
+
+const ROOT = "MyDocs";
+/* modtime 为演示时间戳（真实实现来自 FileInfo.modtime） */
+const treeData = {
+    label: "MyDocs", isDir: true, children: [
+        { label: "index.md", isDir: false, file: true, modtime: Date.now() - 2 * 86400e3 },
+        { label: ".index", isDir: true, children: [
+            { label: "badges.js", isDir: false, file: true, modtime: Date.now() - 5 * 86400e3 },
+        ]},
+        { label: "需求规格 v3.md", isDir: false, file: true, modtime: Date.now() - 3 * 86400e3 },
+        { label: "接口设计.md", isDir: false, file: true, modtime: Date.now() - 40 * 86400e3 },
+        { label: "评审记录", isDir: true, children: [
+            { label: "2024-年报.md", isDir: false, file: true, modtime: Date.now() - 700 * 86400e3 },
+            { label: "2025-年报.md", isDir: false, file: true, modtime: Date.now() - 300 * 86400e3 },
+        ]},
+        { label: "数据库结构.md", isDir: false, file: true, modtime: Date.now() - 10 * 86400e3 },
+        { label: "旧版方案", isDir: true, children: [
+            { label: "v1-草案.md", isDir: false, file: true, modtime: Date.now() - 200 * 86400e3 },
+            { label: "v2-草案.md", isDir: false, file: true, modtime: Date.now() - 150 * 86400e3 },
+        ]},
+        { label: "实验笔记.md", isDir: false, file: true, modtime: Date.now() - 500 * 86400e3 },
+        { label: "README.md", isDir: false, file: true, modtime: Date.now() - 1 * 86400e3 },
+    ],
+};
+
+const DEFAULT_INDEX = `---
+title: 本目录索引
+---
+
+| 文件 | 状态 | 备注 |
+|---|---|---|
+| 需求规格 v3.md | 会改版 | Q4 还要改三处 |
+| 接口设计.md | 冻结 | 定稿，改动走评审 |
+| 评审记录/2024-年报.md | 归档 | 历史资料 |
+| 评审记录/2025-年报.md | 归档 | 历史资料 |
+| 数据库结构.md | 只读 | 由 schema 工具生成 |
+| 实验笔记.md | 冻结 | 先不动，等结论 |
+`;
+
+const DEFAULT_SCRIPT = `// badges.js —— 用户自定义显示逻辑
+// 每个文件项调用一次 decorate(entry)，返回 null = 不加徽标
+// entry: { name, path, isDir, modtime }
+// 返回 { status } → 用内置状态表（🔄 会改版/🧊 冻结/🔒 只读/🗄 归档）
+// 返回 { emoji, label, color, title } → 完全自定义徽标
+function decorate(entry) {
+    if (entry.isDir) return null;
+    if (entry.name === "index.md" || entry.name === "badges.js") return null;
+
+    // 规则 1：名字带「草案」→ 会改版（表格里没登记，脚本补上）
+    if (entry.name.includes("草案")) {
+        return { status: "会改版", note: "脚本规则：文件名含「草案」" };
+    }
+
+    // 规则 2：超过一年未修改 → 自定义「陈旧」徽标（覆盖表格结论）
+    const oneYearMs = 365 * 24 * 3600 * 1000;
+    if (entry.modtime && Date.now() - entry.modtime > oneYearMs) {
+        return { emoji: "⏳", label: "陈旧", color: "#e0a83a", title: "脚本规则：超过一年未修改" };
+    }
+
+    return null;
+}
+`;
+
+/* 状态注册表：emoji + 颜色 + 中文说明（唯一事实源，样式切换只换画法） */
+const STATUS_DEF = {
+    "会改版": { emoji: "🔄", cls: "c-wip",      desc: "还会改动，别当定稿引用" },
+    "冻结":   { emoji: "🧊", cls: "c-frozen",   desc: "已定稿，改动需走流程" },
+    "只读":   { emoji: "🔒", cls: "c-readonly", desc: "不允许修改" },
+    "归档":   { emoji: "🗄", cls: "c-archive",  desc: "历史资料，仅查阅" },
+};
+
+/* ── 原型状态 ── */
+const state = {
+    enabled: false,          // 实验总开关（默认关）
+    scriptOn: false,        // 数据源 2：用户脚本
+    missing: false,         // 模拟 index.md 缺失/读取失败
+    watch: false,           // 文件 watch 自动刷新（真实实现可选）
+    style: "prefix",        // prefix | overlay | color
+    readonlyEmoji: "🔒",    // D3：只读徽标
+    indexText: DEFAULT_INDEX,
+    scriptText: DEFAULT_SCRIPT,
+    expanded: new Set([ROOT, ROOT + "/评审记录", ROOT + "/旧版方案", ROOT + "/.index"]),
+    selected: null,
+};
+
+/* ── 数据源 1：FolderIndexBadges「插件」——解析 index.md ──
+ * 真实实现对应 DecorationProvider.getDecorations(dir)。
+ * 索引缺失 / 表格非法 → 返回空 map（静默降级，树照常显示）。
+ */
+function parseIndexDoc(text) {
+    const map = {};
+    let rows = 0;
+    for (const rawLine of text.split("\n")) {
+        const line = rawLine.trim();
+        if (!line.startsWith("|")) continue;
+        const cells = line.split("|").slice(1, -1).map((c) => c.trim());
+        if (cells.length < 2) continue;
+        const [file, status, note] = cells;
+        if (!file || /^-{2,}$/.test(file)) continue;      // 分隔行
+        if (file === "文件" && status === "状态") continue; // 表头行
+        if (!(status in STATUS_DEF)) {
+            if (!status) continue; // 状态列为空 = 不是状态表，跳过
+            throw new Error(`第 ${rows + 1} 条：状态「${status}」不在 {${Object.keys(STATUS_DEF).join(", ")}} 中`);
+        }
+        map[file] = { status, note: note || "", source: "index" };
+        rows++;
+    }
+    if (rows === 0) return { kind: "none", map, rows: 0 };
+    return { kind: "ok", map, rows };
+}
+
+/* ── 数据源 2：UserScriptBadges「插件」——跑 badges.js ──
+ * 原型用 new Function 直接执行仅作演示；
+ * 真实实现必须在 sandbox / worker 中执行：无 IO、无网络、限时、单条失败只跳过该条。
+ * entry 契约（只读视图）：{ name, path, isDir, modtime }
+ * 返回 { status }（内置状态）或 { emoji, label, color, title }（全自定义）。
+ */
+function runUserScript(code, entries) {
+    let decorateFn = null;
+    try {
+        // eslint-disable-next-line no-new-func
+        decorateFn = new Function(
+            '"use strict";' + code + ';return typeof decorate === "function" ? decorate : null;'
+        )();
+    } catch (e) {
+        return { kind: "err", error: "脚本编译失败：" + e.message, map: {}, rows: 0, errors: 0 };
+    }
+    if (typeof decorateFn !== "function") {
+        return { kind: "err", error: "脚本未定义 decorate(entry) 函数", map: {}, rows: 0, errors: 0 };
+    }
+    const map = {};
+    let rows = 0, errors = 0, errorSample = "";
+    for (const en of entries) {
+        let raw = null;
+        try {
+            raw = decorateFn(en);
+        } catch (e) {
+            errors++;
+            if (!errorSample) errorSample = `${en.name}: ${e.message}`;
+            continue; // 单条失败只跳过该条，不牵连其他条
+        }
+        if (raw == null) continue;
+        const norm = normalizeDeco(raw);
+        if (norm == null) { errors++; if (!errorSample) errorSample = `${en.name}: 返回值既无 status 也无 emoji`; continue; }
+        map[en.relPath] = { ...norm, source: "script" };
+        rows++;
+    }
+    return { kind: errors > 0 ? "warn" : "ok", map, rows, errors, errorSample };
+}
+
+/* 归一化：{ status } → 内置样式；{ emoji, ... } → 自定义 */
+function normalizeDeco(raw) {
+    if (raw.status && STATUS_DEF[raw.status]) {
+        const def = STATUS_DEF[raw.status];
+        return {
+            emoji: raw.emoji || def.emoji, label: raw.label || raw.status,
+            color: raw.color || null, cls: raw.color ? null : def.cls,
+            title: raw.title || def.desc, note: raw.note || "",
+        };
+    }
+    if (raw.emoji) {
+        return {
+            emoji: raw.emoji, label: raw.label || "",
+            color: raw.color || null, cls: null,
+            title: raw.title || "自定义徽标", note: raw.note || "",
+        };
+    }
+    return null;
+}
+
+/* ── 图标（真实组件用 fa-sharp 字体，原型用内联 SVG 替身） ── */
+const ICON_DIR = '<svg width="13" height="13" viewBox="0 0 16 16" fill="#5a9fd4"><path d="M1.5 3.5A1.5 1.5 0 0 1 3 2h3.2l1.4 1.8H13a1.5 1.5 0 0 1 1.5 1.5v7A1.5 1.5 0 0 1 13 14H3a1.5 1.5 0 0 1-1.5-1.5v-9z"/></svg>';
+const ICON_DIR_OPEN = '<svg width="13" height="13" viewBox="0 0 16 16" fill="#5a9fd4"><path d="M1.5 3.2A1.2 1.2 0 0 1 2.7 2h3l1.3 1.6h5A1.2 1.2 0 0 1 13.2 4.8V6H1.5V3.2zM1 7h14l-1.2 6.2a1 1 0 0 1-1 .8H2.2a1 1 0 0 1-1-.8L1 7z"/></svg>';
+const ICON_FILE = '<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="#9aa2ab" stroke-width="1.1"><path d="M4 1.5A1 1 0 0 1 5 .5h4.5L13 4v10a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-12.5zM9.5.5V4H13"/></svg>';
+const ICON_INDEX = '<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="#7bbf7b" stroke-width="1.3"><path d="M3 2h8.5L13 3.5V14H3V2z"/><path d="M5.5 6.5h5M5.5 9h5M5.5 11.5h3"/></svg>';
+const ICON_SCRIPT = '<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="#c8a35a" stroke-width="1.3"><path d="M5.5 5 3 8l2.5 3M10.5 5 13 8l-2.5 3"/></svg>';
+
+/* 展平文件项（脚本 entry 契约的来源） */
+function flattenEntries(node, path, out) {
+    for (const child of node.children || []) {
+        const childPath = path + "/" + child.label;
+        out.push({ name: child.label, path: childPath, relPath: childPath.slice(ROOT.length + 1), isDir: !!child.isDir, modtime: child.modtime || null });
+        if (child.isDir) flattenEntries(child, childPath, out);
+    }
+    return out;
+}
+
+/* ─────────────────────────────────────────────────────────────────────
+ * 装饰缓存与刷新链路（功能点 ③ 的核心演示）
+ *
+ * 真实实现中：
+ *  - 装饰结果按 (block, dir) 缓存，靠 revision 失效；
+ *  - 失效来源有两个：后端文件 watch（可选）/ Agent 主动调 refreshBlock RPC；
+ *  - refreshBlock 带 tab + block 路由，只刷新目标 Block，不动别人。
+ * 原型用 decoState.rev 模拟缓存版本号。
+ * ───────────────────────────────────────────────────────────────────── */
+const decoState = {
+    rev: 0,
+    computedAt: null,
+    indexMap: {}, indexKind: "none", indexMsg: "尚未计算",
+    scriptMap: {}, scriptKind: "none", scriptMsg: "尚未计算",
+    deco: {},
+};
+
+function computeDecorations() {
+    /* 数据源 1：索引表格 */
+    let indexMap = {};
+    let indexKind = "none", indexMsg = "";
+    if (state.missing) {
+        indexKind = "none"; indexMsg = "index.md 不存在 → 空 Map，表格源静默降级（树照常显示）";
+    } else {
+        try {
+            const r = parseIndexDoc(state.indexText);
+            if (r.kind === "none") {
+                indexKind = "none"; indexMsg = "没有解析到状态表 → 空 Map，静默降级";
+            } else {
+                indexMap = r.map; indexKind = "ok";
+                indexMsg = `解析成功：${r.rows} 条状态`;
+            }
+        } catch (e) {
+            indexKind = "err"; indexMsg = e.message + " → 表格源整体降级";
+        }
+    }
+
+    /* 数据源 2：用户脚本 */
+    let scriptMap = {};
+    let scriptKind = "none", scriptMsg = "";
+    if (state.scriptOn) {
+        const entries = flattenEntries(treeData, ROOT, []);
+        const r = runUserScript(state.scriptText, entries);
+        scriptKind = r.kind === "err" || r.kind === "warn" ? "err" : r.kind === "ok" ? "ok" : "none";
+        if (r.kind === "err") {
+            scriptMsg = r.error + " → 脚本源降级";
+        } else if (r.kind === "warn") {
+            scriptMap = r.map;
+            scriptMsg = `运行完成：${r.rows} 项加徽标，${r.errors} 条失败已跳过（首条：${r.errorSample}）`;
+        } else {
+            scriptMap = r.map;
+            scriptMsg = `运行成功：${entries.length} 项调用，${r.rows} 项加徽标`;
+        }
+    } else {
+        scriptKind = "none"; scriptMsg = "脚本源未启用";
+    }
+
+    /* 合并：脚本 > 表格 */
+    const deco = {};
+    for (const [k, v] of Object.entries(indexMap)) deco[k] = v;
+    for (const [k, v] of Object.entries(scriptMap)) deco[k] = { ...v, _override: true };
+
+    return { indexMap, indexKind, indexMsg, scriptMap, scriptKind, scriptMsg, deco };
+}
+
+/* refreshBlock：重读两个数据源，bump revision，重画（只影响本 Block） */
+function refreshBlock(trigger) {
+    const d = computeDecorations();
+    Object.assign(decoState, d);
+    decoState.rev++;
+    decoState.computedAt = new Date();
+    renderTree();
+    const idxN = Object.keys(decoState.indexMap).length;
+    const scrN = Object.keys(decoState.scriptMap).length;
+    const total = Object.keys(decoState.deco).length;
+    showToast(
+        "Block 已刷新（" + trigger + "）",
+        `refreshBlock(tab-2, files-7) → 重读 index.md(${idxN}) + badges.js(${scrN}) → ${total} 徽标 · rev ${decoState.rev}`,
+        "info"
+    );
+}
+
+/* ── toast（真实 UI 是通知中心，原型用左下角浮层） ── */
+let toastTimer = null;
+function showToast(title, body, kind) {
+    const t = document.getElementById("toast");
+    t.querySelector(".t-title").textContent = title;
+    t.querySelector(".t-body").textContent = body;
+    t.className = kind === "warn" ? "warn show" : "show";
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { t.className = ""; }, 3600);
+}
+
+/* ── 渲染 ── */
+const treeEl = document.getElementById("tree");
+const tooltip = document.getElementById("tooltip");
+
+function setStatus(id, kind, msg) {
+    const el = document.getElementById(id);
+    el.className = "parse-status " + (kind === "ok" ? "ok" : kind);
+    el.querySelector(".msg").textContent = msg;
+}
+
+function setProviderBadge(id, text, cls) {
+    const b = document.getElementById(id).querySelector(".p-badge");
+    b.className = "p-badge" + (cls ? " " + cls : "");
+    b.textContent = text;
+}
+
+function emojiFor(d) {
+    if (d._statusKey === "只读") return state.readonlyEmoji;
+    return d.emoji;
+}
+
+function renderTree() {
+    /* 状态行 + 插件面板（读缓存 decoState） */
+    setStatus("index-status", decoState.indexKind, decoState.indexMsg);
+    setStatus("script-status", decoState.scriptKind, decoState.scriptMsg);
+
+    const idxN = Object.keys(decoState.indexMap).length;
+    const scrN = Object.keys(decoState.scriptMap).length;
+    setProviderBadge("provider-folderindex",
+        !state.enabled ? "disabled" : state.missing || idxN === 0 ? "degraded" : "active",
+        !state.enabled ? "off" : null);
+    document.getElementById("stat-index").textContent = state.enabled ? idxN + " decorations" : "—";
+    setProviderBadge("provider-userscript",
+        !state.enabled ? "disabled" : state.scriptOn ? (scrN > 0 ? "active" : "degraded") : "off",
+        !state.enabled || !state.scriptOn ? "off" : null);
+    document.getElementById("stat-script").textContent = state.enabled && state.scriptOn ? scrN + " decorations" : "—";
+
+    /* 刷新链路面板 */
+    document.getElementById("rev-line").textContent =
+        "decoration rev: " + decoState.rev +
+        (decoState.computedAt ? " · 解析于 " + decoState.computedAt.toLocaleTimeString() : "");
+
+    /* legend */
+    const legend = document.getElementById("legend");
+    legend.innerHTML = "";
+    for (const [name, def] of Object.entries(STATUS_DEF)) {
+        const emoji = name === "只读" ? state.readonlyEmoji : def.emoji;
+        const span = document.createElement("span");
+        span.className = def.cls;
+        span.innerHTML = `<b>${emoji} ${name}</b> — ${def.desc}`;
+        legend.appendChild(span);
+    }
+    const custom = document.createElement("span");
+    custom.style.color = "var(--st-wip)";
+    custom.innerHTML = "<b>⏳ 自定义</b> — 脚本全自定义徽标（emoji/颜色/标题任意）";
+    legend.appendChild(custom);
+
+    /* 画树 */
+    treeEl.innerHTML = "";
+    const paint = (node, path, depth) => {
+        for (const child of node.children || []) {
+            const childPath = path + "/" + child.label;
+            const relPath = childPath.slice(ROOT.length + 1);
+            const isExpanded = state.expanded.has(childPath);
+            const row = document.createElement("div");
+            row.className = "tree-row" + (isExpanded ? " expanded" : "") +
+                (state.selected === childPath ? " selected" : "");
+            row.style.paddingLeft = 6 + depth * 16 + "px";
+
+            // chevron
+            const chev = document.createElement("span");
+            chev.className = "chevron";
+            chev.textContent = "▶";
+            if (child.isDir) {
+                chev.addEventListener("click", (e) => {
+                    e.stopPropagation();
+                    if (state.expanded.has(childPath)) state.expanded.delete(childPath);
+                    else state.expanded.add(childPath);
+                    renderTree();
+                });
+            } else {
+                chev.style.visibility = "hidden";
+            }
+            row.appendChild(chev);
+
+            // 查装饰：总开关开才有；相对路径与文件名都试
+            let d = null;
+            if (state.enabled && !child.isDir) {
+                d = decoState.deco[relPath] || decoState.deco[child.label] || null;
+                if (d && d.status && STATUS_DEF[d.status]) d._statusKey = d.status;
+            }
+
+            // icon（+ overlay 角标）
+            const iconWrap = document.createElement("span");
+            iconWrap.className = "icon-wrap";
+            if (child.isDir) iconWrap.innerHTML = isExpanded ? ICON_DIR_OPEN : ICON_DIR;
+            else if (child.label === "index.md") iconWrap.innerHTML = ICON_INDEX;
+            else if (child.label === "badges.js") iconWrap.innerHTML = ICON_SCRIPT;
+            else iconWrap.innerHTML = ICON_FILE;
+            if (d && state.style === "overlay") {
+                const ov = document.createElement("span");
+                ov.className = "icon-overlay";
+                ov.textContent = emojiFor(d);
+                iconWrap.appendChild(ov);
+            }
+            row.appendChild(iconWrap);
+
+            // badge（prefix 模式）
+            if (d && state.style === "prefix") {
+                const b = document.createElement("span");
+                b.className = "st-badge";
+                b.textContent = emojiFor(d);
+                row.appendChild(b);
+            }
+
+            // label
+            const label = document.createElement("span");
+            label.className = "label";
+            if (d && state.style === "color") {
+                if (d.color) label.style.color = d.color;
+                else if (d.cls) label.classList.add(d.cls);
+            }
+            if (d && d._statusKey === "只读") label.classList.add("readonly");
+            label.textContent = child.label;
+            row.appendChild(label);
+
+            // hover tooltip：徽标含义 + 备注 + 来源（无徽标行不弹）
+            if (d) {
+                const srcName = d.source === "script" ? "badges.js 脚本" : "index.md 索引";
+                const overridden = d._override && decoState.indexMap[relPath] != null;
+                row.addEventListener("mousemove", (e) => {
+                    tooltip.style.display = "block";
+                    tooltip.style.left = Math.min(e.clientX + 12, window.innerWidth - 280) + "px";
+                    tooltip.style.top = e.clientY + 16 + "px";
+                    tooltip.querySelector(".tt-title").textContent = `${emojiFor(d)} ${d.label || d._statusKey || ""} · ${d.title || ""}`;
+                    tooltip.querySelector(".tt-note").textContent = d.note ? `备注：${d.note}` : "（未写备注）";
+                    const src = tooltip.querySelector(".tt-src");
+                    src.innerHTML = `来源：<span class="${d.source === "script" ? "src-script" : "src-index"}">${srcName}</span>` +
+                        (overridden ? " · 已覆盖索引表格的结论" : "");
+                });
+                row.addEventListener("mouseleave", () => { tooltip.style.display = "none"; });
+            }
+
+            row.addEventListener("click", () => { state.selected = childPath; renderTree(); });
+            treeEl.appendChild(row);
+
+            if (child.isDir && isExpanded) paint(child, childPath, depth + 1);
+        }
+    };
+    const rootRow = document.createElement("div");
+    rootRow.className = "tree-row expanded" + (state.selected === ROOT ? " selected" : "");
+    rootRow.innerHTML =
+        '<span class="chevron" style="visibility:hidden">▶</span>' +
+        '<span class="icon-wrap">' + ICON_DIR_OPEN + "</span>" +
+        '<span class="label" style="font-weight:600">' + ROOT + "</span>";
+    rootRow.addEventListener("click", () => { state.selected = ROOT; renderTree(); });
+    treeEl.appendChild(rootRow);
+    paint(treeData, ROOT, 1);
+}
+
+/* ── 控件绑定 ── */
+function bindSwitch(id, key, onChange) {
+    document.getElementById(id).addEventListener("change", (e) => {
+        state[key] = e.target.checked;
+        onChange ? onChange() : renderTree();
+    });
+}
+// 数据源参与变了 → 需要重算（走刷新链路）
+bindSwitch("opt-script", "scriptOn", () => refreshBlock("设置变更"));
+bindSwitch("opt-missing", "missing", () => refreshBlock("设置变更"));
+// 只影响画法 → 重画即可
+bindSwitch("opt-enabled", "enabled");
+bindSwitch("opt-watch", "watch");
+
+document.getElementById("opt-style").addEventListener("click", (e) => {
+    const btn = e.target.closest("button");
+    if (!btn) return;
+    state.style = btn.dataset.style;
+    for (const b of document.querySelectorAll("#opt-style button")) b.classList.toggle("on", b === btn);
+    renderTree();
+});
+document.getElementById("opt-readonly-emoji").addEventListener("click", (e) => {
+    const btn = e.target.closest("button");
+    if (!btn) return;
+    state.readonlyEmoji = btn.dataset.emoji;
+    for (const b of document.querySelectorAll("#opt-readonly-emoji button")) b.classList.toggle("on", b === btn);
+    renderTree();
+});
+
+/* 编辑器改 = 改「盘上文件」→ 走刷新链路重算（真实实现由 watch 或 refreshBlock 触发） */
+function bindEditor(id, key) {
+    const el = document.getElementById(id);
+    el.value = state[key];
+    let deb = null;
+    el.addEventListener("input", () => {
+        clearTimeout(deb);
+        deb = setTimeout(() => { state[key] = el.value; refreshBlock("手动编辑"); }, 300);
+    });
+}
+bindEditor("index-doc", "indexText");
+bindEditor("script-doc", "scriptText");
+
+/* Agent 刷新链路演示：改盘 →（无 watch 时缓存不失效）→ 定向刷新 */
+document.getElementById("btn-agent-edit").addEventListener("click", () => {
+    const hasRow = state.indexText.includes("| README.md |");
+    if (hasRow) {
+        // 第二次点 = Agent 撤销登记
+        state.indexText = state.indexText.replace(/\| README\.md \|[^\n]*\n?/g, "");
+        showToast("Agent 已写盘 index.md", "撤销 README.md 登记（watch 关：Block 缓存未失效，树暂不更新）", "warn");
+    } else {
+        state.indexText = state.indexText.trimEnd() + "\n| README.md | 归档 | Agent 刚登记 |\n";
+        showToast("Agent 已写盘 index.md", "新增一行：| README.md | 归档 |（watch 关：Block 缓存未失效，树暂不更新）", "warn");
+    }
+    document.getElementById("index-doc").value = state.indexText;
+    if (state.watch) {
+        refreshBlock("file watch");
+    }
+});
+document.getElementById("btn-refresh").addEventListener("click", () => refreshBlock("agent refreshBlock"));
+
+/* 初始：算一次装饰（真实实现总开关关闭时不读索引、不跑脚本，这里为了面板可见仍算） */
+refreshBlock("初始化");
+</script>
+</body>
+</html>

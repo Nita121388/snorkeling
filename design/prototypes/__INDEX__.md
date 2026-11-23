@@ -55,6 +55,7 @@
 
 ## files-preview
 - `files-preview/files-block-favorites/` — 同步状态：▲ 设计活跃（未实现）
+- `files-preview/folder-index-badges/` — 同步状态：▲ 设计活跃（未实现）｜文件夹索引徽标：index.md 状态表 + badges.js 用户脚本 + Agent 定向刷新 Block；判据与待拍板 D1-D5 见 README
 - `files-preview/files-header-split-reveal/` — 同步状态：● 已落地（2026-11-07，task 11-07-files-header-hover-latch）
 - `files-preview/files-vcs-header-enhance/` — 状态：**设计中（待确认）**，真实代码未改动
 - `files-preview/markdown-banner/` — 同步状态：● 已落地（真实组件已实现）
