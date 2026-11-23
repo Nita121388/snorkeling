@@ -1,0 +1,32 @@
+{
+  "id": "session-surface-fixes-1123",
+  "name": "session-surface-fixes-1123",
+  "title": "会话面 2026-11-23 未闭环问题：CommonText 发送丢失 / Overview 不刷新 / 看板卡能力与融合",
+  "description": "记录并推进 5 个未闭环问题（含优先级顺序）：CommonText 新建发送丢失(P0)、Overview/悬浮卡不刷新(P0)、看板卡恢复+composer(P1)、列表看板卡融合(P2)、手工粘贴保护(可选)",
+  "status": "planning",
+  "dev_type": null,
+  "scope": null,
+  "package": "snorkeling-docs",
+  "priority": "P2",
+  "creator": "nita",
+  "assignee": "nita",
+  "createdAt": "2026-11-23",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": "snorkeling",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [
+    "11-23-commontext-create-send",
+    "11-23-overview-refresh-1123",
+    "11-23-board-card-actions",
+    "11-23-session-card-unify",
+    "11-23-manual-paste-submit-guard"
+  ],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {}
+}

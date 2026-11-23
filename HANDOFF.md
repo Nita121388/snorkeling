@@ -1,4 +1,29 @@
-# HANDOFF — 接手必读（2026-11-06 凌晨更新）
+# HANDOFF — 接手必读（2026-11-23 更新）
+
+## 2026-11-23：会话面 5 个未闭环问题（已登记，按优先级排好）
+
+> 父任务：`.trellis/tasks/11-23-session-surface-fixes-1123/prd.md`（含证据锚点与两条待拍板决策）
+> **实现前先读它**；每个子包自带 prd（序 1 还有 implement.md，可直接开工）。
+
+| 序 | 子包 | 问题 | 规模 | 状态 |
+|---|---|---|---|---|
+| 1 | `11-23-commontext-create-send` | CommonText「新建 agent 并发送」文本发了没出去（静默丢消息） | S | prd+implement 就绪，待开工 |
+| 2+3 | `11-23-overview-refresh-1123` | 恢复的会话在 Overview 没卡 / Tab 新增 agent 在 Overview 看不到 / 激活 Tab 悬浮卡不刷新（疑同根） | S | 需先跑复现台定性 |
+| 4 | `11-23-board-card-actions` | 看板卡补「恢复 agent」+ composer 浮层 | M | 等 D1/D2 拍板 |
+| 5 | `11-23-session-card-unify` | 列表卡与看板卡融合成单一 SessionCard | M-L | 依赖序 4 |
+| 6 | `11-23-manual-paste-submit-guard` | 手工粘贴+回车被 pi 启动期吞掉的提示（可选） | S | 最低优先级 |
+
+**已核实的两个关键结论（别重复劳动）**
+
+1. 运行实例 = **0.0.136**；`logs/waveapp.69.log` 是旧实例的轮转文件，当日实时日志在
+   `Data/waveapp.log`（`[wavesrv] [agentstatus]` 有，`[agentsend]` 为 0 = 当天没走发送链路）。
+2. CommonText 两条路：existing → `AgentSendCommand`（有提交确认）；**create → 前端
+   `registerPendingInput` + `term.tsx` paste + 固定延迟回车（无确认无补发）**，这就是丢消息的根因。
+
+**优先级硬理由**：序 1 是唯一"成功假象"型 bug（UI 说已发、对方收不到）；序 2+3 三症状共享一个
+"块集合变化未订阅"假设，拆开做等于同一个东西查三遍，且它是序 5 的前置。
+
+
 
 > 上一个会话在这里停下。最新发布 **`0.0.121`**（今晚连续发了 `0.0.119 / 0.0.120 / 0.0.121`）。
 > 本文件只有一页；细节在下面指向的任务文档里。
