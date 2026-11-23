@@ -386,6 +386,9 @@
         "mode": {
           "type": "string"
         },
+        "hero": {
+          "type": "string"
+        },
         "tab": {
           "type": "string"
         }
