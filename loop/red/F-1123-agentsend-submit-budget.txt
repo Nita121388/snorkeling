@@ -1,0 +1,10 @@
+# github.com/wavetermdev/waveterm/pkg/wshrpc/wshserver [github.com/wavetermdev/waveterm/pkg/wshrpc/wshserver.test]
+pkg\wshrpc\wshserver\submitbudget_test.go:41:11: undefined: submitRetryBudget
+pkg\wshrpc\wshserver\submitbudget_test.go:51:10: undefined: submitRetryBudget
+pkg\wshrpc\wshserver\submitbudget_test.go:52:12: undefined: SubmitRetrySafetyCap
+pkg\wshrpc\wshserver\submitbudget_test.go:53:53: undefined: SubmitRetrySafetyCap
+pkg\wshrpc\wshserver\submitbudget_test.go:59:11: undefined: submitRetryBudget
+pkg\wshrpc\wshserver\submitbudget_test.go:70:17: undefined: dispatchFinalState
+pkg\wshrpc\wshserver\submitbudget_test.go:76:17: undefined: dispatchFinalState
+FAIL	github.com/wavetermdev/waveterm/pkg/wshrpc/wshserver [build failed]
+FAIL

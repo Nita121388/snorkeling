@@ -1,0 +1,17 @@
+{
+  "g2": {
+    "redProof": "loop/red/F-1123-agentsend-submit-budget.txt",
+    "at": "2026-11-23T02:16:34Z"
+  },
+  "g5": {
+    "ok": true,
+    "executedAt": "2026-11-23T02:16:35Z",
+    "by": "main"
+  },
+  "g1": {
+    "at": "2026-11-23T02:16:34Z",
+    "by": "nita",
+    "verdict": "confirmed",
+    "prdHash": "7c7d2e5ae7ac"
+  }
+}

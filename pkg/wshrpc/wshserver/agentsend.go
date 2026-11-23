@@ -50,8 +50,9 @@ const (
 	MaxSubmitVerifyMs     = 5000
 	// 单次观察窗口的退避上限（700ms × 尝试次数，最多 3s）。
 	MaxSubmitVerifyWindowMs = 3000
-	// 补回车最多次数（硬上限，真正的截止时间是 SubmitWaitMs）。
-	MaxSubmitRetries = 64
+	// 补回车次数预算的绝对安全上限：只为防止 verifyms 被设成极小值时循环空转，
+	// 真正的预算由 SubmitWaitMs / SubmitVerifyMs 时间推导（见 submitRetryBudget）。
+	SubmitRetrySafetyCap = 2000
 	// 提交确认的总窗口：pi 启动期会跑 `npm view` 查扩展更新，真机可达 40s+，
 	// 静默判定的 waitms（默认 30s）不够打，提交确认单独给宽窗口。
 	DefaultSubmitWaitMs = 180000
@@ -130,8 +131,29 @@ type deliveryProgress struct {
 // deliverAgentSend 是同步与异步共用的投递内核：确保 controller → 就绪门 → 一次
 // bracketed paste → 回车 → 提交确认（agentstatus hook 优先）。
 
+// submitRetryBudget 由时间预算推导允许的补回车次数：SubmitWaitMs / SubmitVerifyMs + 固定余量。
+// 2026-11-23 真机事故：旧实现硬编码 64 次 × 700ms ≈ 45s，与 SubmitWaitMs（180s/600s）脱钩，
+// TUI 冷启动超过 45s（pi npm view 40s+）提交必然被次数上限掐断。真截止仍是 confirmSubmit 里的 deadline。
+// submitWaitMs <= 0 时按最小预算处理（不做默认值替换，保持对 waitMs 单调不降；调用方已先把 0 解析成默认值）。
+func submitRetryBudget(submitWaitMs, verifyMs int) int {
+	if verifyMs <= 0 {
+		verifyMs = DefaultSubmitVerifyMs
+	}
+	if submitWaitMs < 0 {
+		submitWaitMs = 0
+	}
+	n := submitWaitMs/verifyMs + 4
+	if n < 8 {
+		n = 8
+	}
+	if n > SubmitRetrySafetyCap {
+		n = SubmitRetrySafetyCap
+	}
+	return n
+}
+
 // confirmSubmit 确认这次提交真的被 TUI 接住：以 term 输出文件是否继续增长为信号。
-// 没长就补发 CR（有界：params.SubmitWaitMs 截止 + MaxSubmitRetries 硬上限，间隔退避），
+// 没长就补发 CR（有界：params.SubmitWaitMs 时间截止 + submitRetryBudget 次数预算，间隔退避），
 // 返回补发次数与是否确认。
 //
 // 为什么“补发”是安全的：文字已经在 TUI 的输入缓冲区里（paste 已成功），此时多按几次回车
@@ -148,13 +170,14 @@ func confirmSubmit(ctx context.Context, blockId string, params sendParams, isAge
 	deadline := time.Now().Add(time.Duration(submitWaitMs) * time.Millisecond)
 	ackWindowMs := params.SubmitVerifyMs
 	baselineSeq := agentStatusSeq(blockId)
+	budget := submitRetryBudget(submitWaitMs, ackWindowMs)
 	retries := 0
 	// 规则（2026-11-21 真机两次误判后定稿）：
 	//   1. 屏上还有「还在启动」标记时只等，不打回车（启动期回车必被吞）。
 	//   2. agent 块的提交确认**只认 hook**（agent_start → working）。
 	//      绝不用「输出增长」：pi 启动期自己在渲染 banner，输出动 ≠ 提交成功。
 	//   3. 普通 term 块（shell/REPL，没有 agent status）才允许用输出增长当 ack。
-	for retries <= MaxSubmitRetries {
+	for retries <= budget {
 		if ctx.Err() != nil {
 			return retries, false
 		}
@@ -641,9 +664,10 @@ func deliverAgentSend(
 		if progress != nil && progress.OnSubmitted != nil {
 			progress.OnSubmitted(rtn.SubmitRetries, rtn.SubmitConfirmed)
 		}
+		submitBudget := submitRetryBudget(params.SubmitWaitMs, params.SubmitVerifyMs)
 		log.Printf(
-			"[agentsend] %s submit confirm retries=%d confirmed=%v elapsedms=%d",
-			blockId, rtn.SubmitRetries, rtn.SubmitConfirmed, time.Since(submitStart).Milliseconds(),
+			"[agentsend] %s submit confirm retries=%d confirmed=%v elapsedms=%d budget=%d",
+			blockId, rtn.SubmitRetries, rtn.SubmitConfirmed, time.Since(submitStart).Milliseconds(), submitBudget,
 		)
 		if !rtn.SubmitConfirmed {
 			rtn.Warnings = append(rtn.Warnings, "submit-unconfirmed")

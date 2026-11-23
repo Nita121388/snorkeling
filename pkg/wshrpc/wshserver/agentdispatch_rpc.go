@@ -92,8 +92,29 @@ func runAgentDispatch(rec agentdispatch.Record, text string, params sendParams) 
 		fail("%v", err)
 		return
 	}
-	log.Printf("[agentdispatch] %s delivered confirmed=%v retries=%d", rec.DispatchId, result.SubmitConfirmed, result.SubmitRetries)
-	_ = store.Transition(rec.DispatchId, agentdispatch.StateConfirmed, "")
+	state, msg := dispatchFinalState(result)
+	log.Printf(
+		"[agentdispatch] %s delivered confirmed=%v retries=%d -> state=%s err=%q",
+		rec.DispatchId, result.SubmitConfirmed, result.SubmitRetries, state, msg,
+	)
+	_ = store.Transition(rec.DispatchId, state, msg)
+}
+
+// dispatchFinalState 把投递结果映射成回执终态。未确认必须落 failed（可 AgentDispatchRetry 重试），
+// 绝不能用 StateConfirmed —— Store.Transition 在 confirmed 分支会把 Error 清空，等于谎报成功，
+// UI / CLI / MCP 再也拿不到失败信号（2026-11-23 真机事故）。
+func dispatchFinalState(result *wshrpc.AgentSendResult) (agentdispatch.State, string) {
+	if result != nil && result.SubmitConfirmed {
+		return agentdispatch.StateConfirmed, ""
+	}
+	retries := 0
+	if result != nil {
+		retries = result.SubmitRetries
+	}
+	return agentdispatch.StateFailed, fmt.Sprintf(
+		"E_SUBMIT_UNCONFIRMED: the TUI never confirmed the submit after %d retries; retry once the agent TUI is ready (AgentDispatchRetry)",
+		retries,
+	)
 }
 
 // ---- RPC 面 ----

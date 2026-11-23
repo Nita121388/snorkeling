@@ -86,3 +86,20 @@ wsh session turn  <key> --turn <N> --chars 4000   # 该 turn 原文（assistant 
 - 不要给 `agentstatus` 判定加「完成」语义——它是状态机，不是回合事件源。
 - 不要用轮询终端输出（刮屏）代替三信号。
 - 不要把等待窗口塞进 `Async` dispatch 状态机（那是 fire-and-forget 的三段回执）。
+
+## 3.1 提交确认必须按「时间」退避，不按「次数」（2026-11-23 真机定案）
+
+- 允许的补回车次数 = `submitRetryBudget(submitWaitMs, verifyMs)`：
+  `submitWaitMs/verifyMs + 4`，上限 `SubmitRetrySafetyCap=2000`（防 verifyMs 被设成极小值时空转）。
+- **禁止**再用固定次数上限（旧 `MaxSubmitRetries=64` × 700ms ≈ 45s，实测把 180s/600s 的
+  `SubmitWaitMs` 预算砍成 45 秒，TUI 冷启动 >45s 必然 `submitconfirmed=false`）。
+- 纯函数在 `pkg/wshrpc/wshserver/agentsend.go`，单测 `submitbudget_test.go` 锁四点
+  （180s→≥250 次、600s→≥850 次、30s→≤50 次、单调不降）。
+
+## 3.2 派发回执不许掩盖未确认
+
+- `dispatchFinalState(result)`：`SubmitConfirmed==true → (StateConfirmed,"")`；
+  否则 `(StateFailed, "E_SUBMIT_UNCONFIRMED: …")`。
+- **禁止**无条件 `Transition(StateConfirmed, "")`：`Store.Transition` 在 confirmed 分支会
+  `rec.Error = ""`，等于把失败洗成成功，UI/CLI/MCP 全都拿不到失败信号。
+- `failed` 可被 `AgentDispatchRetry` 重试（`CanTransition(failed→pending)` 已成立），不新建记录。
