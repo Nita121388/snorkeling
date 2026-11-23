@@ -1,0 +1,10 @@
+ [31m×[39m frontend/app/commontext/commontext-send-create-path.test.ts[2m > [22mCommonText create 发送路径[2m > [22m走 AgentSendCommand（submit/async/wait/waitms≥120s，文本走 text64）[32m 20[2mms[22m[39m
+[31m   → expected "spy" to be called 1 times, but got 0 times[39m
+ [31m×[39m frontend/app/commontext/commontext-send-create-path.test.ts[2m > [22mCommonText create 发送路径[2m > [22m不再登记 pending-input（前端 paste+固定延迟回车整条链退役）[32m 10[2mms[22m[39m
+[31m   → expected "spy" to not be called at all, but actually been called 1 times[90m
+ [31m×[39m frontend/app/commontext/commontext-send-create-path.test.ts[2m > [22mCommonText create 发送路径[2m > [22m发送失败 → onStatus(err)，但块已建好（不回滚）[32m 16[2mms[22m[39m
+[31m   → expected "spy" to be called with arguments: [ StringContaining{…}, 'err' ][90m
+[31m⎯⎯⎯⎯⎯⎯⎯[39m[1m[41m Failed Tests 3 [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯[39m
+[41m[1m FAIL [22m[49m frontend/app/commontext/commontext-send-create-path.test.ts[2m > [22mCommonText create 发送路径[2m > [22m发送失败 → onStatus(err)，但块已建好（不回滚）
+[2m Test Files [22m [1m[31m1 failed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[31m3 failed[39m[22m[90m (3)[39m
