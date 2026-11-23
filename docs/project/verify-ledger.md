@@ -314,3 +314,7 @@
 | 2026-11-23 02:54 | commontext-create-send | ❌ fatal（未跑） | launch+reset | `20261123T02540-commontext-create-send` | d15ab3c72 |
 | 2026-11-23 02:54 | commontext-create-send | ❌ 10/14（fatal） | launch+reset | `20261123T02395-commontext-create-send` | d15ab3c72 |
 | 2026-11-23 11:05 | commontext-create-send | ✅ 人工验证通过（自动台 3 轮被环境打断：启动器 exit=201 / CDP evaluate 超时 / profile 目录被占用） | manual | nita 手动：CommonText 新建 agent 并发送，消息送达且 agent 回复 | uncommitted |
+| 2026-11-23 03:25 | overview-refresh | ❌ 0/2（fatal） | launch+reset | `20261123T03193-overview-refresh` | be18d5b5e |
+| 2026-11-23 03:31 | overview-refresh | ❌ 8/9 | launch+reset | `20261123T03262-overview-refresh` | be18d5b5e |
+| 2026-11-23 03:40 | overview-refresh | ✅ 9/9 | launch+reset | `20261123T03331-overview-refresh` | be18d5b5e |
+| 2026-11-23 03:55 | overview-refresh | ❌ 6/12 | launch+reset | `20261123T03442-overview-refresh` | be18d5b5e |
