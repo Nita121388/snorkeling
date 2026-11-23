@@ -247,9 +247,9 @@ Candidate DS-005 must be classified into confirmed violation, brand/domain color
 | 1 | Theme variables, semantic Tailwind aliases, and visual reference | Complete | `theme.scss`, `tailwindsetup.css`, `design/prototypes/design-system.html` |
 | 2 | Shared buttons, icon buttons, inputs, textareas, and toggles | Complete | `frontend/app/element/*`, foundation state tests |
 | 3 | AI Sessions and Wave Config confirmed state violations | Complete | `frontend/app/view/aisessions/*`, `frontend/app/view/waveconfig/*`, targeted Vitest |
-| 4 | AI Panel surfaces, announcements, messages, tool states, and violation register | Complete | `frontend/app/aipanel/*`, `docs/ui-violations.md`, Playwright visual checks |
+| 4 | AI Panel surfaces, announcements, messages, tool states, and violation register | Complete | `frontend/app/aipanel/*`, `project-docs/ui-violations.md`, Playwright visual checks |
 | 5 | Onboarding, shared suggestion/session/status chrome, WidgetsBar, Clipboard, and WebView empty states | Complete | Targeted Vitest, onboarding Preview screenshots, Electron Light search-state screenshot, production build |
 | 6 | HIGH/CRITICAL shared modal changes | Partial | `Modal`/`FlexiModal` consolidated into a single `Modal` shell (header / scrollable content / footer, in-flow close button, `padding` / `scrollBody` escape hatches); `FlexiModal` and dead `element/modal.tsx` removed; DS-008 border already `1px`. Evidence: `frontend/app/modals/modal.dom.test.tsx`, `frontend/app/view/aisessions/property/property-list.dom.test.tsx`, targeted Vitest, `npm run build:prod`. Remaining: DS-009. |
 | 7 | Opaque surfaces over scrolling content | Complete | `frontend/app/view/aisessions/session-group.tsx`, `frontend/app/view/vcs/vcs-repo-switcher.tsx`, targeted Vitest, Electron CDP theme matrix (light / dark / monochrome) and pixel bleed-through comparison |
 
-The current violation register is an audit snapshot, not a permission to replace every palette match. The remaining candidates are tracked in `docs/ui-violations.md` with their runtime owner, exception classification, and next review boundary.
+The current violation register is an audit snapshot, not a permission to replace every palette match. The remaining candidates are tracked in `project-docs/ui-violations.md` with their runtime owner, exception classification, and next review boundary.

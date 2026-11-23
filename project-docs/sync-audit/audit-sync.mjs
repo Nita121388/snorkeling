@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * docs/sync-audit/audit-sync.mjs — 原型与真实代码同步对账（L1 硬查）
+ * project-docs/sync-audit/audit-sync.mjs — 原型与真实代码同步对账（L1 硬查）
  *
  * 扫描 design/prototypes 下所有 README.md，解析 PROCESS.md 约定的状态标记：
  *   > 同步状态：▲|●|▼|◐ ...
@@ -9,7 +9,7 @@
  *
  * 校验每个镜像源在仓库里是否仍存在，输出对账报告。
  *
- * 用法：node docs/sync-audit/audit-sync.mjs [--prototypes-dir design/prototypes] [--json]
+ * 用法：node project-docs/sync-audit/audit-sync.mjs [--prototypes-dir design/prototypes] [--json]
  * 退出码：0 = 无镜像缺失；1 = 有缺失/未标注（CI 可用）
  */
 import { readdirSync, readFileSync, existsSync, statSync } from "node:fs";

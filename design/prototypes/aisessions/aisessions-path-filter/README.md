@@ -33,4 +33,4 @@
 
 1. 后端 `pkg/aisessions/`：`summaryMatchesList` / `Search` 改为边界前缀匹配；`List` 响应新增全量 `ProjectPaths [{path,count}]`；补 Go 测试。
 2. 前端 `frontend/app/view/aisessions/`：`utils.ts` 目录导航 helpers（组件边界匹配、children 聚合）；`filter-panel.tsx` 渲染父级面包屑 + 子目录 chips；`aisessions.tsx` 使用分布数据并处理 Other 本地过滤；`types.ts`/`gotypes.d.ts` 类型；更新 `path-filter.test.ts` / `utils.test.ts`。
-3. 同步本 README 状态 → ◐ / ●；跑 `node docs/sync-audit/audit-sync.mjs`；更新 Obsidian 开发记录与 TODO。
+3. 同步本 README 状态 → ◐ / ●；跑 `node project-docs/sync-audit/audit-sync.mjs`；更新 Obsidian 开发记录与 TODO。

@@ -28,8 +28,8 @@
 
 ### L1 硬查（静默常驻，问题才出声）
 ```bash
-node docs/sync-audit/audit-sync.mjs          # 可读报告
-node docs/sync-audit/audit-sync.mjs --json    # 结构化 JSON（供审批/agent）
+node project-docs/sync-audit/audit-sync.mjs          # 可读报告
+node project-docs/sync-audit/audit-sync.mjs --json    # 结构化 JSON（供审批/agent）
 ```
 退出码：0=干净；1=有 🔴/🟡。
 
@@ -44,7 +44,7 @@ node docs/sync-audit/audit-sync.mjs --json    # 结构化 JSON（供审批/agent
 
 ### 审批界面
 ```
-双击 docs/sync-audit/approval-ui.html
+双击 project-docs/sync-audit/approval-ui.html
 ```
 键盘：1通过 / 2拒绝 / 3批注 / 4稍后 / g批量绿灯 / Esc取消；进度存 localStorage 可续审。
 

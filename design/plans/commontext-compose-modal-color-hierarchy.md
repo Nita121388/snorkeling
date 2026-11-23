@@ -6,7 +6,7 @@ Written against: 73cd16d80ce0eb298d171f76cf134b9c5518e6cb
 
 - Surface: Light 主题下打开 `CommonTextComposeModal`，选中一条 Common Text 后查看右侧详情。
 - Problem: CDP 计算样式显示 Modal 为 `#fffdf8`，右侧详情与顶部 Compose textarea 却使用 Canvas `#ebe5d9`；详情 textarea 的 `bg-editorbg` 在仓库中没有定义，运行时背景为透明；详情 footer 的 `Send`、`Copy`、`Insert` 全部使用同一旧式 grey 填充，导致主操作不突出；`All tags` 又在详情区形成一张带背景、边框和圆角的嵌套卡片。
-- Design evidence: `docs/design-system.md` 第 2、4、7、8 节要求 feature UI 使用语义 token、Canvas 仅用于根与无框页面区域、选中态使用 action-soft 或 accent indicator、主操作使用 action token，并要求 Modal 内使用无框分区而非卡片套卡片。
+- Design evidence: `project-docs/design-system.md` 第 2、4、7、8 节要求 feature UI 使用语义 token、Canvas 仅用于根与无框页面区域、选中态使用 action-soft 或 accent indicator、主操作使用 action token，并要求 Modal 内使用无框分区而非卡片套卡片。
 - Owner: `frontend/app/commontext/commontext-compose-modal.tsx` 中的 `CommonTextComposeModal`。
 - Scope and affected surfaces: Common Text Compose Modal 的顶部编辑器、Master-Detail 左侧选中行、右侧详情、All Tags 分区与详情 footer；所有 dark/light/monochrome 主题均继承语义 token 结果。
 - Uncertainty: 当前 GitNexus MCP 与 `.gitnexus/run.cjs` 均不可用；实施前必须恢复 GitNexus impact 能力并确认 `CommonTextComposeModal` 的 upstream 风险。视觉证据来自当前运行中的 Electron Light 主题，dark 与 monochrome 仍需实施后验证。
@@ -23,7 +23,7 @@ Written against: 73cd16d80ce0eb298d171f76cf134b9c5518e6cb
 - `bg-actionsoft`、`border-actionsoftborder`: 列表选中态。
 - `Button` 默认 `solid green`: 其实现已经映射 `--action-bg-color`、`--action-hover-bg-color`、`--action-text-color`，用于详情 `Insert` 主操作。
 - `border-border`: Master-Detail、All Tags 分区与未选中行的稳定边界。
-- Exemplar: `frontend/app/element/input.scss` 的 `.input` 表单颜色；`frontend/app/element/button.tsx` 与 `frontend/app/element/button.scss` 的默认 primary action；`docs/design-system.md` 的 Modal、Input、Button 和 selected state 契约。
+- Exemplar: `frontend/app/element/input.scss` 的 `.input` 表单颜色；`frontend/app/element/button.tsx` 与 `frontend/app/element/button.scss` 的默认 primary action；`project-docs/design-system.md` 的 Modal、Input、Button 和 selected state 契约。
 
 ## Changes
 
@@ -62,4 +62,4 @@ Written against: 73cd16d80ce0eb298d171f76cf134b9c5518e6cb
 
 ## Design documentation
 
-- After acceptance and validation: none；现有 `docs/design-system.md` 已完整定义本次使用的 Modal、form、selected 和 primary action 契约。
+- After acceptance and validation: none；现有 `project-docs/design-system.md` 已完整定义本次使用的 Modal、form、selected 和 primary action 契约。

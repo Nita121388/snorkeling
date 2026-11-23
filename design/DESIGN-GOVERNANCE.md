@@ -113,7 +113,7 @@ Frontmatter 强制字段见 `My Projects/Snorkling/CLAUDE.md`。
 
 ### 对账（design/prototypes/ 已有机制）
 
-对账脚本：`node docs/sync-audit/audit-sync.mjs --json`
+对账脚本：`node project-docs/sync-audit/audit-sync.mjs --json`
 - 检查每个原型 README 的"镜像源"是否在真实代码里仍然存在
 - 标记过时原型为 ▼，移入 `_to-delete/`
 

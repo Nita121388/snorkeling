@@ -62,7 +62,7 @@ The isolation boundary currently has three separate concerns and they must not b
 - Root problem B: `pkg/aisessions/paths.go:71-84` 只扫描进程级 `CLAUDE_CONFIG_DIR` 和全局 `~/.claude/projects`，而 vendor 路径只注入单个 block 的 `cmd:env`；真实会话写在 `<WaveDataDir>/claude-vendors/<vendorID>/projects/`，所以 AI Sessions 永远扫不到。
 - Data-loss risk: `pkg/ccswitch/reader.go:304-331` 的 `gcVendors` 对 orphan vendor 直接 `os.RemoveAll`。vendor 目录已包含 Claude 写入的 `projects/`、`sessions/` 等数据，删除 cc-switch vendor 可能连历史会话一起删除。
 - Product evidence: `E:/primary/Obsidian/My Projects/Snorkling/方案/Agent状态与识别/25-Vendor 隔离 Claude 丢失 Hooks 致 agent-status 不显示 — 根因与修复方案.md` 已确定默认策略为“vendor env + 全局 hooks”；`E:/primary/Obsidian/My Projects/Snorkling/开发细节/Sessions与列表/Claude Vendor 隔离下 Sessions 与 Agent-Status 失效-根因分析.md` 记录了 vendor Sessions 的实际写盘路径、扫描缺口和 Resume 风险。
-- Design evidence: `docs/design-system.md`、`design/prototypes/new-agent-panel/prototype.html`、`design/prototypes/new-agent-panel/README.md` 和当前 `AgentHookSettingsModal`。
+- Design evidence: `project-docs/design-system.md`、`design/prototypes/new-agent-panel/prototype.html`、`design/prototypes/new-agent-panel/README.md` 和当前 `AgentHookSettingsModal`。
 - Rendered evidence: Playwright 在 `1440x900` 的 Details 状态测得 shell 高 `923.75px`、底部 `1028.75px`，footer 已在首屏外；在 `700x600` 时 footer 底部为 `1045.75px`。截图见 `design/plans/agent-panel-1440x900-details.png` 与 `design/plans/agent-panel-700x600-details.png`。
 - Repository state: GitNexus 索引停在 `8ceaaa06`（2026-07-18），落后当前提交 `73cd16d8`；当前会话没有 GitNexus MCP，本地也没有 `.gitnexus/run.cjs` 或已安装 CLI，因此旧索引不能作为当前 blast-radius 证据。
 - Existing parallel work: `.claude/worktrees/ccswitch-vendor-isolation` 是干净的 `feat/ccswitch-vendor-isolation`，提交 `01611a96` 只实现了最初 vendor 隔离，不包含本次 hooks 修复，不应合并或重复规划。
@@ -72,7 +72,7 @@ The isolation boundary currently has three separate concerns and they must not b
 ## Design language
 
 - Audited surface: New Agent 齿轮打开的 Agent Settings Modal。
-- Design sources: `docs/design-system.md`、当前 `AgentHookSettingsModal`、原型运行态截图。
+- Design sources: `project-docs/design-system.md`、当前 `AgentHookSettingsModal`、原型运行态截图。
 - Documented decisions: Modal 使用 header、可滚动 content、固定 footer；使用语义 token；原生控件优先；主操作使用 action token；深色、浅色、monochrome 等价。
 - Governing owners and consumers: `AgentTargetFloatingWindow`、`AgentHookSettingsModal`、`Modal`、`Button`、`Toggle`、`pkg/ccswitch`、`WshRpcInterface` / `WshServer`。
 - Explicit exceptions: None documented.
@@ -83,7 +83,7 @@ The isolation boundary currently has three separate concerns and they must not b
 | --- | --- | --- | --- | --- | --- |
 | 1 | 原型的 `Basics` 是占位，会丢掉齿轮入口当前已有的 Agent Hooks 检查与修复功能 | `widgets.tsx:683-684` 打开 `AgentHookSettingsModal`；该 Modal 当前完整承载 Check/Install/Update/Repair | Tab 改为 `Agent Hooks / Details`；只有第三批获批后再增加 `Inheritance`，默认仍打开 `Agent Hooks` | 设置 Modal | High |
 | 2 | Details 长内容让整个 shell 超出视口，footer 不固定 | 运行态 `1440x900` footer bottom=`1028.75`；`700x600` footer bottom=`1045.75`；设计规范要求固定 footer | 在 feature-local shell 上设置 viewport max-height，只有 Tab body `overflow-y-auto`，不修改共享 `modal.scss` | 设置 Modal 布局 | High |
-| 3 | 原型继承开关是无语义的 `div.toggle-check`，不能通过键盘操作 | 原型 DOM 没有对应 `input[type=checkbox]`；`docs/design-system.md` 要求原生 checkbox 语义，仓库已有 `Toggle` | 第三批若落地继承编辑器，必须复用 `Toggle`，并由真实 `disabled` 表示全局源不存在 | Inheritance Tab | High |
+| 3 | 原型继承开关是无语义的 `div.toggle-check`，不能通过键盘操作 | 原型 DOM 没有对应 `input[type=checkbox]`；`project-docs/design-system.md` 要求原生 checkbox 语义，仓库已有 `Toggle` | 第三批若落地继承编辑器，必须复用 `Toggle`，并由真实 `disabled` 表示全局源不存在 | Inheritance Tab | High |
 
 ## Improve first
 

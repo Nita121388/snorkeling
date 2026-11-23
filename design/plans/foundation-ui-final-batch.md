@@ -5,7 +5,7 @@ Written against: `8ceaaa06fe5c84f8ecc9714ae5f30d2fc4526ba2` and the current work
 ## Evidence chain
 
 - Surface: Electron renderer feature chrome and the linked Preview surfaces in `frontend/app/`
-- Design evidence: `docs/design-system.md` sections 4, 7, 8, and 10
+- Design evidence: `project-docs/design-system.md` sections 4, 7, 8, and 10
 - Scope: confirmed fixed-palette occurrences from the occurrence-level audit; terminal ANSI, brand, user-selected, diff, and transparent-backdrop exceptions remain excluded
 - Uncertainty: onboarding `InitPage` and `VTab`/`WorkspaceSwitcher` have HIGH upstream impact and require the stated regression gate
 
@@ -47,4 +47,4 @@ Use the existing semantic surface, action, state, and focus tokens at the owning
 
 ## Design documentation
 
-- After validation, update `docs/design-system.md`, `docs/ui-violations.md`, and the two linked Obsidian records with the final classification and evidence.
+- After validation, update `project-docs/design-system.md`, `project-docs/ui-violations.md`, and the two linked Obsidian records with the final classification and evidence.

@@ -136,7 +136,7 @@ a test must re-import a **fresh module instance** per case (`vi.resetModules()` 
 
 浮窗（floating window）里如果有一段会随数据变长的列表（路径列表、目标列表、
 vendor 列表……），契约是 **header / scrollable content / footer** 三段式
-（`docs/design-system.md` §Modal, Popover, and Menu）：
+（`project-docs/design-system.md` §Modal, Popover, and Menu）：
 
 - 根节点：`flex flex-col` + 明确的 `max-height` 上限；
 - 列表段：`flex-1 min-h-0 overflow-y-auto overscroll-contain` + 自己的 `max-h` 上限；
