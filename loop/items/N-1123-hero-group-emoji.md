@@ -28,8 +28,8 @@ createdAt: "2026-11-23T11:17:37Z"
 
 ## 验收判据
 
-- [ ] `npx vitest run frontend/app/view/aisessions 2>&1 | tail -3` → `passed`
-- [ ] `npx vitest run frontend/app/view/aisessions/session-group.test.tsx 2>&1 | tail -4` → `passed`
+- [ ] `npx vitest run frontend/app/view/aisessions >/dev/null 2>&1 && echo VT_AISESSIONS_OK` → `VT_AISESSIONS_OK`
+- [ ] `npx vitest run frontend/app/view/aisessions/session-group.test.tsx >/dev/null 2>&1 && echo VT_GROUP_OK` → `VT_GROUP_OK`
 
 ## 记录
 

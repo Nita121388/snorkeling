@@ -27,10 +27,10 @@ createdAt: "2026-11-23T11:17:09Z"
 
 ## 验收判据
 
-- [ ] `npx vitest run frontend/app/session-overview 2>&1 | tail -3` → `passed`
-- [ ] `npx vitest run frontend/app/session-overview/overview-scheduled-tasks.test.ts 2>&1 | tail -4` → `passed`
-- [ ] `npx vitest run frontend/app/modals 2>&1 | tail -3` → `passed`
-- [ ] `npm run i18n:check && echo I18N_OK` → `I18N_OK`
+- [ ] `npx vitest run frontend/app/session-overview >/dev/null 2>&1 && echo VT_OVERVIEW_OK` → `VT_OVERVIEW_OK`
+- [ ] `npx vitest run frontend/app/session-overview/overview-scheduled-tasks.test.ts >/dev/null 2>&1 && echo VT_SCHEDTASK_OK` → `VT_SCHEDTASK_OK`
+- [ ] `npx vitest run frontend/app/modals >/dev/null 2>&1 && echo VT_MODALS_OK` → `VT_MODALS_OK`
+- [ ] `npm run i18n:check >/dev/null 2>&1 && echo I18N_OK` → `I18N_OK`
 
 ## 记录
 

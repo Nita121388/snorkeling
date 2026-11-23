@@ -27,9 +27,9 @@ createdAt: "2026-11-23T11:16:20Z"
 
 ## 验收判据
 
-- [ ] `go build ./... && echo GO_BUILD_OK` → `GO_BUILD_OK`
-- [ ] `go test -count=1 ./pkg/scheduler/... ./pkg/wshrpc/wshserver/... ./pkg/wconfig/... ./pkg/hero/... && echo GO_TESTS_OK` → `GO_TESTS_OK`
-- [ ] `go test -count=1 -run Hero -v ./pkg/scheduler/... ./pkg/wshrpc/wshserver/... ./pkg/wconfig/... 2>&1 | grep -c -- ---\ PASS` → `3`
+- [ ] `go build ./... >/dev/null 2>&1 && echo GO_BUILD_OK` → `GO_BUILD_OK`
+- [ ] `go test -count=1 ./pkg/scheduler/... ./pkg/wshrpc/wshserver/... ./pkg/wconfig/... ./pkg/hero/... >/dev/null 2>&1 && echo GO_TESTS_OK` → `GO_TESTS_OK`
+- [ ] `go test -count=1 -run Hero -v ./pkg/scheduler/... ./pkg/wshrpc/wshserver/... ./pkg/wconfig/... 2>&1 | grep -c -- "--- PASS"` → `3`
 
 ## 记录
 

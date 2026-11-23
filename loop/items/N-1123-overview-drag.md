@@ -27,9 +27,9 @@ createdAt: "2026-11-23T11:17:10Z"
 
 ## 验收判据
 
-- [ ] `npx vitest run frontend/app/session-overview 2>&1 | tail -3` → `passed`
-- [ ] `npx vitest run frontend/app/session-overview/overview-board-drag.test.ts 2>&1 | tail -4` → `passed`
-- [ ] `npx vitest run frontend/layout/lib 2>&1 | tail -3` → `passed`
+- [ ] `npx vitest run frontend/app/session-overview >/dev/null 2>&1 && echo VT_OVERVIEW_OK` → `VT_OVERVIEW_OK`
+- [ ] `npx vitest run frontend/app/session-overview/overview-board-drag.test.ts >/dev/null 2>&1 && echo VT_DRAG_OK` → `VT_DRAG_OK`
+- [ ] `npx vitest run frontend/layout/lib >/dev/null 2>&1 && echo VT_LAYOUT_OK` → `VT_LAYOUT_OK`
 
 ## 记录
 

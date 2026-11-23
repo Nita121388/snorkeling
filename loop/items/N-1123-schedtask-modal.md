@@ -27,10 +27,10 @@ createdAt: "2026-11-23T11:17:37Z"
 
 ## 验收判据
 
-- [ ] `npx vitest run frontend/app/view/scheduledtasks 2>&1 | tail -3` → `passed`
-- [ ] `npx vitest run frontend/app/modals 2>&1 | tail -3` → `passed`
-- [ ] `npm run i18n:check && echo I18N_OK` → `I18N_OK`
-- [ ] `npx vitest run frontend/app/modals/scheduledtask-modal.test.tsx 2>&1 | tail -4` → `passed`
+- [ ] `npx vitest run frontend/app/view/scheduledtasks >/dev/null 2>&1 && echo VT_SCHEDVIEW_OK` → `VT_SCHEDVIEW_OK`
+- [ ] `npx vitest run frontend/app/modals >/dev/null 2>&1 && echo VT_MODALS_OK` → `VT_MODALS_OK`
+- [ ] `npx vitest run frontend/app/modals/scheduledtask-modal.test.tsx >/dev/null 2>&1 && echo VT_MODAL_OK` → `VT_MODAL_OK`
+- [ ] `npm run i18n:check >/dev/null 2>&1 && echo I18N_OK` → `I18N_OK`
 
 ## 记录
 
