@@ -7,11 +7,13 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
 	"github.com/wavetermdev/waveterm/pkg/agentcatalog"
 	"github.com/wavetermdev/waveterm/pkg/scheduler"
+	"github.com/wavetermdev/waveterm/pkg/waveobj"
 	"github.com/wavetermdev/waveterm/pkg/wconfig"
 	"github.com/wavetermdev/waveterm/pkg/wshrpc"
 )
@@ -37,6 +39,10 @@ func InitScheduledTasks() {
 	schedStore = scheduler.NewRunStore()
 	schedRunner.Store = schedStore
 	schedRunner.UpdateMeta = updateScheduledTaskMeta
+	// Hero-bound tasks resolve their home base through pkg/hero; the root dir
+	// comes from settings.json "hero:rootdir" (pkg/hero is stdlib-only, so the
+	// app layer supplies it). An empty value keeps pkg/hero's own chain.
+	scheduler.HeroRootSetting = heroSettingRoot
 	// Mode=block tasks build the agent block through the exact path the GUI and
 	// `agent launch` use (catalog validation happens before any block is
 	// created; send failure leaves a usable, visible block).
@@ -61,26 +67,67 @@ func InitScheduledTasks() {
 	}
 }
 
+// heroSettingRoot returns settings.json's hero:rootdir through the live
+// config watcher — the same source the AISessions service uses. pkg/hero stays
+// stdlib-only, so the app is the layer that knows about settings.
+func heroSettingRoot() string {
+	return strings.TrimSpace(wconfig.GetWatcher().GetFullConfig().Settings.HeroRootDir)
+}
+
 // launchBlockForTask is the injected block launcher: equivalent to
 // `wsh agent launch --profile <p> --model <m> --cwd <workdir> --tab <tab> --send <prompt>`.
+// For a hero-bound task the cwd is the hero home and, once the block exists,
+// the same hero meta the frontend writes (`hero`, `hero:name`) is applied so
+// the A4 roster / hover card / AISessions aggregation can recognize it.
 func launchBlockForTask(task *wconfig.ScheduledTaskType) error {
+	exec := scheduler.ResolveTaskExecution(task)
+	launchReq := blockLaunchRequest(task, exec)
+	rtn, err := WshServerImpl.AgentLaunchCommand(context.Background(), launchReq)
+	if patch := heroBlockMetaPatch(exec); patch != nil && rtn != nil && rtn.BlockId != "" {
+		setMetaData := wshrpc.CommandSetMetaData{
+			ORef: waveobj.MakeORef(waveobj.OType_Block, rtn.BlockId),
+			Meta: patch,
+		}
+		if merr := WshServerImpl.SetMetaCommand(context.Background(), setMetaData); merr != nil {
+			log.Printf("[scheduledtask] warning: could not apply hero meta on block %s: %v", rtn.BlockId, merr)
+		}
+	}
+	return err
+}
+
+// blockLaunchRequest builds the AgentLaunchRequest for a scheduled task from
+// its resolved execution shape (single derivation point, scheduler package).
+func blockLaunchRequest(task *wconfig.ScheduledTaskType, exec scheduler.TaskExecution) wshrpc.AgentLaunchRequest {
 	tab := strings.TrimSpace(task.Tab)
 	if tab == "" || tab == "current" {
 		tab = "active"
 	}
 	launchReq := wshrpc.AgentLaunchRequest{
-		Profile: strings.TrimSpace(task.AgentProfile),
-		Model:   strings.TrimSpace(task.Model),
+		Profile: exec.AgentProfile,
+		Model:   exec.Model,
 		Tab:     tab,
-		Cwd:     strings.TrimSpace(task.Workdir),
+		Cwd:     exec.Workdir,
 	}
 	if prompt := strings.TrimSpace(task.Prompt); prompt != "" {
 		launchReq.Send = &wshrpc.AgentSendRequest{
 			Text64: base64.StdEncoding.EncodeToString([]byte(prompt)),
 		}
 	}
-	_, err := WshServerImpl.AgentLaunchCommand(context.Background(), launchReq)
-	return err
+	return launchReq
+}
+
+// heroBlockMetaPatch returns the hero meta applied to a freshly created block,
+// or nil when the task has no usable hero. Key names are the frontend
+// constants (AgentHeroIdMetaKey/AgentHeroNameMetaKey), and hero:name is always
+// non-empty for a resolvable hero (name, falling back to the id).
+func heroBlockMetaPatch(exec scheduler.TaskExecution) waveobj.MetaMapType {
+	if exec.HeroID == "" || exec.HeroName == "" {
+		return nil
+	}
+	return waveobj.MetaMapType{
+		scheduler.HeroMetaKey:     exec.HeroID,
+		scheduler.HeroNameMetaKey: exec.HeroName,
+	}
 }
 
 // updateScheduledTaskMeta records lastRun fields on the persisted task and refreshes the

@@ -202,6 +202,11 @@ type ScheduledTaskType struct {
 	// CLI once into a log file under ~/.snorkeling/scheduledtask-runs/; "block"
 	// creates an agent block in Tab and delivers Prompt through its TUI.
 	Mode string `json:"mode,omitempty"`
+	// Hero binds the task to a hero (hero id). At fire time an empty workdir
+	// defaults to the hero home (<hero root>/<id>) and unset provider/model
+	// fall back to the hero.json declarations (pkg/scheduler hero resolver).
+	// Empty = current behavior, byte-level (omitempty keeps it out of JSON).
+	Hero string `json:"hero,omitempty"`
 	// Tab selects where a block-mode task lands: "current" (the active tab),
 	// "new" (a brand-new tab), or an explicit tab id. Only meaningful when Mode
 	// is "block"; empty/"current" resolve to the active tab.

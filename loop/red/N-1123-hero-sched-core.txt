@@ -1,0 +1,16 @@
+$ go test -count=1 -run Hero ./pkg/wshrpc/wshserver/
+
+# github.com/wavetermdev/waveterm/pkg/wshrpc/wshserver [github.com/wavetermdev/waveterm/pkg/wshrpc/wshserver.test]
+pkg/wshrpc/wshserver/scheduledtask_hero_test.go:56:20: undefined: scheduler.ResolveTaskExecution
+pkg/wshrpc/wshserver/scheduledtask_hero_test.go:56:78: unknown field Hero in struct literal of type wconfig.ScheduledTaskType
+pkg/wshrpc/wshserver/scheduledtask_hero_test.go:74:24: undefined: scheduler.ResolveTaskExecution
+pkg/wshrpc/wshserver/scheduledtask_hero_test.go:76:3: unknown field Hero in struct literal of type wconfig.ScheduledTaskType
+pkg/wshrpc/wshserver/scheduledtask_hero_test.go:92:23: undefined: scheduler.ResolveTaskExecution
+pkg/wshrpc/wshserver/scheduledtask_hero_test.go:92:81: unknown field Hero in struct literal of type wconfig.ScheduledTaskType
+pkg/wshrpc/wshserver/scheduledtask_hero_test.go:101:22: undefined: scheduler.ResolveTaskExecution
+pkg/wshrpc/wshserver/scheduledtask_hero_test.go:116:15: roundTrip.Hero undefined (type wconfig.ScheduledTaskType has no field or method Hero)
+pkg/wshrpc/wshserver/scheduledtask_hero_test.go:117:71: roundTrip.Hero undefined (type wconfig.ScheduledTaskType has no field or method Hero)
+pkg/wshrpc/wshserver/scheduledtask_hero_test.go:125:62: unknown field Hero in struct literal of type wconfig.ScheduledTaskType
+pkg/wshrpc/wshserver/scheduledtask_hero_test.go:125:62: too many errors
+FAIL	github.com/wavetermdev/waveterm/pkg/wshrpc/wshserver [build failed]
+FAIL

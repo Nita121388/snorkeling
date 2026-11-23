@@ -120,6 +120,17 @@ func (r *DefaultTaskRunner) RunTask(task *wconfig.ScheduledTaskType) *RunResult 
 	}
 	log.Printf("[scheduler] running task id=%s name=%q agent=%s model=%s", task.Id, task.Name, task.AgentProfile, task.Model)
 
+	// Hero derivation happens once, at the execution entry: explicit task
+	// values win, then the hero.json declarations, then the current defaults.
+	// A missing hero only logs inside ResolveTaskExecution and never blocks
+	// the run, and a task without Hero keeps the exact pre-hero behavior.
+	if ScheduledTaskHeroEnabled && strings.TrimSpace(task.Hero) != "" {
+		exec := ResolveTaskExecution(task)
+		task = TaskWithExecution(task, exec)
+		log.Printf("[scheduler] task id=%s resolved hero=%q name=%q workdir=%s agent=%s model=%s thinking=%s",
+			task.Id, exec.HeroID, exec.HeroName, exec.Workdir, exec.AgentProfile, exec.Model, exec.Thinking)
+	}
+
 	switch strings.ToLower(strings.TrimSpace(task.Mode)) {
 	case "", "headless":
 		res = RunHeadlessOnce(task, task.Id)

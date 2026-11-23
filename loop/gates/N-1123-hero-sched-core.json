@@ -10,5 +10,14 @@
     "by": "nita",
     "verdict": "confirmed",
     "planHash": "21475bcf43f8"
+  },
+  "g2": {
+    "redProof": "loop/red/N-1123-hero-sched-core.txt",
+    "at": "2026-11-23T12:07:59Z"
+  },
+  "g5": {
+    "ok": true,
+    "executedAt": "2026-11-23T12:08:00Z",
+    "by": "compliance"
   }
 }

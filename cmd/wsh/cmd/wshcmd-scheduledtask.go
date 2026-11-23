@@ -33,6 +33,7 @@ var (
 	schedTaskSchedule   string
 	schedTaskMode       string
 	schedTaskAgent      string
+	schedTaskHero       string
 	schedTaskModel      string
 	schedTaskWorkdir    string
 	schedTaskTab        string
@@ -63,7 +64,11 @@ Schedules:
 
   wsh scheduledtask list --json
   wsh scheduledtask create --name "daily digest" --prompt "summarize" \
-      --schedule daily@09:00 --agent pi --yes`,
+      --schedule daily@09:00 --agent pi --yes
+
+Bind a task to a hero with --hero <id>: the run/block cwd defaults to the hero
+home and unset provider/model inherit hero.json; block mode also stamps the
+hero / hero:name block meta.`,
 	Args: cobra.NoArgs,
 }
 
@@ -129,6 +134,7 @@ func init() {
 	scheduledTaskCreateCmd.Flags().StringVar(&schedTaskSchedule, "schedule", "", "cron:<expr> | every:<n>s|m|h | once@<ISO> | daily@HH:MM | weekly@<0-6>@HH:MM (required)")
 	scheduledTaskCreateCmd.Flags().StringVar(&schedTaskMode, "mode", "headless", "headless | block")
 	scheduledTaskCreateCmd.Flags().StringVar(&schedTaskAgent, "agent", "pi", "agent profile from the catalog")
+	scheduledTaskCreateCmd.Flags().StringVar(&schedTaskHero, "hero", "", "bind to a hero id (default workdir = hero home; provider/model inherit hero.json)")
 	scheduledTaskCreateCmd.Flags().StringVar(&schedTaskModel, "model", "", "model id or provider/id (default: profile default)")
 	scheduledTaskCreateCmd.Flags().StringVar(&schedTaskWorkdir, "workdir", "", "working directory for the run / block")
 	scheduledTaskCreateCmd.Flags().StringVar(&schedTaskTab, "tab", "", "current | new | <tabid> (block mode only)")
@@ -141,6 +147,7 @@ func init() {
 	scheduledTaskUpdateCmd.Flags().StringVar(&schedTaskSchedule, "schedule", "", "cron:<expr> | every:<n>s|m|h | once@<ISO> | daily@HH:MM | weekly@<0-6>@HH:MM")
 	scheduledTaskUpdateCmd.Flags().StringVar(&schedTaskMode, "mode", "", "headless | block")
 	scheduledTaskUpdateCmd.Flags().StringVar(&schedTaskAgent, "agent", "", "agent profile from the catalog")
+	scheduledTaskUpdateCmd.Flags().StringVar(&schedTaskHero, "hero", "", "bind to a hero id (empty string clears the binding)")
 	scheduledTaskUpdateCmd.Flags().StringVar(&schedTaskModel, "model", "", "model id or provider/id")
 	scheduledTaskUpdateCmd.Flags().StringVar(&schedTaskWorkdir, "workdir", "", "working directory")
 	scheduledTaskUpdateCmd.Flags().StringVar(&schedTaskTab, "tab", "", "current | new | <tabid> (block mode only)")
@@ -229,6 +236,11 @@ func scheduledTaskCreateRun(cmd *cobra.Command, args []string) (rtnErr error) {
 	if err != nil {
 		return err
 	}
+	// A hero-bound create keeps the agent unset unless the caller picked one,
+	// so the hero.json provider can take over at fire time.
+	if strings.TrimSpace(req.Hero) != "" && !cmd.Flags().Changed("agent") {
+		req.AgentProfile = ""
+	}
 	req.Id = uuid.NewString()
 	if !schedTaskYes {
 		return schedTaskPreview("would create task", req)
@@ -277,6 +289,9 @@ func scheduledTaskUpdateRun(cmd *cobra.Command, args []string) (rtnErr error) {
 	}
 	if cmd.Flags().Changed("agent") {
 		merged.AgentProfile = schedTaskAgent
+	}
+	if cmd.Flags().Changed("hero") {
+		merged.Hero = schedTaskHero
 	}
 	if cmd.Flags().Changed("model") {
 		merged.Model = schedTaskModel
@@ -364,6 +379,7 @@ func schedTaskDraftFromFlags(id string) (wconfig.ScheduledTaskType, error) {
 		Name:         schedTaskName,
 		Enabled:      true,
 		AgentProfile: schedTaskAgent,
+		Hero:         schedTaskHero,
 		Model:        schedTaskModel,
 		Prompt:       schedTaskPrompt,
 		Workdir:      schedTaskWorkdir,
@@ -382,7 +398,9 @@ func schedTaskDraftFromFlags(id string) (wconfig.ScheduledTaskType, error) {
 	// Defaults live here rather than on the flag: the same vars are bound to
 	// both create and update flags (with different defaults), and cobra applies
 	// a flag default at registration time, so the last registration wins.
-	if strings.TrimSpace(req.AgentProfile) == "" {
+	// A hero-bound task keeps an empty agent profile when the caller did not
+	// pick one, so the hero.json provider can take over at fire time.
+	if strings.TrimSpace(req.AgentProfile) == "" && strings.TrimSpace(req.Hero) == "" {
 		req.AgentProfile = "pi"
 	}
 	if strings.TrimSpace(req.Mode) == "" {
@@ -414,6 +432,9 @@ func writeTaskText(t *wconfig.ScheduledTaskType) {
 	}
 	if t.Workdir != "" {
 		WriteStdout("workdir\t%s\n", t.Workdir)
+	}
+	if t.Hero != "" {
+		WriteStdout("hero\t%s\n", t.Hero)
 	}
 	WriteStdout("schedule\t%s\n", scheduleDescribe(*t))
 	if t.Prompt != "" {
