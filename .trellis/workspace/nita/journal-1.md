@@ -482,3 +482,19 @@ merge 后 go build ./... 通过、四包测试全绿、`task generate` 无 diff�
   「输出增长」在 pi 启动期同样发生（banner 渲染），绝不能用它当 agent 的 ack。非 agent（shell）块才允许。
 - 生成器坑：新增被 RPC 引用的包必须在 `cmd/generatego` 导入表加上，否则 `task generate` 重写
   wshclient.go 会丢 import 导致全仓编译失败（并且 generate 自己也会因此失败，被卡成鸡生蛋）。
+
+## 2026-11-23 CommonText 弹窗失焦根治（11-23-commontext-modal-focus）
+
+用户报「详情编辑容易失去焦点、拿不到焦点，切 app 的 Tab 再切回来才好」，此前几轮都修在
+composer 编辑器/列表（重渲染、IME、hover）。这次真机 CDP 走查（真实指针+键盘）证明 textarea
+自身受控更新路径稳定，真正问题在两层：①弹窗不写 `atoms.modalOpen`（只有 ModalsRenderer 写），
+`.modal-wrapper` 全屏吃点击（tab 栏命中元素就是它），点外面 → 焦点掉 body → 按键被派发给背后
+聚焦块（终端会写进 shell）；②tab 的 WebContentsView 会莫名丢 webContents 焦点，DOM activeElement
+还在但键入收不到，只有切 Tab 的 `webContents.focus()` 能修——正是用户绕行路径的机制。
+
+修法（4d6c4571f）：`modal-open-registry`（命名来源计数+sink，Modal 外壳/modalsModel 栈/tab-target-modal
+共用，`app.tsx` 唯一写 atom）；`.modal-wrapper` pointer-events:none；弹窗失焦回收（relatedTarget==null
+且 activeElement==body 才 rAF 回焦）；详情区合成期不重置字段；emain `on("focus")` 按
+`shouldRefocusActiveView` 补 focus。判据：registry 6 + modal.dom 10 + compose-modal.dom 25 +
+emain-window 12 全绿；真机探针 6/6 PASS（弹窗开着时新建 Tab 生效、切 Tab 往返弹窗仍在可编辑）。
+教训已入 quality-guidelines：这类问题先分 DOM/外壳/窗口三层，别再改输入框内部。
