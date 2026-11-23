@@ -1,4 +1,23 @@
-# HANDOFF — 接手必读（2026-11-23 更新）
+# HANDOFF — 接手必读（2026-11-24 更新）
+
+## 2026-11-24：晚间批次五包已全部交付并发版 0.0.137（真机验证 22/22 全绿，G7 待 nita 验收）
+
+> nita 2026-11-23 15:11 布置 4 条 + 会话面批注包，当晚全流程跑完：loop 建包 → G1/G6 签 → 红证先行 → 子代理实现（拖拽/emoji 由主代理接管）→ prove 判据全绿 → 真机验证 → 发版。
+> **Release 0.0.137 已发布**（三平台产物 20 个；发布信息已编辑为中文分区式：`Snorkeling 0.0.137`）。tag 指向 `9a6c0a224`；验证台 commit `412a71e02` 随后推上。
+
+| 包 | commit | 真机/单测证据 | 状态 |
+|---|---|---|---|
+| `N-1123-hero-sched-core`（Go） | `50b258b12` | go build/4包test/Hero三测 PASS=3；prove 三绿 | G1-G6 清，**G7 待 nita** |
+| `N-1123-hero-group-emoji` | `693d0a821` | 红证→实现→aisessions 53文件/822例全绿 | G1-G5 清，**G7 待 nita** |
+| `N-1123-overview-drag` | `06f03dbf8` | 红证→290例全绿→prove三绿；真机拖拽 5 条断言全绿（块真值守恒/同Tab零变更/空Tab可落） | G1-G5 清，**G7 待 nita** |
+| `N-1123-hero-sched-ui` | `6dedfc2ce` | 四判据绿；tsc 58 不增；真机 7 条断言绿（含 hero 下拉默认「不绑定」） | G1-G5 清，**G7 待 nita** |
+| `N-1123-schedtask-modal` | `8939d11f5` | 四判据绿；真机 4 条断言绿（工具栏入口/行数/新建/复用编辑） | G1-G5 清，**G7 待 nita** |
+
+- 真机验证台：`scripts/verify/scheduled-hero/verify.mjs`（**22/22 全绿**，报告 `verify-runs/20261123T23175-scheduled-hero/REPORT.html` 含 6 截图；area 已登记 README）。
+- 教训入库：L-0007（子代理 managed worktree 完成即销毁——唯一写者直接主树写，必须并行时收工落盘 patch）、L-0008（判据 `| tail -N` 配 `passed` 会假红——一律 `&& echo MARKER`）。
+- 待办（已登记 INBOX）：overview-board / overview-ux 因端口/profile 冲突未复跑；i18n:check 硬编码 CJK 基线红（存量 14 条 allowlist 外）待专项收口。
+
+
 
 ## 2026-11-23：文件夹索引徽标（实验插件）— 原型+方案就绪，未开工
 
