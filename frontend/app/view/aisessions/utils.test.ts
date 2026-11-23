@@ -913,7 +913,9 @@ describe("hero folding (A1.5)", () => {
         expect(groups).toHaveLength(1);
         expect(groups[0].heroId).toBe("demo");
         expect(groups[0].path).toBe("hero:demo");
-        expect(groups[0].name).toBe("🦊 Demo");
+        // 11-23 拍板：hero 组头只留 emoji 图标，组名回到纯名字（避免 emoji 重复渲染）。
+        expect(groups[0].name).toBe("Demo");
+        expect(groups[0].heroEmoji).toBe("🦊");
         expect(groups[0].sessions).toHaveLength(2);
         // AC2 探针：组名/路径里不能出现 rootdir 原文。
         expect(groups[0].name).not.toContain(Root);
@@ -929,7 +931,8 @@ describe("hero folding (A1.5)", () => {
             ctx("C:\\Users\\Me\\.snorkeling\\heroes")
         );
         expect(groups[0].heroId).toBe("demo");
-        expect(groups[0].name).toBe("🦊 Demo");
+        expect(groups[0].name).toBe("Demo");
+        expect(groups[0].heroEmoji).toBe("🦊");
     });
 
     it("leaves non-hero paths untouched", () => {

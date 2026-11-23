@@ -4,5 +4,14 @@
     "by": "nita",
     "verdict": "confirmed",
     "prdHash": "013ceca28ff7"
+  },
+  "g2": {
+    "redProof": "loop/red/N-1123-hero-group-emoji.txt",
+    "at": "2026-11-23T11:56:29Z"
+  },
+  "g5": {
+    "ok": true,
+    "executedAt": "2026-11-23T11:56:29Z",
+    "by": "compliance"
   }
 }

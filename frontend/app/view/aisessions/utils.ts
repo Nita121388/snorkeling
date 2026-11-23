@@ -352,8 +352,10 @@ export type ProjectSessionGroup = {
     tree: SessionTreeNode[];
     /** Whether this bucket holds sessions with no usable project path. */
     unclassified: boolean;
-    /** 命中人设据点时的人设 id（design A1.5 §3.2）：组名改为 🎭 人设名，不显示路径。 */
+    /** 命中人设据点时的人设 id（design A1.5 §3.2）：组头只显示人设图标 + 名字，不显示路径。 */
     heroId?: string;
+    /** 人设 emoji（名册条目上的 emoji，未声明时为 undefined）。组头图标用它，渲染层回落 🎭。 */
+    heroEmoji?: string;
 };
 
 /** 名册条目（后端 AISessionsListResponse.heroes 下发的精简人设）。 */
@@ -468,9 +470,12 @@ export function groupSessionsByProject(
         const path = (session.projectPath ?? "").trim();
         const heroId = matchHero != null && path !== "" ? matchHero(path) : "";
         const key = heroId !== "" ? `hero:${heroId}` : path === "" ? "" : basenamePath(path);
+        // hero 组名只用纯名字：emoji 由组头图标位单独渲染（11-23 拍板：组头只留 emoji，
+        // 名字里再带 emoji 就会重复 —— 与 11-19 N-1119-hero-header-dup-emoji 同一条纪律）。
+        const heroEntry = heroId !== "" ? heroCtx?.byId.get(heroId) : undefined;
         const name =
             heroId !== ""
-                ? heroGroupLabel(heroCtx?.byId.get(heroId) ?? { id: heroId, name: heroId })
+                ? (heroEntry?.name ?? "").trim() || heroEntry?.id || heroId
                 : key === ""
                   ? unclassifiedGroupName()
                   : key;
@@ -485,6 +490,7 @@ export function groupSessionsByProject(
                 tree: [],
                 unclassified: key === "",
                 heroId: heroId !== "" ? heroId : undefined,
+                heroEmoji: heroEntry?.emoji?.trim() || undefined,
             });
         }
     }

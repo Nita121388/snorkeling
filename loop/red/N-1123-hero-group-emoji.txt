@@ -1,0 +1,30 @@
+=== N-1123-hero-group-emoji 红证（2026-11-23，实现前实测）
+CMD: npx vitest run frontend/app/view/aisessions/session-group.test.tsx
+RESULT: 2 failed | 2 passed (4)
+FAIL: hero group renders fa-folder (expected 0, got 1) + no [data-group-head-emoji]
+
+AssertionError: expected <i …(1)></i> to have a length of +0 but got 1
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- 0[39m
+[31m+ 1[39m
+
+ ❯ frontend/app/view/aisessions/session-group.test.tsx:69:77
+     67|     it("hero group without roster emoji falls back to 🎭 (expanded)", …
+     68|         const container = mountGroup(makeGroup({ heroEmoji: undefined …
+     69|         expect(container.querySelectorAll("i.fa-folder, i.fa-folder-op…
+       |                                                                             ^
+     70|         const emojiNodes = container.querySelectorAll("[data-group-hea…
+     71|         expect(emojiNodes).toHaveLength(1);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 2 passed (4)
+   Start at  19:45:29
+   Duration  2.22s (transform 546ms, setup 16ms, collect 1.09s, tests 33ms, environment 463ms, prepare 58ms)
+
+JUNIT report written to /Users/nita/Primary/projects/snorkeling/test-results.xml

@@ -91,16 +91,26 @@ export function SessionGroup({
                     group.unclassified && "text-secondary"
                 )}
             >
-                <i
-                    className={cn(
-                        "fa-sharp fa-solid text-[11px]",
-                        group.unclassified
-                            ? "fa-inbox text-secondary/70"
-                            : collapsed
-                              ? "fa-folder text-secondary"
-                              : "fa-folder-open text-accent"
-                    )}
-                />
+                {group.heroId != null ? (
+                    <span
+                        data-group-head-emoji
+                        aria-hidden="true"
+                        className="shrink-0 text-[11px] leading-none"
+                    >
+                        {(group.heroEmoji ?? "").trim() || "🎭"}
+                    </span>
+                ) : (
+                    <i
+                        className={cn(
+                            "fa-sharp fa-solid text-[11px]",
+                            group.unclassified
+                                ? "fa-inbox text-secondary/70"
+                                : collapsed
+                                  ? "fa-folder text-secondary"
+                                  : "fa-folder-open text-accent"
+                        )}
+                    />
+                )}
                 <span className="min-w-0 flex-1 truncate font-medium text-primary">{group.name}</span>
                 <span className="shrink-0 rounded-full bg-hoverbg px-1.5 py-px text-[10px] text-secondary tabular-nums">
                     {group.sessions.length}
