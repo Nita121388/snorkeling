@@ -171,6 +171,28 @@ describe("CardSendPanel 存到 CommonText + 草稿持久化（11-24 R4/R5）", (
         }
     });
 
+    it("unknown 态（客户端超时）：不渲染 [重试]（防重复投递）", async () => {
+        vi.mocked(RpcApi.AgentSendCommand).mockRejectedValue(new Error("EC-TIME: timeout waiting for response"));
+        const container = mountPanel("b-unknown");
+        act(() => {
+            stateRef.setDraft("b-unknown", "may or may not have been sent");
+        });
+        act(() => {
+            stateRef.submit({ blockId: "b-unknown", sessionId: "s-1" }, "may or may not have been sent", {
+                waitReply: true,
+            });
+        });
+        await act(async () => {
+            await Promise.resolve();
+            await Promise.resolve();
+        });
+        // 结果未知徽章存在；绝不给 [重试]。
+        expect(container.querySelector("[data-overview-card-send-unknown]")).not.toBeNull();
+        expect(container.querySelectorAll("[data-overview-card-send-retry]")).toHaveLength(0);
+        // unknown 保留草稿（用户核实后再处置）。
+        expect(stateRef.draftByBlock["b-unknown"]).toBe("may or may not have been sent");
+    });
+
     it("发送成功后草稿清除（storage 同步清）", async () => {
         vi.mocked(RpcApi.AgentSendCommand).mockResolvedValue({ ok: true, submitconfirmed: true } as never);
         vi.useFakeTimers();
