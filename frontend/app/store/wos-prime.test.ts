@@ -61,7 +61,9 @@ describe("primeWaveObjects", () => {
     });
 
     it("超过 400 分批", async () => {
-        await WOS.primeWaveObjects(Array.from({ length: 401 }, (_, i) => oref(i)));
+        // 独立 id 段：不与前面用例重叠。前面的用例会把 blk-0001 解析并写入 WOV 缓存，
+        // 这里再包含它就会被幂等语义跳过（401→400，不再分批），断言就测不准了。
+        await WOS.primeWaveObjects(Array.from({ length: 401 }, (_, i) => oref(1000 + i)));
         expect(state.calls.length).toBe(2);
         expect(state.calls[0].length).toBe(400);
         expect(state.calls[1].length).toBe(1);

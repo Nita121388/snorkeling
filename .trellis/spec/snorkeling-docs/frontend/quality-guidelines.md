@@ -306,6 +306,27 @@ Tab 栏可见性的状态（收起集合、openedThisLaunch、unread 集合等�
 
 ---
 
+## 跨 Tab 的数据面必须自愈：WOS 缓存不跨 renderer，冷读面打开即重对账 (2026-11-24, task 11-23-overview-refresh-1123)
+
+每个 Tab 是独立 renderer（`emain/emain-tabview.ts` 的 `WaveTabView`），**每个 renderer 有自己的一份
+WOS 缓存**（`frontend/app/store/wos.ts` 的 `waveObjectValueCache`）。缓存靠 `waveobj:update` 广播续命：
+广播漏一条（连接竞态 / 重连窗口 / 迟到回包覆盖）后，那个 renderer 对**别的 Tab** 的 `tab.blockids` /
+block meta 就长期停在旧快照。实踩（2026-11-24）：Tab b 新建 agent → 从 Tab c 悬浮 Tab b 有 agent，
+切回 Tab a 再悬浮就没了（a 的 renderer 缓存是旧的）。
+
+- 硬规则 1：**响应式订阅只解决“事件到了以后”，不解决“事件没到这个 renderer”**。任何依赖别的 Tab
+  数据的冷读面（Tab 悬浮卡、「更多」菜单、Overview 等），打开时都必须做一次重对账
+  （`frontend/app/tab/tab-card-reconcile.ts` 是范式：reload tab → 按最新 blockids `primeWaveObjects({force:true})`）。
+  对账要限流（同 tab 2s 一次）+ 吞错；放在 `useEffect` 里，**不要**放进派生 atom 的 `get`（会打 RPC）。
+- 硬规则 2：WOS 读路径三条不可回退的 guard（缺一条就出现“永久旧数据”）——
+  ① 迟到 `GetObject` 回包**不得抹掉已有值**（`null` 回包同理）；
+  ② 请求失败必须解除 `loading`（只保留值），否则骨架/空态永久收不掉且无法重试；
+  ③ `reloadWaveObject` 与 `createWaveValueObject` 共用同一条 version guard，旧快照不得回退版本。
+- 判据（可机验）：`npx vitest run frontend/app/store/wos-guards.test.ts frontend/app/tab/tab-card-reconcile.test.ts frontend/app/tab/tab-info-card.dom.test.tsx`
+  全绿；把 `wos.ts` / `tab-info-card.tsx` 还原到旧版应至少 5 条红（红证）。
+
+---
+
 ## Code Review Checklist
 
 <!-- What reviewers should check -->

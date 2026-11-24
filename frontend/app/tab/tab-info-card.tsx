@@ -44,6 +44,7 @@ import * as React from "react";
 import { useTranslation } from "react-i18next";
 import { i18n } from "@/i18n/config";
 import { expandBlockIdsWithSubblocks } from "./tab-block-collect";
+import { reconcileTabCard } from "./tab-card-reconcile";
 import {
     agentGroupHidesProvider,
     agentGroupLabel,
@@ -216,6 +217,14 @@ export function TabInfoCard({ tabId, workspaceId }: { tabId: string; workspaceId
     const { t } = useTranslation("tab");
     const dataAtom = React.useMemo(() => getTabCardDataAtom(tabId, workspaceId), [tabId, workspaceId]);
     const { tab, workspace, counts, agentEntries } = useAtomValue(dataAtom);
+
+    // 冷读面的自愈：本 renderer 的 WOS 可能漏掉广播（每个 Tab 一个 renderer，各自一份缓存）。
+    // 卡片 mount == 打开（InfoCardPortal 只在 open 时渲染 children），做一次重对账：
+    // reload tab 对象 → 按最新 blockids 整批重拉块。内部 2s 节流 + version guard，幂等。
+    // 不挂在 dataAtom 上：对账要打 RPC，放到 effect 里而不是派生 atom 的 get 里。
+    React.useEffect(() => {
+        void reconcileTabCard(tabId, workspaceId);
+    }, [tabId, workspaceId]);
 
     const tabName = tab?.name ?? "";
     const flagColor = tab?.meta?.["tab:flagcolor"] as string | undefined;

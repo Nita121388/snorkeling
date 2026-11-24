@@ -178,9 +178,25 @@ function reloadWaveObject<T extends WaveObj>(oref: string): Promise<T> {
     }
     const prtn = GetObject<T>(oref);
     prtn.then((val) => {
+        const curData: WaveObjectDataItemType<WaveObj> = globalStore.get(wov.dataAtom);
+        // 与 createWaveValueObject 同一条 version guard：reload 是「重对账」入口
+        // （悬浮卡打开、重启恢复都会调），迟到的旧快照不得把 atom 回退到旧版本。
+        if (val != null && curData.value != null && curData.value.version >= val.version) {
+            globalStore.set(wov.dataAtom, { value: curData.value, loading: false });
+            return;
+        }
+        // 服务端 null（delete 事件未到 / 读己之写竞态）不得抹掉已有值。
+        if (val == null && curData.value != null) {
+            globalStore.set(wov.dataAtom, { value: curData.value, loading: false });
+            return;
+        }
         globalStore.set(wov.dataAtom, { value: val, loading: false });
-    }).catch(() => {
-        // 同 callBackendService：atom 刷新失败不能变成 unhandled rejection
+    }).catch((error) => {
+        // 同 callBackendService：atom 刷新失败不能变成 unhandled rejection。
+        // 失败只解除 loading（保留已有值），下一次 reload 仍可重试。
+        const curData: WaveObjectDataItemType<WaveObj> = globalStore.get(wov.dataAtom);
+        globalStore.set(wov.dataAtom, { value: curData.value, loading: false });
+        console.warn("WaveObj reload failed", oref, error);
     });
     return prtn;
 }
@@ -194,32 +210,51 @@ function createWaveValueObject<T extends WaveObj>(oref: string, shouldFetch: boo
     const startTs = Date.now();
     const localPromise = GetObject<T>(oref);
     wov.pendingPromise = localPromise;
-    localPromise.then((val) => {
-        if (wov.pendingPromise != localPromise) {
-            return;
-        }
-        const [otype, oid] = splitORef(oref);
-        if (val != null) {
-            if (val["otype"] != otype) {
-                throw new Error("GetObject returned wrong type");
+    localPromise
+        .then((val) => {
+            if (wov.pendingPromise != localPromise) {
+                return;
             }
-            if (val["oid"] != oid) {
-                throw new Error("GetObject returned wrong id");
+            const [otype, oid] = splitORef(oref);
+            if (val != null) {
+                if (val["otype"] != otype) {
+                    throw new Error("GetObject returned wrong type");
+                }
+                if (val["oid"] != oid) {
+                    throw new Error("GetObject returned wrong id");
+                }
             }
-        }
-        wov.pendingPromise = null;
-        const curData: WaveObjectDataItemType<WaveObj> = globalStore.get(wov.dataAtom);
-        // WPS 事件流可能已经把 atom 推进到比 HTTP 响应更新的版本(见
-        // updateWaveObject 的 version guard)。迟到的 HTTP 响应(例如 block 创建
-        // 瞬间、persist 前的旧快照)不得把 atom 回退到旧版本——否则新建 agent
-        // block 的 agent:sessionid 会被旧快照覆盖,TermSessionTopBar 永不出现。
-        if (val != null && curData.value != null && curData.value.version >= val.version) {
+            wov.pendingPromise = null;
+            const curData: WaveObjectDataItemType<WaveObj> = globalStore.get(wov.dataAtom);
+            // WPS 事件流可能已经把 atom 推进到比 HTTP 响应更新的版本(见
+            // updateWaveObject 的 version guard)。迟到的 HTTP 响应(例如 block 创建
+            // 瞬间、persist 前的旧快照)不得把 atom 回退到旧版本——否则新建 agent
+            // block 的 agent:sessionid 会被旧快照覆盖,TermSessionTopBar 永不出现。
+            if (val != null && curData.value != null && curData.value.version >= val.version) {
+                globalStore.set(wov.dataAtom, { value: curData.value, loading: false });
+                return;
+            }
+            // 同理：迟到的 null（读己之写竞态 / delete 事件先于 HTTP 回包）不得抹掉已有值。
+            // 抹成 null 后这个 WOV 再也不会自动重拉 —— 该 renderer 里的这一块就永久"不存在"，
+            // 悬浮卡/概览会长期显示 0 个 agent（每个 Tab 一个 renderer，各自一份 WOS 缓存）。
+            if (val == null && curData.value != null) {
+                globalStore.set(wov.dataAtom, { value: curData.value, loading: false });
+                return;
+            }
+            globalStore.set(wov.dataAtom, { value: val, loading: false });
+            console.log("WaveObj resolved", oref, Date.now() - startTs + "ms");
+        })
+        .catch((error) => {
+            if (wov.pendingPromise != localPromise) {
+                return;
+            }
+            wov.pendingPromise = null;
+            // 失败不能把 loading 永久挂在 true（骨架/空态永远收不掉），也不能丢已有值。
+            // 解除 loading 后 reloadWaveObject / primeWaveObjects 仍可重试。
+            const curData: WaveObjectDataItemType<WaveObj> = globalStore.get(wov.dataAtom);
             globalStore.set(wov.dataAtom, { value: curData.value, loading: false });
-            return;
-        }
-        globalStore.set(wov.dataAtom, { value: val, loading: false });
-        console.log("WaveObj resolved", oref, Date.now() - startTs + "ms");
-    });
+            console.warn("WaveObj load failed", oref, error);
+        });
     return wov;
 }
 
@@ -406,14 +441,16 @@ const PrimeWaveObjectsBatchSize = 400;
  *
  * 契约：
  * - 已解析（loading === false 且有对象）的 oref 跳过 —— 幂等，切换 workspace/重开不重复拉；
+ *   需要「已解析也重拉」的对账场景（悬浮卡打开时修正陈旧快照）传 `{ force: true }`；
  * - 按 400/批调 `GetObjects`，超出分批 await；
  * - 每个返回对象走 `updateWaveObject`（复用 version guard，不回退新版本）；
  * - 服务端 null 的对象跳过（不写缓存）；失败静默 —— prime 只是旁路，单件懒加载仍是兜底。
  */
-async function primeWaveObjects(orefs: string[]): Promise<void> {
+async function primeWaveObjects(orefs: string[], opts?: { force?: boolean }): Promise<void> {
     if (orefs == null || orefs.length === 0) {
         return;
     }
+    const force = opts?.force === true;
     const pendingOrefs: string[] = [];
     const seen = new Set<string>();
     for (const oref of orefs) {
@@ -421,11 +458,14 @@ async function primeWaveObjects(orefs: string[]): Promise<void> {
             continue;
         }
         seen.add(oref);
-        const wov = getWaveObjectValue(oref, false);
-        if (wov != null) {
-            const curData: WaveObjectDataItemType<WaveObj> = globalStore.get(wov.dataAtom);
-            if (curData.loading === false && curData.value != null) {
-                continue;
+        if (!force) {
+            // 默认语义（首屏预热）：已解析的跳过，幂等。
+            const wov = getWaveObjectValue(oref, false);
+            if (wov != null) {
+                const curData: WaveObjectDataItemType<WaveObj> = globalStore.get(wov.dataAtom);
+                if (curData.loading === false && curData.value != null) {
+                    continue;
+                }
             }
         }
         pendingOrefs.push(oref);

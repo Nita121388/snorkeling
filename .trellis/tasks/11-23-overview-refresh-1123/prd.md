@@ -39,3 +39,30 @@
 
 - 不在本包做重构成（融合卡在 `11-23-session-card-unify`）。
 - 不改 AISessions 视图的数据流。
+
+---
+
+## 2026-11-24 增量：S3 变体「切回旧 Tab 后悬浮卡丢 agent」已修（未提交）
+
+用户复现（11-24 上午）：Tab a → Tab b（内建 pi agent）→ Tab c；从 c 悬浮 b 有 agent，切回 a 悬浮 b 就没了。
+
+**定性**（代码级证据，非猜测）：
+- 每个 Tab 是独立 renderer（`emain/emain-tabview.ts` WaveTabView），悬浮卡读**本 renderer 的 WOS 缓存**；
+  c 的 renderer 是 agent 建好之后才创建的（首拉就是新数据），a 的 renderer 是启动时建的（靠广播续命）——
+  症状与「a 漏了建块时刻的广播」完全一致。
+- 读路径三处实锤缺陷（红证坐实）：迟到 `GetObject` 回 `null` 会抹掉已有值；请求失败永久 `loading:true`
+  且不可重试；`reloadWaveObject` 无 version guard 可被旧快照回退。响应式修复（11-20）救不了「事件没到」。
+
+**修复**（未 commit，文件清单见 implement 纪要）：
+1. `frontend/app/store/wos.ts`：三条 guard（null 不抹值 / 失败解除 loading 保留值 / reload 同 version guard），
+   `primeWaveObjects` 增加 `{force:true}` 对账语义。
+2. `frontend/app/tab/tab-card-reconcile.ts`（新增）：卡片打开时重对账（reload tab → 最新 blockids 整批 force prime），
+   2s 节流 + 吞错，执行器可注入。
+3. `frontend/app/tab/tab-info-card.tsx`：mount（==打开）时触发对账。
+
+**判据（已跑）**：`wos-guards.test.ts`(5) + `tab-card-reconcile.test.ts`(5) + `tab-info-card.dom.test.tsx`(7，含用户症状级回归) 全绿；
+旧代码下 5 条红（含 dom 级「陈旧 tab 对象 → 对账后 agent 行出现」）。回归：store/tab/wave 229 + agent-status 177 全绿；tsc 58 = 基线不增。
+`wos-prime.test.ts`「超过 400 分批」改用独立 id 段（旧用例隐性依赖「失败后永久 loading」这个 bug）。
+
+**未做**：S1/S2（Overview 不刷新）未在本增量里修——同一病根（跨 renderer 数据不回拉），但 Overview 面
+按 PRD 是独立判据，待单独走（可复用 reconcile 范式）。真机 verify 台（tab-info-card-freshness）待复跑。

@@ -49,6 +49,18 @@ vi.mock("@/app/store/wos", () => ({
     makeORef: (otype: string, oid: string) => `${otype}:${oid}`,
     getObjectValue: (oref: string) => objMap.get(oref) ?? null,
     getWaveObjectAtom: (oref: string) => orefAtom(oref),
+    // 重对账入口：模拟“服务端回包落地”——把回包写进 atom（就相当于 WOS 的 version-guarded set）
+    reloadWaveObject: async (oref: string) => {
+        const fresh = reloadResponses.get(oref);
+        if (fresh != null) {
+            pushWaveObjUpdate(oref, fresh);
+            return fresh;
+        }
+        return objMap.get(oref) ?? null;
+    },
+    primeWaveObjects: async (orefs: string[]) => {
+        primedOrefs.push(...orefs);
+    },
 }));
 
 // 单例必须是稳定引用：每次 getInstance() 返回新对象会让 TabAgentRow 的
@@ -90,6 +102,7 @@ vi.mock("@/i18n/config", () => ({
 }));
 
 import { TabInfoCard, __resetTabCardDataAtomCacheForTests } from "./tab-info-card";
+import { __resetTabCardReconcileForTests } from "./tab-card-reconcile";
 
 const tab = (blockids: string[], name = "T1") => ({
     otype: "tab",
@@ -119,6 +132,11 @@ const groupBlock = (oid: string, subblockids: string[]) => ({
 let container: HTMLDivElement | null = null;
 let root: ReturnType<typeof createRoot> | null = null;
 
+/** 重对账 reload 的服务端回包（oref → 新鲜对象）。未设置的 oref 返回当前缓存值。 */
+const reloadResponses = new Map<string, any>();
+/** 重对账 prime 发出的块 oref（断言“陈旧块也会重拉”）。 */
+const primedOrefs: string[] = [];
+
 function mount() {
     container = document.createElement("div");
     document.body.appendChild(container);
@@ -142,7 +160,10 @@ afterEach(() => {
     root = null;
     objMap.clear();
     atomMap.clear();
+    reloadResponses.clear();
+    primedOrefs.length = 0;
     __resetTabCardDataAtomCacheForTests();
+    __resetTabCardReconcileForTests();
 });
 
 describe("TabInfoCard 数据新鲜度", () => {
@@ -217,5 +238,26 @@ describe("TabInfoCard 数据新鲜度", () => {
 
         expect(agentRows()).toBe(1);
         expect(cardText()).toContain("tab:infoCard.agentGroupWithProvider");
+    });
+
+    it("本 renderer 缓存的 tab 对象陈旧（缺 agent blockid）→ 打开时重对账拉回最新 → agent 行出现", async () => {
+        // 用户症状（11-24）：在 Tab b 新建 agent → 从 Tab c 悬浮有 agent，
+        // 切回 Tab a 再悬浮就没了。每个 Tab 一个 renderer，各自一份 WOS；
+        // 广播漏掉时旧 renderer 的 tab.blockids 停在旧快照，响应式订阅也救不了。
+        objMap.set("workspace:w1", workspace);
+        objMap.set("tab:t1", tab([], "T1")); // 本 renderer 的旧快照：还没有 agent 块
+        reloadResponses.set("tab:t1", { otype: "tab", oid: "t1", version: 9, name: "T1", blockids: ["b1"], meta: {} });
+        objMap.set("block:b1", agentBlock("b1"));
+
+        mount();
+        // mount == 打开：对账异步落地后 tab atom 推到 version 9，派生 atom 重算 → agent 行
+        await act(async () => {
+            await new Promise((r) => setTimeout(r, 0));
+        });
+
+        expect(agentRows()).toBe(1);
+        expect(cardText()).toContain("tab:infoCard.agentGroupWithProvider");
+        expect(cardText()).not.toContain("tab:infoCard.emptyTab");
+        expect(primedOrefs).toContain("block:b1");
     });
 });
