@@ -1082,3 +1082,23 @@ meta 行形状词汇（同一任务）：状态 = 唯一彩色胶囊；agent 类
 - `commontext/pending-input.ts` 仅保留给**远端**块（后端 agentsend 拒绝远端）；本地 create/existing
   两条路径都必须走 `AgentSendCommand`，`wait:true, waitms:120000`（冷启动 40s+）。
 - 发送结果必须按 `submitconfirmed` 判定成败；不要只看 RPC 是否返回、更不能只看回执 `state=confirmed`。
+
+---
+
+## Agent 块 cmd 必须解析成绝对路径：探测与启动不得两套链路 (2026-11-24, task 11-24-agent-local-cmd-resolve)
+
+GUI 启动的 app 进程 PATH 是 launchd 裸 PATH（不含 `~/.zshrc` 追加的 `~/.opencode/bin` 等），而 cmd 块由
+`shell -c <cmd>` 执行且继承该裸 PATH。**弹窗用 FindCommand（含 candidateDirSpecs 回退扫描）探测得到的
+agent，启动时如果写裸命令名，就会 `zsh:1: command not found`**——两条链路不对称是实踩 bug（2026-11-24：
+弹窗能选 OpenCode，建块即报错）。
+
+- 硬规则：**任何创建 agent 块的面**（widgets New Agent、Overview add-agent / new-tab-with-agent、hero
+  启动、后端定时任务 `buildAgentBlockMeta`）都必须先过 `resolveAgentBlockCommandForLaunch`（前端）/
+  `resolveAgentCmdForLaunch`（Go，`wshserver/agentlaunch.go`），把裸命令解析成绝对路径。收口只有这两份
+  （TS + Go 镜像），不得出现第三份。
+- 守卫三条（TS `shouldUseLocalResolvedCmd` 与 Go 镜像必须同步）：解析为空（不 throw，退回裸 cmd）、
+  路径含空格（`cmd:shell=false` 禁止空格）、Windows `.cmd/.bat/.ps1` shim → 一律保留裸 cmd。
+- 远程连接例外：解析发生在目标机（FindCommandForConnection 脚本），行为不变（空结果仍 throw）。
+- 坑：`agent:provider` 取 cmd 的 basename（`getAgentProvider` / `agentProviderName`），绝对路径不影响
+  provider 判定；但 Go 测试断言 cmd 时要用「不存在的命令名」或受控 PATH（`t.Setenv("PATH", tmpDir)`），
+  否则断言结果依赖开发机装了什么。
