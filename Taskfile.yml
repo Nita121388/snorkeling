@@ -519,7 +519,6 @@ tasks:
         desc: Runs `npm install`
         internal: true
         generates:
-            - node_modules/**/*
             - package-lock.json
         sources:
             - package-lock.json
