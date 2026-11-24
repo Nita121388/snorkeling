@@ -340,3 +340,8 @@
 | 2026-11-23 23:16 | scheduled-hero | ✅ 1/1 | launch+reset | `20261123T23165-scheduled-hero` | 9a6c0a224 |
 | 2026-11-23 23:18 | scheduled-hero | ✅ 22/22 | attach | `20261123T23175-scheduled-hero` | 9a6c0a224 |
 | 2026-11-23 23:19 | overview-ux | ❌ fatal（未跑） | attach | `20261123T23185-overview-ux` | 9a6c0a224 |
+| 2026-11-24 16:26 | overview-board | ✅ 79/79 | launch+reset | `20261124T16252-overviewboard` | working-tree |
+| 2026-11-24 16:28 | overview-board | ✅ 80/80 | launch+reset | `20261124T16274-overviewboard` | working-tree |
+| 2026-11-24 16:34 | overview-board | ❌ 80/81 | launch+reset | `20261124T16333-overviewboard` | working-tree |
+| 2026-11-24 16:43 | overview-board | ✅ 81/81 | launch+reset | `20261124T16424-overviewboard` | working-tree |
+| 2026-11-24 16:45 | scheduled-hero | ✅ 22/22 | launch+reset | `20261124T16445-scheduled-hero` | 56c0b8100 |

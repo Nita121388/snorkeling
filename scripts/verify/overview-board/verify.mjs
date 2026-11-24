@@ -396,6 +396,36 @@ async function main() {
         } else {
           skip("agent-card-status-chip", `状态播种失败: ${seeded.err}`);
         }
+        // ── 11-24 批次（N-1124-overview-agent-fuse / agentsend-status）：
+        //   R1 看板卡会话方块条（与列表共用组件，data-board-message-square 锚点）；
+        //   R2 恢复按钮彻底移除（[data-board-restore] / 内联报错块都必须为 0）；
+        //   R6 常驻发送状态 chip —— 需要活跃发送行程，真机台不触发真实发送，走 skipped
+        //   （单测已锁：send-status-chip.test.tsx 6 例 + overview-dispatch-status.test.tsx 5 例）。
+        const fusion = await client.evaluate(`(() => {
+            const cards = [...document.querySelectorAll(".session-overview-board-card")];
+            const agentCards = cards.filter((c) => c.getAttribute("data-agent-like") === "true");
+            const strips = [...document.querySelectorAll(".session-overview-board-card-squares")];
+            return {
+                cards: cards.length,
+                agentCards: agentCards.length,
+                squares: document.querySelectorAll("[data-board-message-square]").length,
+                stripOnAgentCard: strips.some((strip) =>
+                    strip.closest(".session-overview-board-card")?.getAttribute("data-agent-like") === "true"
+                ),
+                restoreButtons: document.querySelectorAll("[data-board-restore]").length,
+                restoreErrors: document.querySelectorAll("[data-board-restore-error]").length,
+            };
+        })()`);
+        check(
+          "board-no-restore-action",
+          fusion.restoreButtons === 0 && fusion.restoreErrors === 0,
+          `restore=${fusion.restoreButtons} err=${fusion.restoreErrors}（11-24 R2：看板卡不再提供恢复入口）`
+        );
+        skip(
+          "board-send-status-chip",
+          "发送状态 chip 只在有活跃/已结束发送行程时渲染；真机台不触发真实发送。" +
+            "DOM 契约已由单测锁死（send-status-chip.test.tsx 6 例 / overview-dispatch-status.test.tsx 5 例）"
+        );
         // ── 卡面层次（2026-11-22 overview-agent-card-hierarchy）：
         //   1. 卡片不再是 transparent：与面板底色可区分（表面层 + 微阴影）；
         //   2. 标题独占 13px 档；
@@ -1108,6 +1138,35 @@ async function main() {
 
     if (metricSeed?.ok === true) {
       await client.evaluate(clickView("board"));
+      // ── 11-24 R1 会话方块条（N-1124-overview-agent-fuse）：度量轨段挂的是真实会话，
+      // 卡片 detail 加载后应渲染与列表同款的消息方块条（data-board-message-square 锚点）。
+      // detail 走 RPC + 缓存，轮询等待（不固定 sleep）。
+      const seededSquares = await (async () => {
+        const deadline = Date.now() + 25000;
+        let last = { squares: 0, stripOnCard: false, cardFound: false };
+        while (Date.now() < deadline) {
+          last = await client.evaluate(`(() => {
+                    const blockId = ${JSON.stringify(metricSeed.blockId)};
+                    const card = [...document.querySelectorAll(".session-overview-board-card")].find(
+                        (c) => c.getAttribute("data-board-block-id") === blockId
+                    );
+                    if (card == null) return { squares: 0, stripOnCard: false, cardFound: false };
+                    return {
+                        squares: card.querySelectorAll("[data-board-message-square]").length,
+                        stripOnCard: card.querySelector(".session-overview-board-card-squares") != null,
+                        cardFound: true,
+                    };
+                })()`);
+          if (last.cardFound === true && last.squares > 0) return last;
+          await new Promise((r) => setTimeout(r, 500));
+        }
+        return last;
+      })();
+      check(
+        "board-agent-message-squares",
+        seededSquares.cardFound === true && seededSquares.squares > 0 && seededSquares.stripOnCard === true,
+        `cardFound=${seededSquares.cardFound} squares=${seededSquares.squares} stripOnCard=${seededSquares.stripOnCard}（真实会话卡的方块条）`
+      );
       // summary 走 RPC + 缓存，等它落到卡片上（轮询而不是固定 sleep）。
       const metrics = await (async () => {
         const deadline = Date.now() + 25000;
