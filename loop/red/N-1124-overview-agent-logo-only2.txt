@@ -1,0 +1,24 @@
+# red proof: N-1124-overview-agent-logo-only2
+# date: 2026-11-24T06:20:39Z
+# Overview 看板 agent 卡 provider 簇仍渲染名称文字（logo+名称并存）→ logo-only 断言红，回退/空 provider 两条绿
+
+  Claude
+</span>
+
+[36m [2m❯[22m frontend/app/session-overview/overview-board-provider-logo.test.tsx:[2m81:80[22m[39m
+    [90m 79| [39m        expect(group.querySelector(".session-overview-board-card-meta-…
+    [90m 80| [39m        [90m// 名称文字节点完全消失（不是隐藏，是不渲染）[39m
+    [90m 81| [39m        expect(group.querySelector(".session-overview-board-card-meta-…
+    [90m   | [39m                                                                               [31m^[39m
+    [90m 82| [39m        [90m// 信息不丢：名称转到 tooltip / 无障碍名[39m
+    [90m 83| [39m        expect((group.getAttribute("title") ?? "").trim()).toBe("Claud…
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯[22m[39m
+
+
+[2m Test Files [22m [1m[31m1 failed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[31m1 failed[39m[22m[2m | [22m[1m[32m2 passed[39m[22m[90m (3)[39m
+[2m   Start at [22m 14:20:55
+[2m   Duration [22m 22.28s[2m (transform 4.24s, setup 69ms, collect 9.30s, tests 399ms, environment 5.72s, prepare 482ms)[22m
+
+JUNIT report written to E:/code/snorkeling/test-results.xml

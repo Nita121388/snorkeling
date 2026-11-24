@@ -280,8 +280,9 @@ function BoardCardImpl({
     const ageTitle = formatBoardAgeTitle(card.updatedAt, now);
     const readContext = useAgentReadContext(card.blockId, status);
     const unread = readContext.read === "unread";
-    // meta 行三簇（2026-11-22 M4 图标化）：
-    //   provider（agent 类型）= 品牌标 + 名称；project = folder 图标 + 名称；tags = 迷你方片。
+    // meta 行三簇（2026-11-22 M4 图标化；2026-11-24 provider 收 logo-only）：
+    //   provider（agent 类型）= 有品牌标只显标（名称转 title/aria-label），无标回退名称；
+    //   project = folder 图标 + 名称；tags = 迷你方片。
     // 四类信息不再共用同一种胶囊几何 —— 胶囊只留给状态 chip。
     const providerLabel = (card.providerLabel ?? "").trim();
     const projectLabel = (card.projectName || card.tabName || "").trim();
@@ -514,20 +515,29 @@ function BoardCardImpl({
                 {metaLabel !== "" ? (
                     <span className="session-overview-board-card-view-label">{metaLabel}</span>
                 ) : null}
+                {/* provider 簇（2026-11-24）：有品牌 logo 只渲染 logo（名称转 title/aria-label，
+                    不丢信息）；无 logo 的 provider（cursor/aider/qwen…）回退名称文字。 */}
                 {providerLabel !== "" ? (
-                    <span className="session-overview-board-card-meta-group" data-board-meta="provider">
+                    <span
+                        className="session-overview-board-card-meta-group"
+                        data-board-meta="provider"
+                        data-board-provider-logo={providerLogo != null ? "true" : undefined}
+                        title={providerLabel}
+                        aria-label={providerLabel}
+                    >
                         {providerLogo != null ? (
                             <span
                                 className="session-overview-board-card-meta-logo"
-                                style={providerLogo.iconColor != null ? { color: providerLogo.iconColor } : undefined}
+                                style={
+                                    providerLogo.iconColor != null ? { color: providerLogo.iconColor } : undefined
+                                }
                                 aria-hidden="true"
                             >
                                 {providerLogo.icon}
                             </span>
-                        ) : null}
-                        <span className="session-overview-board-card-meta-agent" title={providerLabel}>
-                            {providerLabel}
-                        </span>
+                        ) : (
+                            <span className="session-overview-board-card-meta-agent">{providerLabel}</span>
+                        )}
                     </span>
                 ) : null}
                 {projectLabel !== "" ? (

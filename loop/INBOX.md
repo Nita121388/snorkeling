@@ -27,3 +27,4 @@
   等该文件闭合后补跑 `agent-launch` / `agent-send` 真机台。
 - [ ] 2026-11-23 i18n:check 基线本就红：硬编码 CJK 扫描 72 条（allowlist 外 14，全在既有包产物：commontext-send / overview-card-send / agent-emoji-picker / emain 等）；本轮 drag 包的 [overview-drag] console.warn 也在此列。需要一次专项收口（提取为 i18n key 或扩 allowlist）
 - [ ] 2026-11-23 既有验证台 overview-board（77/79 基线）/ overview-ux（15/15）未在 11-23 夜间窗口复跑：其独立 profile+端口与在跑 dev 实例冲突，且本机 node_modules 曾半损。下次会话第一件事：node_modules 修好后复跑这两个 area，确认看板拖拽改动零回归
+- [ ] 2026-11-24 agent 路径链接（F-1124-agent-path-links）落地后补真机验证：终端打印 OSC 8 file:// 链接，Ctrl+点击应默认程序打开、hover 出 tooltip、右键有 Open File in Default App；AI 面板 markdown 链接兜底走 Search In Files。本机性能差，nita 说有空再验 @nita 2026-11-24：不需要真机验证，本机性能差，以后有空再验证

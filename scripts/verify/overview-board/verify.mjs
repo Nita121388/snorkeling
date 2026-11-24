@@ -412,6 +412,7 @@ async function main() {
             const title = card.querySelector(".session-overview-board-card-title");
             const providerGroup = card.querySelector('[data-board-meta="provider"]');
             const logo = providerGroup?.querySelector(".session-overview-board-card-meta-logo");
+            const providerTextEl = providerGroup?.querySelector(".session-overview-board-card-meta-agent");
             const projectGroup = card.querySelector('[data-board-meta="project"]');
             const tags = [...card.querySelectorAll(".session-overview-board-tag")];
             const tagStyle = tags.length > 0 ? getComputedStyle(tags[0]) : null;
@@ -428,7 +429,9 @@ async function main() {
                 cardBg,
                 panelBg,
                 titleSize: title ? getComputedStyle(title).fontSize : "",
-                providerText: (providerGroup?.querySelector(".session-overview-board-card-meta-agent")?.textContent || "").trim(),
+                providerText: (providerTextEl?.textContent || "").trim(),
+                providerTitle: (providerGroup?.getAttribute("title") || "").trim(),
+                providerHasLogo: logo != null,
                 logoColor: logo ? getComputedStyle(logo).color : "",
                 projectHasFolder: projectGroup == null ? null : projectGroup.querySelector("i") != null,
                 tagCount: tags.length,
@@ -445,10 +448,14 @@ async function main() {
             `card=${hierarchy.cardBg} panel=${hierarchy.panelBg}（不得回退 transparent）`
           );
           check("card-title-tier-13px", hierarchy.titleSize === "13px", `titleSize=${hierarchy.titleSize}`);
+          // provider 簇（2026-11-24 logo-only）：有品牌 logo 的 provider 只显 logo
+          // （名称文字节点不渲染，转 title/aria-label）；无 logo 的 provider 回退名称文字。
           check(
             "card-meta-provider-group",
-            hierarchy.providerText !== "",
-            `provider=${hierarchy.providerText} logo=${hierarchy.logoColor}`
+            hierarchy.providerHasLogo
+              ? hierarchy.providerText === "" && hierarchy.providerTitle !== ""
+              : hierarchy.providerText !== "",
+            `provider=${hierarchy.providerTitle || hierarchy.providerText} logo=${hierarchy.providerHasLogo} text=${hierarchy.providerText}`
           );
           check(
             "card-meta-project-folder",
