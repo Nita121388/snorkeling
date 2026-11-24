@@ -2,7 +2,7 @@
 
 # 工作项索引
 
-> 生成于 2026-11-24T06:31:24Z · 真相源 `loop/items/*.md`（人写）+ `loop/gates.json`（机器写）
+> 生成于 2026-11-24T08:47:26Z · 真相源 `loop/items/*.md`（人写）+ `loop/gates.json`（机器写）
 
 ## P0（4）
 
@@ -11,7 +11,7 @@
 - [ ] `F-1123-commontext-create-send` — CommonText 新建 agent 发送丢失：create 路径改走后端 agentsend（提交确认+补回车） · bug · self · 门已清
 - [ ] `N-1109-agent-chip-conditional-hook` — Agent 状态 chip 条件调用 hook 导致整窗白屏（React #310） · bug · self · 门已清
 
-## P1（48）
+## P1（50）
 
 - [ ] `N-1105-harness-redproof` — 既有 4 个 harness 登记 red_proof · chore · internal · 合规（G5）待办
 - [x] `N-1106-overview-card-actions` — Overview 看板卡片动作：关闭 / 删除（含彻底删除）+ 内联 Tab 组不被误删 · feature · self · 门已清
@@ -19,12 +19,14 @@
 - [ ] `F-1106-agent-card-chip-title` — Agent 卡片统一：状态 chip 收口 + 运行时长 + 标题编辑 · feature · self · 门已清
 - [ ] `N-1105-cleanup-46to22` — 清账：活跃任务 46 → ≤22（归档清单须人工过） · arch · internal · 器具（G2）待办
 - [x] `F-1106-move-block-tab-menu` — Move Block to Tab：菜单 4→1 条 + 弹窗内新建 / 每行双图标动作 · feature · self · 合规（G5）待办
+- [ ] `N-1124-agentsend-false-fail` — Overview 发送已成功却显示发送失败（客户端超时预算 + 超时误映射 + 重复投递） · bug · internal · 器具（G2）待办
 - [ ] `N-1118-detail-scope-threading` — 会话详情弹窗/详情块丢失 connection 与 origin，Detail 回落本机 manager · bug · self · 门已清
 - [ ] `N-1118-header-note-origin` — 标题缓存缺 origin 维度：外部 dump 会话的 Header 退化为 Session Details，写操作落错库 · bug · self · 门已清
 - [ ] `N-1118-resolve-exact-id` — 会话定位的 id 前缀匹配：唯一命中时静默返回另一个会话 · bug · self · 门已清
 - [ ] `N-1120-aisessions-detail-binding-mismatch` — AI 会话详情块绑定错位：打开的详情常常不是列表里点的那一行 · bug · self · 器具（G2）待办
 - [ ] `N-1120-fsmonitor-no-daemon` — 内部 git 调用禁用 fsmonitor 常驻 daemon（三处收口） · fix-small · self · 门已清
 - [ ] `N-1120-wsh-session-emoji-unwired` — wsh CLI 接线 bug：session emoji 命令组不可达（init() 漏 AddCommand） · bug · self · 门已清
+- [ ] `N-1124-hero-restore-header` — 恢复的 hero 会话块 header 走通用显示逻辑：恢复时补盖章 hero 身份 meta · bug · self · 器具（G2）待办
 - [ ] `F-1107-commontext-sync-meta` — Common Text 同步元数据：createdBy/origin/rev/deletedat + 迁移 + 过滤 · feature · self · 需求（G1）待办
 - [ ] `F-1109-commontext-sync-watermark` — Common Text 条目级同步水位：区分已同步/待上传 + 增量推送 + 墓碑 · arch · self · 方案（G6）待办
 - [ ] `F-1111-agent-property-scope` — Agent 卡片属性：范围三选一 + 表单美化 + 外部操作支持 · feature · self · 门已清
@@ -62,11 +64,12 @@
 - [ ] `N-1119-scheduled-task-agent` — 定时任务 agent 化：CLI/MCP 创建 + headless/建块双模式 + 启动补跑 · feature · self · 需求（G1）待办
 - [ ] `F-1113-persona-create-ui-r2` — A2 创建向导：两步向导 + 三入口 + 同源文件树预览 · feature · self · 门已清
 
-## P2（25）
+## P2（28）
 
 - [ ] `N-1105-queue-failopen` — queue.json 解析失败不再静默清空（回退 last-good 快照） · bug · internal · 门已清
 - [x] `N-1106-agent-tag-catalog` — Agent 卡片标签候选：全局清单 + 计数 · feature · self · 门已清
 - [ ] `N-1117-conn-typeahead-row-rail-r3` — 连接下拉：右栏图标居右对齐 + hover 一键复制 + 使用次数排序 + 打开时加载骨架 · fix-small · self · 门已清
+- [ ] `N-1124-overview-agent-fuse` — 看板 agent 卡与列表融合：会话方块条共用组件 + 移除恢复 icon · fix-small · internal · 器具（G2）待办
 - [ ] `N-1124-schedtask-entry-fix` — 定时任务入口回归右侧 widget + 弹窗版式对齐 CommonText（11-24-schedtask-entry-fix） · fix-small · self · 器具（G2）待办
 - [ ] `F-1118-hero-header-display` — Hero Block Header 显示 Hero 名而非据点哈希路径 · bug · self · 门已清
 - [ ] `F-1118-tab-collapse-active` — Tab 收起激活 Tab：收起并切走 · feature · internal · 门已清
@@ -82,10 +85,16 @@
 - [ ] `N-1119-hero-header-dup-emoji` — Hero Block Header 去重：保留左上 emoji，胶囊 Hero 名去掉 emoji · fix-small · self · 门已清
 - [ ] `N-1123-hero-group-emoji` — AISessions Hero 折叠组头只留 emoji（不画 fa-folder/folder-open） · fix-small · self · 门已清
 - [ ] `N-1123-schedtask-modal` — 定时任务管理面弹窗化（CommonText 同款 chrome，入口改工具栏按钮，不再建块） · feature · self · 门已清
+- [ ] `N-1124-agentsend-status-dispatch` — Agent 卡常驻发送状态 + 异步派发回执可见（292/aaaa 事故根因） · feature · internal · 需求（G1）待办
 - [ ] `N-1124-folder-index-badges-3` — 文件夹索引徽标（实验插件）：index.md 状态表 + badges.js 脚本源 + Agent 定向刷新 Block · feature · self · 门已清
 - [ ] `N-1124-idxbadges-agent-surface` — 索引徽标的 agent 发现面：wsh block refresh + agent guide 能力条目 · feature · self · 门已清
 - [ ] `N-1124-idxbadges-decoration-protocol` — 目录装饰协议 v2：词表泛化（icon/labelColor/hidden/order）+ 自定义状态注册表 + 脚本全树上下文 · feature · self · 门已清
-- [ ] `N-1124-overview-agent-logo-only2` — Overview 看板 Agent 卡 provider 只显品牌 logo（无 logo 回退文字） · fix-small · internal · 门已清
+- [ ] `N-1124-overview-agent-logo-only3` — Overview 看板 Agent 卡 provider 只显品牌 logo（无 logo 回退文字） · fix-small · internal · 门已清
+- [ ] `N-1124-overview-input-memory` — Overview 输入记忆：新建弹窗记住 agent 类型 + composer 草稿持久化 + 存 CommonText icon · feature · internal · 需求（G1）待办
 - [ ] `F-1109-agent-block-launch` — Agent Block 程序化创建：wsh agent launch + MCP 工具 · feature · internal · 需求（G1）待办
 - [ ] `F-1118-agent-block-send` — Agent Block 发送文本：wsh agent send + launch --send + TUI 就绪判定 · feature · internal · 需求（G1）待办
 - [ ] `N-1119-emoji-p0` — Emoji 偏好 P0：后端地基（NormalizeEmoji + 两表 + 偏好 UPSERT + 推荐器纯函数） · arch · self · 需求（G1）待办
+
+## P3（1）
+
+- [ ] `N-1124-agentsend-image-paste` — Overview composer 支持粘贴图片（落盘 + markdown 引用） · feature · internal · 需求（G1）待办

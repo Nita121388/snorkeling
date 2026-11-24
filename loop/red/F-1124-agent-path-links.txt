@@ -1,0 +1,68 @@
+# F-1124 agent-path-links 红证 2026-11-24 14:24
+# 命令: npx vitest run frontend/app/view/term/term-link-handler.test.ts frontend/app/element/agent-path-ref.test.ts frontend/app/element/agent-path-open.test.ts
+# 结论: 3 failed / no tests —— 三个待实现模块尚未存在（现状必红）
+
+
+ RUN  v3.2.4 E:/code/snorkeling
+
+
+⎯⎯⎯⎯⎯⎯ Failed Suites 3 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  frontend/app/element/agent-path-open.test.ts [ frontend/app/element/agent-path-open.test.ts ]
+Error: Cannot find module './agent-path-open' imported from 'E:/code/snorkeling/frontend/app/element/agent-path-open.test.ts'
+ ❯ frontend/app/element/agent-path-open.test.ts:5:1
+      3| 
+      4| import { describe, expect, it, vi } from "vitest";
+      5| import { openAgentPathRef, type AgentPathOpenDeps } from "./agent-path…
+       | ^
+      6| 
+      7| function makeDeps(overrides: Partial<AgentPathOpenDeps> = {}) {
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯
+Serialized Error: { code: 'ERR_MODULE_NOT_FOUND' }
+Caused by: Error: Failed to load url ./agent-path-open (resolved id: ./agent-path-open) in E:/code/snorkeling/frontend/app/element/agent-path-open.test.ts. Does the file exist?
+ ❯ loadAndTransform node_modules/vite/dist/node/chunks/dep-Dq2t6Dq0.js:35730:17
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/3]⎯
+
+ FAIL  frontend/app/element/agent-path-ref.test.ts [ frontend/app/element/agent-path-ref.test.ts ]
+Error: Cannot find module './agent-path-ref' imported from 'E:/code/snorkeling/frontend/app/element/agent-path-ref.test.ts'
+ ❯ frontend/app/element/agent-path-ref.test.ts:5:1
+      3| 
+      4| import { describe, expect, it } from "vitest";
+      5| import { repairAgentPathText, parseAgentPathRef } from "./agent-path-r…
+       | ^
+      6| 
+      7| describe("repairAgentPathText", () => {
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯
+Serialized Error: { code: 'ERR_MODULE_NOT_FOUND' }
+Caused by: Error: Failed to load url ./agent-path-ref (resolved id: ./agent-path-ref) in E:/code/snorkeling/frontend/app/element/agent-path-ref.test.ts. Does the file exist?
+ ❯ loadAndTransform node_modules/vite/dist/node/chunks/dep-Dq2t6Dq0.js:35730:17
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/3]⎯
+
+ FAIL  frontend/app/view/term/term-link-handler.test.ts [ frontend/app/view/term/term-link-handler.test.ts ]
+Error: Cannot find module './term-link-handler' imported from 'E:/code/snorkeling/frontend/app/view/term/term-link-handler.test.ts'
+ ❯ frontend/app/view/term/term-link-handler.test.ts:5:1
+      3| 
+      4| import { describe, expect, it, vi } from "vitest";
+      5| import { createTerminalLinkHandler, type TerminalLinkHandlerDeps } fro…
+       | ^
+      6| 
+      7| function makeDeps(overrides: Partial<TerminalLinkHandlerDeps> = {}): {
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯
+Serialized Error: { code: 'ERR_MODULE_NOT_FOUND' }
+Caused by: Error: Failed to load url ./term-link-handler (resolved id: ./term-link-handler) in E:/code/snorkeling/frontend/app/view/term/term-link-handler.test.ts. Does the file exist?
+ ❯ loadAndTransform node_modules/vite/dist/node/chunks/dep-Dq2t6Dq0.js:35730:17
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/3]⎯
+
+
+ Test Files  3 failed (3)
+      Tests  no tests
+   Start at  14:24:22
+   Duration  7.82s (transform 217ms, setup 93ms, collect 0ms, tests 0ms, environment 2ms, prepare 1.89s)
+
+JUNIT report written to E:/code/snorkeling/test-results.xml

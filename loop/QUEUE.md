@@ -2,7 +2,7 @@
 
 # QUEUE
 
-> 生成于 2026-11-24T06:31:24Z · 真相源 `loop/queue.json`（人/看板经 `bin/queue.mjs` 写）
+> 生成于 2026-11-24T08:47:26Z · 真相源 `loop/queue.json`（人/看板经 `bin/queue.mjs` 写）
 
 | 包 | 优先级 | 类型 | 门 | 门状态 | 运行 | 说明 |
 |---|---|---|---|---|---|---|
@@ -16,12 +16,14 @@
 | `F-1106-agent-card-chip-title` | P1 | feature | 3/3 | clear | queued | Agent 卡片统一：状态 chip 收口 + 运行时长 + 标题编辑 |
 | `N-1105-cleanup-46to22` | P1 | arch | 1/4 | blocked:g2 | idle | 器具（G2）：no-red-proof |
 | `F-1106-move-block-tab-menu` | P1 | feature | 2/3 | blocked:g5 | released | 合规（G5）：not-run |
+| `N-1124-agentsend-false-fail` | P1 | bug | 0/1 | blocked:g2 | idle | 器具（G2）：no-red-proof |
 | `N-1118-detail-scope-threading` | P1 | bug | 1/1 | clear | committed | 会话详情弹窗/详情块丢失 connection 与 origin，Detail 回落本机 manager |
 | `N-1118-header-note-origin` | P1 | bug | 1/1 | clear | committed | 标题缓存缺 origin 维度：外部 dump 会话的 Header 退化为 Session Details，写操作落错库 |
 | `N-1118-resolve-exact-id` | P1 | bug | 1/1 | clear | committed | 会话定位的 id 前缀匹配：唯一命中时静默返回另一个会话 |
 | `N-1120-aisessions-detail-binding-mismatch` | P1 | bug | 0/1 | blocked:g2 | idle | 器具（G2）：no-red-proof |
 | `N-1120-fsmonitor-no-daemon` | P1 | fix-small | 1/1 | clear | queued | 内部 git 调用禁用 fsmonitor 常驻 daemon（三处收口） |
 | `N-1120-wsh-session-emoji-unwired` | P1 | bug | 1/1 | clear | green | wsh CLI 接线 bug：session emoji 命令组不可达（init() 漏 AddCommand） |
+| `N-1124-hero-restore-header` | P1 | bug | 0/1 | blocked:g2 | idle | 器具（G2）：no-red-proof |
 | `F-1107-commontext-sync-meta` | P1 | feature | 0/3 | blocked:g1 | idle | 需求（G1）：unsigned |
 | `F-1109-commontext-sync-watermark` | P1 | arch | 3/4 | blocked:g6 | committed | 方案（G6）：expired |
 | `F-1111-agent-property-scope` | P1 | feature | 3/3 | clear | idle | Agent 卡片属性：范围三选一 + 表单美化 + 外部操作支持 |
@@ -61,6 +63,7 @@
 | `N-1105-queue-failopen` | P2 | bug | 1/1 | clear | accepted | queue.json 解析失败不再静默清空（回退 last-good 快照） |
 | `N-1106-agent-tag-catalog` | P2 | feature | 3/3 | clear | released | Agent 卡片标签候选：全局清单 + 计数 |
 | `N-1117-conn-typeahead-row-rail-r3` | P2 | fix-small | 1/1 | clear | green | 连接下拉：右栏图标居右对齐 + hover 一键复制 + 使用次数排序 + 打开时加载骨架 |
+| `N-1124-overview-agent-fuse` | P2 | fix-small | 0/1 | blocked:g2 | idle | 器具（G2）：no-red-proof |
 | `N-1124-schedtask-entry-fix` | P2 | fix-small | 0/1 | blocked:g2 | idle | 器具（G2）：no-red-proof |
 | `F-1118-hero-header-display` | P2 | bug | 1/1 | clear | committed | Hero Block Header 显示 Hero 名而非据点哈希路径 |
 | `F-1118-tab-collapse-active` | P2 | feature | 3/3 | clear | committed | Tab 收起激活 Tab：收起并切走 |
@@ -76,10 +79,13 @@
 | `N-1119-hero-header-dup-emoji` | P2 | fix-small | 1/1 | clear | green | Hero Block Header 去重：保留左上 emoji，胶囊 Hero 名去掉 emoji |
 | `N-1123-hero-group-emoji` | P2 | fix-small | 1/1 | clear | running | AISessions Hero 折叠组头只留 emoji（不画 fa-folder/folder-open） |
 | `N-1123-schedtask-modal` | P2 | feature | 3/3 | clear | running | 定时任务管理面弹窗化（CommonText 同款 chrome，入口改工具栏按钮，不再建块） |
+| `N-1124-agentsend-status-dispatch` | P2 | feature | 0/3 | blocked:g1 | idle | 需求（G1）：unsigned |
 | `N-1124-folder-index-badges-3` | P2 | feature | 3/3 | clear | green | 文件夹索引徽标（实验插件）：index.md 状态表 + badges.js 脚本源 + Agent 定向刷新 Block |
 | `N-1124-idxbadges-agent-surface` | P2 | feature | 3/3 | clear | green | 索引徽标的 agent 发现面：wsh block refresh + agent guide 能力条目 |
 | `N-1124-idxbadges-decoration-protocol` | P2 | feature | 3/3 | clear | green | 目录装饰协议 v2：词表泛化（icon/labelColor/hidden/order）+ 自定义状态注册表 + 脚本全树上下文 |
-| `N-1124-overview-agent-logo-only2` | P2 | fix-small | 1/1 | clear | queued | Overview 看板 Agent 卡 provider 只显品牌 logo（无 logo 回退文字） |
+| `N-1124-overview-agent-logo-only3` | P2 | fix-small | 1/1 | clear | green | Overview 看板 Agent 卡 provider 只显品牌 logo（无 logo 回退文字） |
+| `N-1124-overview-input-memory` | P2 | feature | 0/3 | blocked:g1 | idle | 需求（G1）：unsigned |
 | `F-1109-agent-block-launch` | P2 | feature | 0/3 | blocked:g1 | idle | 需求（G1）：unsigned |
 | `F-1118-agent-block-send` | P2 | feature | 0/3 | blocked:g1 | idle | 需求（G1）：unsigned |
 | `N-1119-emoji-p0` | P2 | arch | 0/4 | blocked:g1 | idle | 需求（G1）：unsigned |
+| `N-1124-agentsend-image-paste` | P3 | feature | 0/3 | blocked:g1 | idle | 需求（G1）：unsigned |

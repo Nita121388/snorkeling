@@ -2,10 +2,10 @@
 <html lang="zh-CN" data-theme="paper" data-mode="auto" data-style="80" data-measure="wide">
 <head>
 <meta charset="utf-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-8KN1EVFWjtuNrNhfAp5bS71p6Lw5vkZ1kD1C520S1lI=' 'sha256-U29bHzy4sZKP875375HeDK+KOJw9yvgTM3ocXP1TGOw='; style-src 'unsafe-inline'; img-src data:; font-src data:; media-src data:; connect-src 'self'; form-action 'none'; base-uri 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-XMJda9QtFNog2TxaVm/+hDzmW2jWQmUxRE6SN5hTr1M=' 'sha256-U29bHzy4sZKP875375HeDK+KOJw9yvgTM3ocXP1TGOw='; style-src 'unsafe-inline'; img-src data:; font-src data:; media-src data:; connect-src 'self'; form-action 'none'; base-uri 'none'">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="generator" content="Answer me with HTML 0.6.1">
-<title>定时任务入口改造方案</title>
+<title>定时任务弹窗改造方案 v2</title>
 <style>
 html[data-theme="blueprint"], html[data-theme="blueprint"][data-mode="light"] {
   color-scheme: light;
@@ -1129,128 +1129,6 @@ table.am-mark { background: none; }
 }
 
 
-/* Change markers (only on pages that have one). Only the Changes view (.am-view-changes) draws change styling: colors, strike-through, faded items
-   and badges. Before and After look like a plain diagram, and the items that do not exist in the view are hidden.
-   The colors are the theme's --ok, --err and --warn, so every theme and mode works. A view hides items with visibility, so nothing moves. */
-.am-view-before [data-delta="added"], .am-view-after [data-delta="removed"] { visibility: hidden; }
-.am-view-before .am-delta-badge, .am-view-after .am-delta-badge { visibility: hidden; }
-/* A list label's badge is inline and would indent the label like a nesting level, so there it takes no space; the other badges are positioned and move nothing. */
-.am-view-before .am-tree-label > .am-delta-badge, .am-view-after .am-tree-label > .am-delta-badge { display: none; }
-
-.am-delta-badge--added { --badge: var(--ok, #1f9d4d); }
-.am-delta-badge--removed { --badge: var(--err, #c62828); }
-.am-delta-badge--changed { --badge: var(--warn, #a8620a); }
-
-/* flow */
-.am-view-changes .am-node[data-delta="added"] .am-node-shape { stroke: var(--ok, #1f9d4d); }
-.am-view-changes .am-node[data-delta="removed"] .am-node-shape { stroke: var(--err, #c62828); }
-.am-view-changes .am-node[data-delta="changed"] .am-node-shape { stroke: var(--warn, #a8620a); }
-.am-view-changes .am-node[data-delta="added"] > text { fill: var(--ok, #1f9d4d); }
-.am-view-changes .am-node[data-delta="removed"] > text { fill: var(--err, #c62828); }
-.am-view-changes [data-delta="added"] > .am-edge { stroke: var(--ok, #1f9d4d); }
-.am-view-changes [data-delta="removed"] > .am-edge { stroke: var(--err, #c62828); }
-.am-view-changes .am-arrow--added { fill: var(--ok, #1f9d4d); }
-.am-view-changes .am-arrow--removed { fill: var(--err, #c62828); }
-.am-view-changes [data-delta="added"] > .am-edge-label text { fill: var(--ok, #1f9d4d); }
-.am-view-changes [data-delta="removed"] > .am-edge-label text { fill: var(--err, #c62828); }
-.am-view-changes .am-cluster[data-delta="added"] { stroke: var(--ok, #1f9d4d); }
-.am-view-changes .am-cluster[data-delta="removed"] { stroke: var(--err, #c62828); }
-.am-view-changes .am-cluster-label[data-delta="added"] { fill: var(--ok, #1f9d4d); }
-.am-view-changes .am-cluster-label[data-delta="removed"] { fill: var(--err, #c62828); }
-/* state: a state is an .am-node, and its initial and final dots take the same colors as a node shape. */
-.am-view-changes .am-node[data-delta="added"] .am-state-dot, .am-view-changes .am-node[data-delta="added"] .am-state-core { fill: var(--ok, #1f9d4d); }
-.am-view-changes .am-node[data-delta="removed"] .am-state-dot, .am-view-changes .am-node[data-delta="removed"] .am-state-core { fill: var(--err, #c62828); }
-.am-view-changes .am-node[data-delta="changed"] .am-state-dot, .am-view-changes .am-node[data-delta="changed"] .am-state-core { fill: var(--warn, #a8620a); }
-.am-view-changes .am-node[data-delta="added"] .am-state-ring { stroke: var(--ok, #1f9d4d); }
-.am-view-changes .am-node[data-delta="removed"] .am-state-ring { stroke: var(--err, #c62828); }
-.am-view-changes .am-node[data-delta="changed"] .am-state-ring { stroke: var(--warn, #a8620a); }
-.am-view-changes g[data-delta="removed"]:not(.am-delta-badge), .am-view-changes .am-cluster[data-delta="removed"], .am-view-changes .am-cluster-label[data-delta="removed"] { opacity: 0.55; }
-.am-view-changes .am-node[data-delta="removed"] > text, .am-view-changes g[data-delta="removed"] > .am-edge-label text, .am-view-changes .am-cluster-label[data-delta="removed"] { text-decoration: line-through; }
-.am-diagram .am-delta-badge circle { fill: var(--badge); stroke: var(--paper, #ffffff); stroke-width: 1.5; }
-.am-diagram .am-delta-badge text { fill: var(--paper, #ffffff); font: 700 var(--am-fs-d-badge) var(--font-sans, sans-serif); text-decoration: none; }
-
-/* er: entities and relationships use the flow rules above (an entity is an .am-node, a relationship path and its end marks are .am-edge). A marked field row adds a tinted band,
-   colored text and its sign at the start of the row; Before and After show a plain schema, so the bands and signs hide there and the rows keep their place. */
-.am-view-before .am-er-band, .am-view-after .am-er-band, .am-view-before .am-er-sign, .am-view-after .am-er-sign { visibility: hidden; }
-.am-er-sign { font-weight: 700; }
-.am-view-changes .am-er-band[data-delta="added"] { fill: var(--ok-bg); }
-.am-view-changes .am-er-band[data-delta="removed"] { fill: var(--err-bg); }
-.am-view-changes .am-er-band[data-delta="changed"] { fill: var(--warn-bg); }
-.am-view-changes .am-er-sign[data-delta="added"], .am-view-changes .am-er-field[data-delta="added"], .am-view-changes .am-er-key[data-delta="added"] { fill: var(--ok); }
-.am-view-changes .am-er-sign[data-delta="removed"], .am-view-changes .am-er-field[data-delta="removed"], .am-view-changes .am-er-key[data-delta="removed"] { fill: var(--err); }
-.am-view-changes .am-er-sign[data-delta="changed"], .am-view-changes .am-er-field[data-delta="changed"], .am-view-changes .am-er-key[data-delta="changed"] { fill: var(--warn); }
-.am-view-changes .am-er-field[data-delta="removed"] { text-decoration: line-through; }
-.am-view-changes .am-node .am-er-sign[data-delta] { text-decoration: none; }
-
-/* API changes use the shared switch but collapse hidden HTML rows and contracts so Before and After remain readable. */
-/* Use the code diff hues and ink/fill mixes: a theme's status --ok can be blue, but additions must stay green in every theme and mode. */
-.am-api {
-  --diff-add: #1f9d4d; --diff-del: #d1344a;
-  --ok: color-mix(in srgb, var(--diff-add) 75%, var(--ink));
-  --ok-bg: color-mix(in srgb, var(--diff-add) 14%, var(--fill));
-  --err: color-mix(in srgb, var(--diff-del) 75%, var(--ink));
-  --err-bg: color-mix(in srgb, var(--diff-del) 14%, var(--fill));
-}
-.am-api.am-view-before [data-delta="added"], .am-api.am-view-after [data-delta="removed"],
-.am-api.am-view-before .am-delta-badge, .am-api.am-view-after .am-delta-badge { display: none; }
-/* A view hides the columns and tables none of its fields need, and the first contract it shows drops the separator above it. */
-.am-api.am-view-before [data-api-hide~="before"], .am-api.am-view-after [data-api-hide~="after"] { display: none; }
-.am-api.am-view-before .am-api-contract[data-api-lead~="before"], .am-api.am-view-after .am-api-contract[data-api-lead~="after"] { margin-block-start: 0; padding-block-start: 0; border-block-start: 0; }
-.am-api .am-delta-badge { display: inline-block; color: var(--badge); margin-inline-end: 6px; font-weight: 700; }
-.am-view-changes .am-api-contract[data-delta="added"], .am-view-changes .am-api-contract [data-delta="added"] { --api-change: var(--ok); --api-change-bg: var(--ok-bg); }
-.am-view-changes .am-api-contract[data-delta="removed"], .am-view-changes .am-api-contract [data-delta="removed"] { --api-change: var(--err); --api-change-bg: var(--err-bg); }
-.am-view-changes .am-api-contract[data-delta="changed"], .am-view-changes .am-api-contract [data-delta="changed"] { --api-change: var(--warn); --api-change-bg: var(--warn-bg); }
-.am-view-changes .am-api-contract tr[data-delta] > * { color: var(--api-change); background: var(--api-change-bg); }
-.am-view-changes .am-api-section[data-delta] > h4,
-.am-view-changes .am-api-contract[data-delta] > .am-api-endpoint { color: var(--api-change); }
-.am-view-changes .am-api-contract[data-delta] > .am-api-endpoint strong { color: inherit; }
-.am-view-changes .am-api-contract tr[data-delta="removed"] > *,
-.am-view-changes .am-api-section[data-delta="removed"] > h4,
-.am-view-changes .am-api-contract[data-delta="removed"] > .am-api-endpoint { text-decoration: line-through; }
-
-/* tree */
-.am-tree .am-delta-badge {
-  display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; width: var(--am-ln-treeBadge); height: var(--am-ln-treeBadge); flex: none;
-  border-radius: 50%; background: var(--badge); color: var(--paper); font: 700 var(--am-fs-label)/1 var(--font-mono, monospace); text-decoration: none;
-}
-.am-tree-box[data-delta] { position: relative; }
-.am-tree-box > .am-delta-badge { position: absolute; top: -8px; inset-inline-end: -8px; }
-.am-tree-label > .am-delta-badge { margin-inline-end: 6px; vertical-align: 1px; }
-.am-view-changes .am-tree-box[data-delta="added"] { border-color: var(--ok); }
-.am-view-changes .am-tree-box[data-delta="removed"] { border-color: var(--err); opacity: 0.55; text-decoration: line-through; }
-.am-view-changes .am-tree-box[data-delta="changed"] { border-color: var(--warn); }
-.am-view-changes .am-tree-list li[data-delta="added"] > .am-tree-label { color: var(--ok); }
-.am-view-changes .am-tree-list li[data-delta="removed"] > .am-tree-label { color: var(--err); text-decoration: line-through; }
-.am-view-changes .am-tree-list li[data-delta="changed"] > .am-tree-label { color: var(--warn); }
-.am-view-changes .am-tree-list li[data-delta="removed"] > .am-tree-label, .am-view-changes .am-tree-list li[data-delta="removed"] > .am-tree-sub { opacity: 0.55; }
-
-/* Connector lines in a view that hides siblings. A hidden node keeps its stretch of the line, so the line stays whole between the nodes that remain and
-   stops at the last one; the markup (data-line-before / data-line-after, see src/components/tree.js) names the stretches that differ from the usual look. */
-.am-view-before .am-tree-list li::after, .am-view-after .am-tree-list li::after,
-.am-view-before .am-tree-col::before, .am-view-after .am-tree-col::before { visibility: visible; }
-.am-view-before .am-tree-list li[data-line-before="full"]::after, .am-view-after .am-tree-list li[data-line-after="full"]::after { bottom: 0; height: auto; }
-.am-view-before .am-tree-list li[data-line-before="short"]::after, .am-view-after .am-tree-list li[data-line-after="short"]::after { bottom: auto; height: 0.95em; }
-.am-view-before .am-tree-list li[data-line-before="none"]::after, .am-view-after .am-tree-list li[data-line-after="none"]::after,
-.am-view-before .am-tree-col[data-line-before="none"]::before, .am-view-after .am-tree-col[data-line-after="none"]::before,
-.am-view-before .am-tree-root[data-line-before="none"]::after, .am-view-after .am-tree-root[data-line-after="none"]::after { display: none; }
-.am-view-before .am-tree-col[data-line-before="full"]::before, .am-view-after .am-tree-col[data-line-after="full"]::before { inset-inline: 0; }
-.am-view-before .am-tree-col[data-line-before="start"]::before, .am-view-after .am-tree-col[data-line-after="start"]::before { inset-inline: 50% 0; }
-.am-view-before .am-tree-col[data-line-before="end"]::before, .am-view-after .am-tree-col[data-line-after="end"]::before { inset-inline: 0 50%; }
-
-/* the count row and the switch */
-.am-delta-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; margin-top: 10px; text-align: start; font: var(--am-fs-small)/1.3 var(--font-mono, monospace); }
-.am-delta-count--added { color: var(--ok); }
-.am-delta-count--removed { color: var(--err); }
-.am-delta-count--changed { color: var(--warn); }
-.am-delta-switch { display: inline-flex; margin-inline-start: auto; border: var(--bw, 1px) solid var(--line-2); border-radius: var(--radius); overflow: hidden; }
-.am-delta-switch[hidden] { display: none; }
-.am-delta-switch button { font: inherit; padding: 3px 10px; color: var(--ink-2); background: var(--paper); border: 0; border-inline-start: 1px solid var(--line-2); cursor: pointer; }
-.am-delta-switch button:first-child { border-inline-start: 0; }
-.am-delta-switch button[aria-pressed="true"] { color: var(--ink); background: var(--accent-bg); font-weight: 600; }
-.am-delta-switch button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
-@media print { .am-delta-switch { display: none !important; } }
-
-
 html[data-theme="blueprint"] .am-frame { border: 1px solid var(--line); padding: 30px; }
 html[data-theme="blueprint"] .am-frame::before {
   content: ""; position: absolute; inset: 18px; border: 1px solid var(--line); pointer-events: none;
@@ -1291,29 +1169,104 @@ html[data-theme="paper"] .am-md table { font-family: var(--font-sans); }
 <button class="am-btn am-btn--copy-image" type="button" data-am="copy-image" data-working="正在生成图片…" data-done="已复制 ✓" data-downloaded="已下载" data-failed="复制失败" aria-label="复制为图片" title="复制为图片" hidden>复制为图片</button>
 </div>
 <main class="am-doc">
-<header class="am-head"><p class="am-colophon">Generated by <a href="https://github.com/QingYunA/answer-me-with-html" target="_blank" rel="noopener">Answer me with HTML</a> 0.6.1 · <a href="https://github.com/Nita121388/answer-me-with-html" target="_blank" rel="noopener">Nita's fork</a> · 2026-11-24 12:05 · <a href="https://github.com/QingYunA/answer-me-with-html" target="_blank" rel="noopener">★ Star on GitHub</a></p><h1>定时任务入口改造方案</h1><div class="am-head-meta"><span><b>source</b>E:/code/snorkeling · commit 8939d11f5</span></div><div class="am-intro am-md"><div class="am-md"><p>根因：昨天把弹窗入口加在了 Overview 工具栏。右侧 WidgetsBar 的定时任务 widget 仍是 blockdef，点击继续建 Block。改法：给该 widget 换成 action，与 CommonText 同构，并移除 Overview 按钮。</p>
+<header class="am-head"><p class="am-colophon">Generated by <a href="https://github.com/QingYunA/answer-me-with-html" target="_blank" rel="noopener">Answer me with HTML</a> 0.6.1 · <a href="https://github.com/Nita121388/answer-me-with-html" target="_blank" rel="noopener">Nita's fork</a> · 2026-11-24 12:50 · <a href="https://github.com/QingYunA/answer-me-with-html" target="_blank" rel="noopener">★ Star on GitHub</a></p><h1>定时任务弹窗改造方案 v2</h1><div class="am-head-meta"><span><b>source</b>E:/code/snorkeling · 截图对比 + commit 8939d11f5</span></div><div class="am-intro am-md"><div class="am-md"><p>昨天验收只核了「都用了 <code>&lt;Modal&gt;</code>」这一句，没有比对实际版式。真实差距在尺寸、标题排版、内边距、底栏四处。入口改 action 只解决第一层问题，样式对齐要同包做。</p>
 </div></div></header>
 <div class="am-doc-layout am-doc-layout--rail-end">
-<nav class="am-toc" aria-label="目录" data-side="end" data-flow="in"><details class="am-outline"><summary aria-label="目录"><span class="am-ticks" aria-hidden="true"><i class="am-tick" data-id="A" data-title="A · 结论"></i><i class="am-tick" data-id="B" data-title="B · 点击链路：现状与目标"></i><i class="am-tick" data-id="C" data-title="C · 改动清单"></i><i class="am-tick" data-id="D" data-title="D · 判据与验证"></i></span></summary><ol class="am-outline-list"><li><a href="#panel-A">A · 结论</a></li><li><a href="#panel-B">B · 点击链路：现状与目标</a></li><li><a href="#panel-C">C · 改动清单</a></li><li><a href="#panel-D">D · 判据与验证</a></li></ol></details></nav>
+<nav class="am-toc" aria-label="目录" data-side="end" data-flow="in"><details class="am-outline"><summary aria-label="目录"><span class="am-ticks" aria-hidden="true"><i class="am-tick" data-id="A" data-title="A · 结论"></i><i class="am-tick" data-id="B" data-title="B · 逐项差距"></i><i class="am-tick" data-id="C" data-title="C · 对齐做法"></i><i class="am-tick" data-id="D" data-title="D · 需要你定的一点"></i><i class="am-tick" data-id="E" data-title="E · 改动清单"></i><i class="am-tick" data-id="F" data-title="F · 判据"></i></span></summary><ol class="am-outline-list"><li><a href="#panel-A">A · 结论</a></li><li><a href="#panel-B">B · 逐项差距</a></li><li><a href="#panel-C">C · 对齐做法</a></li><li><a href="#panel-D">D · 需要你定的一点</a></li><li><a href="#panel-E">E · 改动清单</a></li><li><a href="#panel-F">F · 判据</a></li></ol></details></nav>
 <div class="am-doc-body">
 <section class="am-panel am-span-wide am-panel--fold" id="panel-A">
 <details class="am-fold" open><summary class="am-panel-head"><span class="am-panel-id">A</span><h2>结论</h2></summary>
 <div class="am-panel-body"><div class="am-md"><ul>
-<li>目标入口：右侧 WidgetsBar 的 <code>defwidget@scheduledtasks</code>。</li>
-<li>目标行为：点击打开 <code>ScheduledTaskManagerModal</code>，不建 Block。</li>
-<li>弹窗本身已达标：<code>scheduledtask-manager-modal.tsx</code> 用全仓唯一 <code>&lt;Modal&gt;</code> 壳，与 CommonText 同款 chrome，无需重做。</li>
-<li>错位实现：commit 8939d11f5 把入口做成了 Overview 工具栏按钮（<code>data-overview-schedtask-manager</code>），要求里没有这个入口，应移除。</li>
+<li>入口错位：右侧 widget 仍走 blockdef 建块，弹窗入口被塞进 Overview 工具栏。</li>
+<li>样式错位：CommonText 是 <code>min(85vw,900px) × min(78vh,620px)</code> 的大窗，可拖拽 resize 并记忆尺寸。</li>
+<li>定时任务弹窗没有传尺寸，宽度由内容撑开，缩成一个窄框。</li>
+<li>标题也不同：CommonText 在内容区自绘 <code>text-base font-semibold</code>（16px），✕ 绝对定位右上。</li>
+<li>定时任务弹窗把 title/subtitle 交给 <code>&lt;Modal&gt;</code>，走的是 14px 结构化 header，✕ 在流内。</li>
+<li>「CommonText 同款 chrome」这句话在代码里成立，在视觉上不成立。</li>
 </ul>
 </div></div></details>
 </section>
 <section class="am-panel am-panel--fold" id="panel-B">
-<details class="am-fold" open><summary class="am-panel-head"><span class="am-panel-id">B</span><h2>点击链路：现状与目标</h2></summary>
-<div class="am-panel-body"><figure class="am-diagram am-flow am-view-changes"><svg viewBox="0 0 650 261" width="650" height="261" role="img" aria-label="流程图：点击右侧定时任务 widget、runWidgetAction、ScheduledTaskManagerModal、createBlock、Overview 工具栏按钮" xmlns="http://www.w3.org/2000/svg"><defs><marker id="am1-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="am-arrow" d="M0,0 L10,5 L0,10 z"/></marker><marker id="am1-arrow-added" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="am-arrow am-arrow--added" d="M0,0 L10,5 L0,10 z"/></marker><marker id="am1-arrow-removed" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="am-arrow am-arrow--removed" d="M0,0 L10,5 L0,10 z"/></marker></defs><g></g><g><g data-step="0" data-delta="added"><path class="am-edge" d="M293.4,49 L332.3,65 Q371.1,81 371.1,97 L371.1,113" marker-end="url(#am1-arrow-added)"/><g class="am-edge-label"><rect x="268.5" y="72" width="205.3" height="18" rx="3"/><text x="371.1" y="81" text-anchor="middle" dominant-baseline="central">走 action 分支（CommonText 同款）</text></g></g><g data-step="1" data-delta="added"><path class="am-edge" d="M371.1,148 L371.1,164 Q371.1,180 399.9,196 L428.6,212" marker-end="url(#am1-arrow-added)"/><g class="am-edge-label"><rect x="312.1" y="171" width="118.1" height="18" rx="3"/><text x="371.1" y="180" text-anchor="middle" dominant-baseline="central">pushModal 打开弹窗</text></g></g><g data-step="2" data-delta="removed"><path class="am-edge" d="M208.4,49 L169.6,65 Q130.7,81 130.7,97 L130.7,113" marker-end="url(#am1-arrow-removed)"/><g class="am-edge-label"><rect x="15" y="72" width="231.5" height="18" rx="3"/><text x="130.7" y="81" text-anchor="middle" dominant-baseline="central">blockdef 建 scheduledtasks 块（已移除）</text></g></g><g data-step="3" data-delta="removed"><path class="am-edge" d="M549,148 L549,164 Q549,180 520.3,196 L491.5,212" marker-end="url(#am1-arrow-removed)"/><g class="am-edge-label"><rect x="463.5" y="171" width="171" height="18" rx="3"/><text x="549" y="180" text-anchor="middle" dominant-baseline="central">昨天新增的错位入口（已移除）</text></g></g></g><g><g class="am-node am-node--rect" data-key="点击右侧定时任务 widget" data-step="0"><rect class="am-node-shape" x="162.3" y="14" width="177.2" height="35" rx="3"/><text x="250.9" y="31.5" text-anchor="middle" dominant-baseline="central" class="am-node-text">点击右侧定时任务 widget</text></g><g class="am-node am-node--rect" data-key="runWidgetAction" data-step="0" data-delta="added"><rect class="am-node-shape" x="307.6" y="113" width="127.1" height="35" rx="3"/><text x="371.1" y="130.5" text-anchor="middle" dominant-baseline="central" class="am-node-text">runWidgetAction</text><g class="am-delta-badge am-delta-badge--added" data-delta="added" transform="translate(434.7,113)"><circle r="7"/><text text-anchor="middle" dominant-baseline="central">+</text></g></g><g class="am-node am-node--rect" data-key="ScheduledTaskManagerModal" data-step="1"><rect class="am-node-shape" x="354.3" y="212" width="211.6" height="35" rx="3"/><text x="460.1" y="229.5" text-anchor="middle" dominant-baseline="central" class="am-node-text">ScheduledTaskManagerModal</text></g><g class="am-node am-node--rect" data-key="createBlock" data-step="2" data-delta="removed"><rect class="am-node-shape" x="80.6" y="113" width="100.3" height="35" rx="3"/><text x="130.7" y="130.5" text-anchor="middle" dominant-baseline="central" class="am-node-text">createBlock</text><g class="am-delta-badge am-delta-badge--removed" data-delta="removed" transform="translate(180.9,113)"><circle r="7"/><text text-anchor="middle" dominant-baseline="central">−</text></g></g><g class="am-node am-node--rect" data-key="Overview 工具栏按钮" data-step="3" data-delta="removed"><rect class="am-node-shape" x="470.7" y="113" width="156.7" height="35" rx="3"/><text x="549" y="130.5" text-anchor="middle" dominant-baseline="central" class="am-node-text">Overview 工具栏按钮</text><g class="am-delta-badge am-delta-badge--removed" data-delta="removed" transform="translate(627.4,113)"><circle r="7"/><text text-anchor="middle" dominant-baseline="central">−</text></g></g></g></svg><div class="am-delta-bar"><span class="am-delta-count am-delta-count--added">+3 新增</span> <span class="am-delta-count am-delta-count--removed">−4 删除</span><span class="am-delta-switch" role="group" aria-label="视图" hidden><button type="button" data-view="before" aria-pressed="false">改前</button><button type="button" data-view="changes" aria-pressed="true">变更</button><button type="button" data-view="after" aria-pressed="false">改后</button></span></div></figure>
-<div class="am-md"><p><code>handleWidgetSelect</code> 里 <code>runWidgetAction(widget.action)</code> 先于 blockdef 创建。只改 widget 配置，前端分发链路零改动。</p>
+<details class="am-fold" open><summary class="am-panel-head"><span class="am-panel-id">B</span><h2>逐项差距</h2></summary>
+<div class="am-panel-body"><div class="am-md"><div class="am-table-wrap"><table>
+<thead>
+<tr>
+<th>维度</th>
+<th>CommonText</th>
+<th>定时任务弹窗（现状）</th>
+<th>差距</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>尺寸</td>
+<td><code>min(85vw,900px) × min(78vh,620px)</code>，min 500×350</td>
+<td>无显式尺寸，内容撑宽成窄框</td>
+<td>大</td>
+</tr>
+<tr>
+<td>可拖拽</td>
+<td>拖右下角 resize，尺寸记忆进 localStorage</td>
+<td>无 resize 手柄</td>
+<td>大</td>
+</tr>
+<tr>
+<td>标题</td>
+<td>内容区自绘 <code>text-base font-semibold</code>，16px</td>
+<td>结构化 header 的 <code>.modal-header__title</code>，14px</td>
+<td>大</td>
+</tr>
+<tr>
+<td>副标题</td>
+<td>无（11-20 已删除常驻教程文案）</td>
+<td>有 subtitle，且文案在讲「不需要新建块」</td>
+<td>中</td>
+</tr>
+<tr>
+<td>关闭按钮</td>
+<td>老形状 <code>.modal-close-btn</code>，绝对定位右上</td>
+<td>结构化 header，✕ 在流内</td>
+<td>中</td>
+</tr>
+<tr>
+<td>内边距</td>
+<td><code>padding</code> 默认 16px，再加 <code>pt-6 pb-3</code></td>
+<td><code>padding={false} scrollBody={false}</code>，自己管</td>
+<td>中</td>
+</tr>
+<tr>
+<td>内容结构</td>
+<td>header → editor → 工具行 → 双栏 → footer 按钮</td>
+<td>header → 计数条 → 列表，没有 footer</td>
+<td>中</td>
+</tr>
+<tr>
+<td>主按钮位置</td>
+<td>底栏右下</td>
+<td>顶部横条右侧</td>
+<td>中</td>
+</tr>
+</tbody></table></div>
 </div></div></details>
 </section>
-<section class="am-panel am-span-wide am-panel--fold" id="panel-C">
-<details class="am-fold" open><summary class="am-panel-head"><span class="am-panel-id">C</span><h2>改动清单</h2></summary>
+<section class="am-panel am-panel--fold" id="panel-C">
+<details class="am-fold" open><summary class="am-panel-head"><span class="am-panel-id">C</span><h2>对齐做法</h2></summary>
+<div class="am-panel-body"><div class="am-md"><ol>
+<li>给 <code>&lt;Modal&gt;</code> 传与 CommonText 相同的尺寸 style：宽 <code>min(85vw,900px)</code>、高 <code>min(78vh,620px)</code>。</li>
+<li>同时传 <code>minWidth:500</code>、<code>minHeight:350</code>、<code>maxWidth:&quot;96vw&quot;</code>、<code>maxHeight:&quot;92vh&quot;</code>。</li>
+<li>删 <code>padding={false}</code> 与 <code>scrollBody={false}</code>，className 加 <code>pt-6 pb-3</code>，内边距回到 16px 基准。</li>
+<li>去掉 subtitle。「不需要新建块」是讲实现，不是产品语。</li>
+<li>把「新建任务」从顶部横条移到 <code>footer</code>，与 CommonText 底栏动作同位置。</li>
+<li>二期：把 CommonText 的 resize 手柄与尺寸记忆抽成共享 hook，两个弹窗同源。</li>
+</ol>
+</div>
+<figure class="am-codeblock"><figcaption class="am-code-head"><span class="am-code-title">sketch · scheduledtask-manager-modal.tsx</span><span class="am-code-lang">ts</span><button class="am-code-copy" type="button" data-am="copy-code" data-done="已复制 ✓">复制</button></figcaption><pre class="am-code"><code data-lang="ts"><span class="am-ln">&lt;Modal</span><span class="am-ln">    className=&quot;schedtask-manager-modal pt-6 pb-3&quot;</span><span class="am-ln">    style={{ width: &quot;min(85vw, 900px)&quot;, height: &quot;min(78vh, 620px)&quot;,</span><span class="am-ln">             minWidth: 500, minHeight: 350,</span><span class="am-ln">             maxWidth: &quot;96vw&quot;, maxHeight: &quot;92vh&quot; }}</span><span class="am-ln">    onClose={handleClose}</span><span class="am-ln">    footer={&lt;button data-schedtask-new=&quot;&quot;&gt;新建任务&lt;/button&gt;}</span><span class="am-ln">&gt;</span></code></pre></figure></div></details>
+</section>
+<section class="am-panel am-panel--fold" id="panel-D">
+<details class="am-fold" open><summary class="am-panel-head"><span class="am-panel-id">D</span><h2>需要你定的一点</h2></summary>
+<div class="am-panel-body"><fieldset class="am-ask" data-ask="am1"><legend class="am-ask-q">标题区用哪种写法？</legend><div class="am-ask-opts"><div class="am-ask-card"><label class="am-ask-opt"><input type="radio" name="am1" value="保留结构化 header，只把字号提到 16px" data-suggested><span class="am-ask-body"><span class="am-ask-label">保留结构化 header，只把字号提到 16px</span> <span class="am-ask-tag">建议</span><small class="am-ask-note">符合 modal.tsx 的「新弹窗必须走结构化 header」契约，视觉上与 CommonText 只差 ✕ 的位置</small></span></label></div><div class="am-ask-card"><label class="am-ask-opt"><input type="radio" name="am1" value="完全照 CommonText 老形状"><span class="am-ask-body"><span class="am-ask-label">完全照 CommonText 老形状</span><small class="am-ask-note">✕ 绝对定位 + 内容区自绘标题，视觉零差异，但违反新弹窗契约</small></span></label></div></div></fieldset></div></details>
+</section>
+<section class="am-panel am-span-wide am-panel--fold" id="panel-E">
+<details class="am-fold" open><summary class="am-panel-head"><span class="am-panel-id">E</span><h2>改动清单</h2></summary>
 <div class="am-panel-body"><div class="am-md"><div class="am-table-wrap"><table>
 <thead>
 <tr>
@@ -1325,7 +1278,7 @@ html[data-theme="paper"] .am-md table { font-family: var(--font-sans); }
 <tbody><tr>
 <td><code>pkg/wconfig/defaultconfig/widgets.json</code></td>
 <td>~</td>
-<td><code>defwidget@scheduledtasks</code> 去掉 <code>blockdef</code>，加 <code>&quot;action&quot;: &quot;scheduledtasks:manager&quot;</code>，与 <code>defwidget@commontext</code> 同构</td>
+<td><code>defwidget@scheduledtasks</code> 去掉 <code>blockdef</code>，加 <code>&quot;action&quot;: &quot;scheduledtasks:manager&quot;</code></td>
 </tr>
 <tr>
 <td><code>frontend/app/workspace/widget-actions.ts</code></td>
@@ -1335,94 +1288,124 @@ html[data-theme="paper"] .am-md table { font-family: var(--font-sans); }
 <tr>
 <td><code>pkg/wconfig/settingsconfig.go</code></td>
 <td>~</td>
-<td><code>Action</code> 字段 jsonschema enum 补 <code>scheduledtasks:manager</code>（现状只登记 commontext:search、note）</td>
+<td><code>Action</code> 字段 jsonschema enum 补该值</td>
+</tr>
+<tr>
+<td><code>frontend/app/modals/scheduledtask-manager-modal.tsx</code></td>
+<td>~</td>
+<td>尺寸、内边距、标题字号、footer 四处对齐 CommonText</td>
 </tr>
 <tr>
 <td><code>frontend/app/session-overview/session-overview.tsx</code></td>
 <td>-</td>
-<td>删工具栏「定时任务」按钮（约 3300 行处，<code>data-overview-schedtask-manager</code>）</td>
+<td>删工具栏「定时任务」按钮（约 3300 行，<code>data-overview-schedtask-manager</code>）</td>
 </tr>
 <tr>
 <td><code>frontend/i18n/locales/{en,zh}/session-overview.json</code></td>
 <td>-</td>
-<td>删 <code>schedTasks.openManager</code> key，保持中英 parity</td>
+<td>删 <code>schedTasks.openManager</code> key</td>
+</tr>
+<tr>
+<td><code>frontend/i18n/locales/{en,zh}/modals.json</code></td>
+<td>~</td>
+<td>删 subtitle 文案</td>
 </tr>
 <tr>
 <td><code>scripts/verify/scheduled-hero/verify.mjs</code></td>
 <td>~</td>
-<td>S4 段断言由工具栏按钮改为右侧 widget 点击</td>
+<td>S4 断言改走右侧 widget，并加尺寸断言</td>
 </tr>
 </tbody></table></div>
 </div></div></details>
 </section>
-<section class="am-panel am-panel--fold" id="panel-D">
-<details class="am-fold" open><summary class="am-panel-head"><span class="am-panel-id">D</span><h2>判据与验证</h2></summary>
+<section class="am-panel am-panel--fold" id="panel-F">
+<details class="am-fold" open><summary class="am-panel-head"><span class="am-panel-id">F</span><h2>判据</h2></summary>
 <div class="am-panel-body"><div class="am-md"><ol>
-<li>机器判定：点击右侧定时任务 widget，<code>.schedtask-manager-modal</code> 出现，且不新建 Block。</li>
-<li>Overview 工具栏不再渲染 <code>data-overview-schedtask-manager</code> 按钮。</li>
-<li>Overview 独立「定时任务」区（<code>OverviewScheduledTasksSection</code>）不受影响，保留。</li>
-<li>旧布局兼容：已存在的 <code>scheduledtasks</code> Block 视图继续可用，不迁移不删除。</li>
-<li>收尾：跑 <code>scripts/verify/scheduled-hero/verify.mjs</code> 真机验证台，结论入库 <code>docs/project/verify-ledger.md</code>。</li>
+<li>点右侧定时任务 widget，<code>.schedtask-manager-modal</code> 出现，页面不新建 Block。</li>
+<li>弹窗 <code>getBoundingClientRect().width</code> 命中 <code>min(85vw,900px)</code> 的实测值，容差 2px。</li>
+<li>弹窗高度命中 <code>min(78vh,620px)</code> 的实测值，容差 2px。</li>
+<li>空状态下 <code>footer</code> 仍渲染，且含 <code>data-schedtask-new</code>。</li>
+<li>截图与 CommonText 并排，肉眼比对标题字号与内边距节奏。</li>
+<li>收尾跑 <code>scripts/verify/scheduled-hero/verify.mjs</code>，结论入库 <code>docs/project/verify-ledger.md</code>。</li>
 </ol>
 </div></div></details>
 </section>
 </div>
 </div>
 </main>
-<div class="am-lightbox" hidden aria-modal="true" role="dialog" aria-label="图表查看" data-expand="展开查看图表" data-expand-image="放大图片" data-viewer-image="图片查看" data-viewer-diagram="图表查看">
-<div class="am-lightbox-backdrop"></div>
-<div class="am-lightbox-header">
-<div class="am-lightbox-title">
-<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg>
-<span class="am-lightbox-title-text"></span>
-</div>
-<div class="am-lightbox-actions">
-<button class="am-lightbox-close" data-action="close" title="关闭" aria-label="关闭">✕</button>
-</div>
-</div>
-<div class="am-lightbox-stage">
-<div class="am-lightbox-canvas am-diagram"></div>
-</div>
-</div>
 <textarea id="am-source" hidden readonly aria-hidden="true">---
-title: 定时任务入口改造方案
+title: 定时任务弹窗改造方案 v2
 file: schedtask-widget-entry
 collapse: true
-source: E:/code/snorkeling · commit 8939d11f5
+source: E:/code/snorkeling · 截图对比 + commit 8939d11f5
 ---
-根因：昨天把弹窗入口加在了 Overview 工具栏。右侧 WidgetsBar 的定时任务 widget 仍是 blockdef，点击继续建 Block。改法：给该 widget 换成 action，与 CommonText 同构，并移除 Overview 按钮。
+昨天验收只核了「都用了 `&lt;Modal&gt;`」这一句，没有比对实际版式。真实差距在尺寸、标题排版、内边距、底栏四处。入口改 action 只解决第一层问题，样式对齐要同包做。
 
 ## A 结论 {span=3}
-- 目标入口：右侧 WidgetsBar 的 `defwidget@scheduledtasks`。
-- 目标行为：点击打开 `ScheduledTaskManagerModal`，不建 Block。
-- 弹窗本身已达标：`scheduledtask-manager-modal.tsx` 用全仓唯一 `&lt;Modal&gt;` 壳，与 CommonText 同款 chrome，无需重做。
-- 错位实现：commit 8939d11f5 把入口做成了 Overview 工具栏按钮（`data-overview-schedtask-manager`），要求里没有这个入口，应移除。
+- 入口错位：右侧 widget 仍走 blockdef 建块，弹窗入口被塞进 Overview 工具栏。
+- 样式错位：CommonText 是 `min(85vw,900px) × min(78vh,620px)` 的大窗，可拖拽 resize 并记忆尺寸。
+- 定时任务弹窗没有传尺寸，宽度由内容撑开，缩成一个窄框。
+- 标题也不同：CommonText 在内容区自绘 `text-base font-semibold`（16px），✕ 绝对定位右上。
+- 定时任务弹窗把 title/subtitle 交给 `&lt;Modal&gt;`，走的是 14px 结构化 header，✕ 在流内。
+- 「CommonText 同款 chrome」这句话在代码里成立，在视觉上不成立。
 
-## B 点击链路：现状与目标
-```flow
-+ 点击右侧定时任务 widget -&gt; runWidgetAction: 走 action 分支（CommonText 同款）
-+ runWidgetAction -&gt; ScheduledTaskManagerModal: pushModal 打开弹窗
-- 点击右侧定时任务 widget -&gt; createBlock: blockdef 建 scheduledtasks 块（已移除）
-- Overview 工具栏按钮 -&gt; ScheduledTaskManagerModal: 昨天新增的错位入口（已移除）
+## B 逐项差距
+| 维度 | CommonText | 定时任务弹窗（现状） | 差距 |
+| --- | --- | --- | --- |
+| 尺寸 | `min(85vw,900px) × min(78vh,620px)`，min 500×350 | 无显式尺寸，内容撑宽成窄框 | 大 |
+| 可拖拽 | 拖右下角 resize，尺寸记忆进 localStorage | 无 resize 手柄 | 大 |
+| 标题 | 内容区自绘 `text-base font-semibold`，16px | 结构化 header 的 `.modal-header__title`，14px | 大 |
+| 副标题 | 无（11-20 已删除常驻教程文案） | 有 subtitle，且文案在讲「不需要新建块」 | 中 |
+| 关闭按钮 | 老形状 `.modal-close-btn`，绝对定位右上 | 结构化 header，✕ 在流内 | 中 |
+| 内边距 | `padding` 默认 16px，再加 `pt-6 pb-3` | `padding={false} scrollBody={false}`，自己管 | 中 |
+| 内容结构 | header → editor → 工具行 → 双栏 → footer 按钮 | header → 计数条 → 列表，没有 footer | 中 |
+| 主按钮位置 | 底栏右下 | 顶部横条右侧 | 中 |
+
+## C 对齐做法
+1. 给 `&lt;Modal&gt;` 传与 CommonText 相同的尺寸 style：宽 `min(85vw,900px)`、高 `min(78vh,620px)`。
+2. 同时传 `minWidth:500`、`minHeight:350`、`maxWidth:&quot;96vw&quot;`、`maxHeight:&quot;92vh&quot;`。
+3. 删 `padding={false}` 与 `scrollBody={false}`，className 加 `pt-6 pb-3`，内边距回到 16px 基准。
+4. 去掉 subtitle。「不需要新建块」是讲实现，不是产品语。
+5. 把「新建任务」从顶部横条移到 `footer`，与 CommonText 底栏动作同位置。
+6. 二期：把 CommonText 的 resize 手柄与尺寸记忆抽成共享 hook，两个弹窗同源。
+
+```ts title=&quot;sketch · scheduledtask-manager-modal.tsx&quot;
+&lt;Modal
+    className=&quot;schedtask-manager-modal pt-6 pb-3&quot;
+    style={{ width: &quot;min(85vw, 900px)&quot;, height: &quot;min(78vh, 620px)&quot;,
+             minWidth: 500, minHeight: 350,
+             maxWidth: &quot;96vw&quot;, maxHeight: &quot;92vh&quot; }}
+    onClose={handleClose}
+    footer={&lt;button data-schedtask-new=&quot;&quot;&gt;新建任务&lt;/button&gt;}
+&gt;
 ```
-`handleWidgetSelect` 里 `runWidgetAction(widget.action)` 先于 blockdef 创建。只改 widget 配置，前端分发链路零改动。
 
-## C 改动清单 {span=3}
+## D 需要你定的一点
+```ask
+标题区用哪种写法？
+* 保留结构化 header，只把字号提到 16px | 符合 modal.tsx 的「新弹窗必须走结构化 header」契约，视觉上与 CommonText 只差 ✕ 的位置
+- 完全照 CommonText 老形状 | ✕ 绝对定位 + 内容区自绘标题，视觉零差异，但违反新弹窗契约
+```
+
+## E 改动清单 {span=3}
 | 文件 | 改动 | 说明 |
 | --- | --- | --- |
-| `pkg/wconfig/defaultconfig/widgets.json` | ~ | `defwidget@scheduledtasks` 去掉 `blockdef`，加 `&quot;action&quot;: &quot;scheduledtasks:manager&quot;`，与 `defwidget@commontext` 同构 |
+| `pkg/wconfig/defaultconfig/widgets.json` | ~ | `defwidget@scheduledtasks` 去掉 `blockdef`，加 `&quot;action&quot;: &quot;scheduledtasks:manager&quot;` |
 | `frontend/app/workspace/widget-actions.ts` | + | 新增 case：`modalsModel.pushModal(&quot;ScheduledTaskManagerModal&quot;, {})` |
-| `pkg/wconfig/settingsconfig.go` | ~ | `Action` 字段 jsonschema enum 补 `scheduledtasks:manager`（现状只登记 commontext:search、note） |
-| `frontend/app/session-overview/session-overview.tsx` | - | 删工具栏「定时任务」按钮（约 3300 行处，`data-overview-schedtask-manager`） |
-| `frontend/i18n/locales/{en,zh}/session-overview.json` | - | 删 `schedTasks.openManager` key，保持中英 parity |
-| `scripts/verify/scheduled-hero/verify.mjs` | ~ | S4 段断言由工具栏按钮改为右侧 widget 点击 |
+| `pkg/wconfig/settingsconfig.go` | ~ | `Action` 字段 jsonschema enum 补该值 |
+| `frontend/app/modals/scheduledtask-manager-modal.tsx` | ~ | 尺寸、内边距、标题字号、footer 四处对齐 CommonText |
+| `frontend/app/session-overview/session-overview.tsx` | - | 删工具栏「定时任务」按钮（约 3300 行，`data-overview-schedtask-manager`） |
+| `frontend/i18n/locales/{en,zh}/session-overview.json` | - | 删 `schedTasks.openManager` key |
+| `frontend/i18n/locales/{en,zh}/modals.json` | ~ | 删 subtitle 文案 |
+| `scripts/verify/scheduled-hero/verify.mjs` | ~ | S4 断言改走右侧 widget，并加尺寸断言 |
 
-## D 判据与验证
-1. 机器判定：点击右侧定时任务 widget，`.schedtask-manager-modal` 出现，且不新建 Block。
-2. Overview 工具栏不再渲染 `data-overview-schedtask-manager` 按钮。
-3. Overview 独立「定时任务」区（`OverviewScheduledTasksSection`）不受影响，保留。
-4. 旧布局兼容：已存在的 `scheduledtasks` Block 视图继续可用，不迁移不删除。
-5. 收尾：跑 `scripts/verify/scheduled-hero/verify.mjs` 真机验证台，结论入库 `docs/project/verify-ledger.md`。
+## F 判据
+1. 点右侧定时任务 widget，`.schedtask-manager-modal` 出现，页面不新建 Block。
+2. 弹窗 `getBoundingClientRect().width` 命中 `min(85vw,900px)` 的实测值，容差 2px。
+3. 弹窗高度命中 `min(78vh,620px)` 的实测值，容差 2px。
+4. 空状态下 `footer` 仍渲染，且含 `data-schedtask-new`。
+5. 截图与 CommonText 并排，肉眼比对标题字号与内边距节奏。
+6. 收尾跑 `scripts/verify/scheduled-hero/verify.mjs`，结论入库 `docs/project/verify-ledger.md`。
 </textarea>
 <script>
 (() => {
@@ -4535,36 +4518,6 @@ if (panelList().length > 1) {
     }
   });
 })();
-})();
-
-// ── Change markers: the Before / Changes / After switch ─────────────
-// The switch starts hidden because it needs this script. It swaps the am-view-* class of its diagram; the delta styles show the colors and badges only in
-// the Changes view and hide the items that do not exist in the view.
-(() => {
-  const VIEWS = ['before', 'changes', 'after'];
-  const setView = (el, view) => {
-    el.classList.remove(...VIEWS.map((v) => `am-view-${v}`));
-    el.classList.add(`am-view-${view}`);
-  };
-  for (const bar of document.querySelectorAll('.am-delta-bar')) {
-    const view = bar.parentElement;
-    const group = bar.querySelector('.am-delta-switch');
-    if (!group) continue;
-    group.hidden = false;
-    group.addEventListener('click', (e) => {
-      const btn = e.target.closest('button[data-view]');
-      if (!btn) return;
-      setView(view, btn.dataset.view);
-      for (const b of group.querySelectorAll('button')) b.setAttribute('aria-pressed', String(b === btn));
-    });
-  }
-  // The expand button copies only the drawing into the viewer; the viewer shows the view the diagram is in.
-  document.addEventListener('click', (e) => {
-    const host = e.target.closest?.('.am-diagram-expand')?.parentElement;
-    const canvas = document.querySelector('.am-lightbox-canvas');
-    const view = host && VIEWS.find((v) => host.classList.contains(`am-view-${v}`));
-    if (view && canvas) setView(canvas, view);
-  });
 })();
 </script>
 </body>

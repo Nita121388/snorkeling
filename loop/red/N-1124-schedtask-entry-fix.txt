@@ -1,0 +1,106 @@
+
+[1m[46m RUN [49m[22m [36mv3.2.4 [39m[90mE:/code/snorkeling[39m
+
+ [31m×[39m frontend/app/workspace/widget-actions.test.ts[2m > [22mrunWidgetAction[2m > [22mscheduledtasks:manager 打开 ScheduledTaskManagerModal（不是建块）[32m 28[2mms[22m[39m
+[31m   → expected undefined to be 'scheduledtasks:manager' // Object.is equality[39m
+ [31m×[39m frontend/app/workspace/widget-actions.test.ts[2m > [22mrunWidgetAction[2m > [22m未知 action 返回 false（保持既有 warn 语义）[32m 2[2mms[22m[39m
+[31m   → vi is not defined[39m
+ [32m✓[39m frontend/app/modals/scheduledtask-modal.test.tsx[2m > [22mScheduledTaskManagerModal[2m > [22m打开后 atoms.modalOpen 置位，卸载后复位[33m 327[2mms[22m[39m
+ [32m✓[39m frontend/app/modals/scheduledtask-modal.test.tsx[2m > [22mScheduledTaskManagerModal[2m > [22m渲染列表（名称 / hero emoji / 调度描述 / 上次状态）[32m 92[2mms[22m[39m
+ [32m✓[39m frontend/app/modals/scheduledtask-modal.test.tsx[2m > [22mScheduledTaskManagerModal[2m > [22m删除（带确认）后条数 -1[32m 119[2mms[22m[39m
+ [32m✓[39m frontend/app/modals/scheduledtask-modal.test.tsx[2m > [22mScheduledTaskManagerModal[2m > [22m新建复用 ScheduledTaskEditorModal，保存成功后条数 +1[32m 65[2mms[22m[39m
+ [32m✓[39m frontend/app/modals/scheduledtask-modal.test.tsx[2m > [22mScheduledTaskManagerModal[2m > [22m编辑复用 ScheduledTaskEditorModal（isNew=false），保存不改变条数[32m 57[2mms[22m[39m
+ [32m✓[39m frontend/app/modals/scheduledtask-modal.test.tsx[2m > [22mScheduledTaskManagerModal[2m > [22m启停：只更新同一条，不改变条数[32m 57[2mms[22m[39m
+ [32m✓[39m frontend/app/modals/scheduledtask-modal.test.tsx[2m > [22mScheduledTaskManagerModal[2m > [22m立即运行沿用 ScheduledTaskRunNowCommand[32m 47[2mms[22m[39m
+ [32m✓[39m frontend/app/modals/scheduledtask-modal.test.tsx[2m > [22mScheduledTaskManagerModal[2m > [22mEsc 关闭弹窗[32m 45[2mms[22m[39m
+ [32m✓[39m frontend/app/modals/scheduledtask-modal.test.tsx[2m > [22mScheduledTaskManagerModal[2m > [22m点 ✕ 关闭[32m 34[2mms[22m[39m
+ [32m✓[39m frontend/app/modals/scheduledtask-modal.test.tsx[2m > [22mScheduledTaskManagerModal[2m > [22m空列表时给出空态与新建入口[32m 24[2mms[22m[39m
+ [31m×[39m frontend/app/modals/scheduledtask-modal.test.tsx[2m > [22mScheduledTaskManagerModal[2m > [22m弹窗尺寸对齐 CommonText（85vw×78vh 上限，500×350 下限）[32m 57[2mms[22m[39m
+[31m   → expected '' to be 'min(85vw, 900px)' // Object.is equality[39m
+ [31m×[39m frontend/app/modals/scheduledtask-modal.test.tsx[2m > [22mScheduledTaskManagerModal[2m > [22m标题为 16px 语义，且不再有实现语副标题[32m 30[2mms[22m[39m
+[31m   → expected null not to be null[39m
+ [31m×[39m frontend/app/modals/scheduledtask-modal.test.tsx[2m > [22mScheduledTaskManagerModal[2m > [22m计数与「新建任务」在内容底部同一行动作区[32m 33[2mms[22m[39m
+[31m   → expected null not to be null[39m
+
+[31m⎯⎯⎯⎯⎯⎯⎯[39m[1m[41m Failed Tests 5 [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯[39m
+
+[41m[1m FAIL [22m[49m frontend/app/modals/scheduledtask-modal.test.tsx[2m > [22mScheduledTaskManagerModal[2m > [22m弹窗尺寸对齐 CommonText（85vw×78vh 上限，500×350 下限）
+[31m[1mAssertionError[22m: expected '' to be 'min(85vw, 900px)' // Object.is equality[39m
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- min(85vw, 900px)[39m
+
+[36m [2m❯[22m frontend/app/modals/scheduledtask-modal.test.tsx:[2m285:36[22m[39m
+    [90m283| [39m        const shell = document.querySelector<HTMLElement>(".schedtask-…
+    [90m284| [39m        [34mexpect[39m(shell)[33m.[39mnot[33m.[39m[34mtoBeNull[39m()[33m;[39m
+    [90m285| [39m        [34mexpect[39m(shell[33m![39m[33m.[39mstyle[33m.[39mwidth)[33m.[39m[34mtoBe[39m([32m"min(85vw, 900px)"[39m)[33m;[39m
+    [90m   | [39m                                   [31m^[39m
+    [90m286| [39m        [34mexpect[39m(shell[33m![39m[33m.[39mstyle[33m.[39mheight)[33m.[39m[34mtoBe[39m([32m"min(78vh, 620px)"[39m)[33m;[39m
+    [90m287| [39m        [34mexpect[39m(shell[33m![39m[33m.[39mstyle[33m.[39mminWidth)[33m.[39m[34mtoBe[39m([32m"500px"[39m)[33m;[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/5]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m frontend/app/modals/scheduledtask-modal.test.tsx[2m > [22mScheduledTaskManagerModal[2m > [22m标题为 16px 语义，且不再有实现语副标题
+[31m[1mAssertionError[22m: expected null not to be null[39m
+[36m [2m❯[22m frontend/app/modals/scheduledtask-modal.test.tsx:[2m297:56[22m[39m
+    [90m295| [39m        [35mconst[39m title [33m=[39m document[33m.[39m[34mquerySelector[39m([32m".modal-header__title"[39m)[33m;[39m
+    [90m296| [39m        [34mexpect[39m(title)[33m.[39mnot[33m.[39m[34mtoBeNull[39m()[33m;[39m
+    [90m297| [39m        [34mexpect[39m(title[33m![39m[33m.[39m[34mquerySelector[39m([32m".text-base"[39m))[33m.[39mnot[33m.[39m[34mtoBeNull[39m()[33m;[39m
+    [90m   | [39m                                                       [31m^[39m
+    [90m298| [39m        expect(document.querySelector(".modal-header__subtitle")).toBe…
+    [90m299| [39m    })[33m;[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/5]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m frontend/app/modals/scheduledtask-modal.test.tsx[2m > [22mScheduledTaskManagerModal[2m > [22m计数与「新建任务」在内容底部同一行动作区
+[31m[1mAssertionError[22m: expected null not to be null[39m
+[36m [2m❯[22m frontend/app/modals/scheduledtask-modal.test.tsx:[2m304:29[22m[39m
+    [90m302| [39m        [35mawait[39m [34mmount[39m()[33m;[39m
+    [90m303| [39m        const actions = document.querySelector("[data-schedtask-action…
+    [90m304| [39m        [34mexpect[39m(actions)[33m.[39mnot[33m.[39m[34mtoBeNull[39m()[33m;[39m
+    [90m   | [39m                            [31m^[39m
+    [90m305| [39m        expect(actions!.querySelector("[data-schedtask-new]")).not.toB…
+    [90m306| [39m        expect(document.querySelectorAll("[data-schedtask-new]")).toHa…
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/5]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m frontend/app/workspace/widget-actions.test.ts[2m > [22mrunWidgetAction[2m > [22mscheduledtasks:manager 打开 ScheduledTaskManagerModal（不是建块）
+[31m[1mAssertionError[22m: expected undefined to be 'scheduledtasks:manager' // Object.is equality[39m
+
+[32m- Expected:[39m 
+"scheduledtasks:manager"
+
+[31m+ Received:[39m 
+undefined
+
+[36m [2m❯[22m frontend/app/workspace/widget-actions.test.ts:[2m29:50[22m[39m
+    [90m 27| [39m
+    [90m 28| [39m    it("scheduledtasks:manager 打开 ScheduledTaskManagerModal（不是建块）", ()…
+    [90m 29| [39m        expect(ScheduledTaskManagerWidgetAction).toBe("scheduledtasks:…
+    [90m   | [39m                                                 [31m^[39m
+    [90m 30| [39m        expect(runWidgetAction(ScheduledTaskManagerWidgetAction)).toBe…
+    [90m 31| [39m        [35mconst[39m stack [33m=[39m [34mmodalStack[39m()[33m;[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/5]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m frontend/app/workspace/widget-actions.test.ts[2m > [22mrunWidgetAction[2m > [22m未知 action 返回 false（保持既有 warn 语义）
+[31m[1mReferenceError[22m: vi is not defined[39m
+[36m [2m❯[22m frontend/app/workspace/widget-actions.test.ts:[2m37:22[22m[39m
+    [90m 35| [39m
+    [90m 36| [39m    [34mit[39m([32m"未知 action 返回 false（保持既有 warn 语义）"[39m[33m,[39m () [33m=>[39m {
+    [90m 37| [39m        const warn = vi.spyOn(console, "warn").mockImplementation(() =…
+    [90m   | [39m                     [31m^[39m
+    [90m 38| [39m        [34mexpect[39m([34mrunWidgetAction[39m([32m"nope:nothing"[39m))[33m.[39m[34mtoBe[39m([35mfalse[39m)[33m;[39m
+    [90m 39| [39m        [34mexpect[39m([34mmodalStack[39m())[33m.[39m[34mtoHaveLength[39m([34m0[39m)[33m;[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/5]⎯[22m[39m
+
+
+[2m Test Files [22m [1m[31m2 failed[39m[22m[90m (2)[39m
+[2m      Tests [22m [1m[31m5 failed[39m[22m[2m | [22m[1m[32m10 passed[39m[22m[90m (15)[39m
+[2m   Start at [22m 16:51:18
+[2m   Duration [22m 16.12s[2m (transform 1.67s, setup 83ms, collect 3.05s, tests 1.04s, environment 10.54s, prepare 1.38s)[22m
+
+JUNIT report written to E:/code/snorkeling/test-results.xml
