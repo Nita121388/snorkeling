@@ -508,3 +508,10 @@ emain-window 12 全绿；真机探针 6/6 PASS（弹窗开着时新建 Tab 生�
 - 实现踩坑三记：① R7 轮询上限计数必须放 ref（context 重建 interval 会归零）；② localStorage 纯逻辑的 now 必须全链路注入（混用真实时钟会把新写的草稿判成两年前裁掉）；③ i18n JSON 插 key 时尾逗号/首插点要小心（坏过一次 parity）。
 - 全量回归 3961/3962，唯一红为 11-19 批次存量（commontext-compose-modal 源码契约测试）。
 - 工作区还有另一 agent 在途改动（agent-launch/clientservice/agentlaunch.go、design/prototypes/tab-group-more-actions），未触碰未提交。
+
+## 2026-11-25 凌晨后半 · 真机验证 + dev:cdp ELOOP 修复 + 0.0.139 发版（主 agent：pi）
+
+- dev:cdp ELOOP 排查法记录（省下次重复）：报错是 Go 裸 errno → 归因不是 vite 而是并行组里的 go/task；PATH shim 法定位 npm 调用；对 deps 做消融（去 npm:install → 过；去 generates glob → 过）锁死根因：task 遍历 node_modules（npm workspaces 符号链接）。
+- 真机验证台补断言的心法：播假 sessionId 的卡断不了方块条，要挂到度量轨段（那里挂真实会话卡，走真实 detail RPC）；无法真机覆盖的面一律显式 skip 写明单测锚点。
+- gotypes.d.ts 再生有 Origin 命名碰撞的不确定性（hero.Origin ↔ syncproto.Origin 翻转），无消费者，本次 checkout 还原未提交。
+- 0.0.139 发版照 snorkeling-release skill：bump→查远端号→commit→push→tag→push→workflow；发布信息中文分区式（含另一 agent 的 agent-cmd-resolve 修复，发版范围按 tag 区间如实写）。

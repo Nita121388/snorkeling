@@ -10,6 +10,31 @@
 > · 需求笔记 Obsidian `需求/Overview Tab 展示分区模型需求.md` · TODO 入 `07-TODO.md`。
 > **未动任何真实代码；开工前先拍板 D1–D6。**
 
+## 2026-11-25 凌晨后半：真机验证完成 + 修 dev:cdp ELOOP + 发版 0.0.139
+
+> nita 指示：真机验证交由 agent 做，完成后提交推送发版（发布信息编辑为中文分区式）。
+
+**先修的拦路 bug**：`npm run dev:cdp` 必现 `too many levels of symbolic links`。
+根因是 Taskfile `npm:install` 的 `generates: node_modules/**/*` —— task 在 npm install 后要遍历整棵
+node_modules 算 checksum，本仓 npm workspaces 的符号链接（`node_modules/tsunami-frontend -> ../tsunami/frontend`）
+命中 ELOOP，task 以裸 errno 退出 1，报错点随并行位置漂移（user 报在 generate、实测在 vite 构建后）。
+修复：generates 只留 `package-lock.json`（`56c0b8100`）。修复前 4/4 红、后 2/2 绿并成功起 app。
+
+**真机验证（nita 豁免前已由本 agent 代跑）**：
+
+| 台 | 结果 | 新断言 |
+|---|---|---|
+| overview-board | **81/81** 全绿 | 新增：真实会话卡渲染会话方块条（squares=7）、`[data-board-restore]` 全板为 0；send-status chip 显式 skipped（需活跃发送，单测 11 例已锁） |
+| scheduled-hero | **22/22** 全绿 | 含右侧 widget 开定时任务管理弹窗（schedtask-entry-fix 的 S4 新链路） |
+
+无真机台（单测/parity 已锁，不静默省略）：agent-path-links（term 171 + element 723）、
+hero-restore-header（前后端 golden parity + go 3 包）、image-paste（五态 DOM 用例，mock 落盘）。
+
+**发版 0.0.139**（tag `snorkeling-v0.14.6-beta.0-0.0.139`，commit `6711c7d6c`）：范围含 11-24 八包 +
+agent-cmd-resolve（61c1fe12c/2d2666405，另一 agent 并行交付）+ logo-only（b802b0c59）+ dev:cdp 修复。
+发布信息已编辑为中文分区式。
+
+---
 ## 2026-11-25 凌晨：11-24 全批八包已实现并按包提交（真机验证 G7 待 nita）
 
 > 2026-11-24 晚 nita 指示「开始实现，不需要真机验证，完成后由我验证」。本轮把 11-24 在案的全部待实现包做完，
