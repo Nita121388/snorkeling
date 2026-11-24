@@ -1,5 +1,35 @@
 # HANDOFF — 接手必读（2026-11-24 更新）
 
+## 2026-11-24 傍晚：Overview agent 卡融合与发送链路批次（**9 需求，文档已就绪，当晚开发**）
+
+> nita 2026-11-24 分四轮反馈 9 条需求，本轮**只落文档不写代码**（用户下班前要求「详细记录，晚上继续开发，避免信息错误导致需求偏差」）。
+
+**先读这份再动手**：`.trellis/tasks/11-24-overview-agent-batch/prd.md`（需求 + 决策 + 取证）→ `design.md`（实现方案）→ `implement.md`（阶段顺序 + 每条判据命令）。
+
+### 9 条需求 → 5 个子任务 / 5 个 loop 包
+
+| 需求（用户原话要点） | 子任务 | loop 包 | 优先级 |
+|---|---|---|---|
+| 发送成功却显示发送失败 | `11-24-agentsend-false-fail` | `N-1124-agentsend-false-fail`（bug S1） | **P1 先做** |
+| agent 卡没有列表那种会话方块 / 去掉恢复 icon | `11-24-overview-agent-card-fuse` | `N-1124-overview-agent-fuse` | P2 |
+| 新建/发送内容默认存下来 + 存 CommonText icon | `11-24-overview-input-memory` | `N-1124-overview-input-memory` | P2 |
+| agent 卡显示发送状态 + `292/aaaa` 事故可追溯 | `11-24-agentsend-status` | `N-1124-agentsend-status-dispatch` | P2 |
+| 编辑框无法粘贴图片 | `11-24-agentsend-image-paste` | `N-1124-agentsend-image-paste` | P3 |
+
+### 三条关键结论（省掉重复调研）
+
+1. **「292/aaaa」不是玄学**：它是本次新建 agent 首发消息走 `async` 后台派发投进 pi 会话的 user 消息（`seq=2`，07:10:35.447，比用户长消息早 414ms）。根因是**异步投递全程 UI 不可见**，不是凭空发送。→ 需求 R6/R7。
+2. **「发送成功却显示失败」根因已定**：客户端 RPC 超时 80s（`cardSendRpcTimeoutMs`）< 服务端最坏 270s（30s+180s+60s）；`EC-TIME` 错误被 `outcomeFromSend` 无条件判 `failed`，草稿保留 → 点重试 = **重复投递**。→ 修法见 design §5。
+3. **恢复 icon 只删看板卡入口**：`AgentResumeCommand` RPC 与 AISessions「恢复到终端」保留（决策 D6）。
+
+### 开工顺序（`implement.md` 全文有命令）
+
+`P0 发送假失败` → `P1 抽共用方块组件`（列表视觉零变化是红线）→ `P2 卡片方块+去恢复+状态chip` → `P3 输入记忆` → `P4 派发回执` → `P5 图片粘贴`。
+
+> 判据统一写法：`npx vitest run <file> && echo MARKER`（**不要**用 bash 专有 `>/dev/null`，引擎走 cmd.exe —— L-0009）。
+
+---
+
 ## 2026-11-24：晚间批次五包已全部交付并发版 0.0.137（真机验证 22/22 全绿，G7 待 nita 验收）
 
 > nita 2026-11-23 15:11 布置 4 条 + 会话面批注包，当晚全流程跑完：loop 建包 → G1/G6 签 → 红证先行 → 子代理实现（拖拽/emoji 由主代理接管）→ prove 判据全绿 → 真机验证 → 发版。

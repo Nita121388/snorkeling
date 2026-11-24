@@ -1,0 +1,32 @@
+{
+  "id": "overview-agent-batch",
+  "name": "overview-agent-batch",
+  "title": "Overview agent 卡融合与发送链路批次（PRD 总纲）",
+  "description": "9 条需求总纲：看板卡与列表融合、发送链路假失败修复、发送状态可见、输入记忆、图片粘贴",
+  "status": "planning",
+  "dev_type": null,
+  "scope": null,
+  "package": "snorkeling-docs",
+  "priority": "P1",
+  "creator": "nita",
+  "assignee": "nita",
+  "createdAt": "2026-11-24",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": "snorkeling",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [
+    "11-24-agentsend-false-fail",
+    "11-24-agentsend-status",
+    "11-24-overview-agent-card-fuse",
+    "11-24-overview-input-memory",
+    "11-24-agentsend-image-paste"
+  ],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {}
+}
