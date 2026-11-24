@@ -18,6 +18,7 @@
 // roundtrip 语义见 `.trellis/spec/snorkeling-docs/backend/agent-roundtrip-contract.md`
 // （超时不是错误）。
 
+import { pickPastedImages, spliceTextAtRange } from "@/app/commontext/commontext-paste-image";
 import { upsertCommonTextItem } from "@/app/commontext/commontext-model";
 import { RpcApi } from "@/app/store/wshclientapi";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
@@ -36,6 +37,7 @@ import {
     readAllSendDrafts,
     writeSendDraft,
 } from "./overview-input-memory";
+import { materializeOverviewSendImages } from "./overview-send-paste";
 import {
     buildCardSendRequest,
     cardSendRpcTimeoutMs,
@@ -474,6 +476,11 @@ export type CardSendPanelProps = {
     autoFocus?: boolean;
     /** Esc / 收起回调：popover 传 onClose 关浮层；inline 不传则收起展开体。 */
     onClose?: () => void;
+    /**
+     * 该块所属连接（11-24 R9）：非空 = 远端块，图片粘贴不生效（落盘路径在 agent 侧不存在），
+     * 给内联提示。不传/空串 = 本地块（默认）。
+     */
+    connection?: string | null;
 };
 
 /**
@@ -488,6 +495,7 @@ export function CardSendPanel({
     defaultWaitReply = true,
     autoFocus,
     onClose,
+    connection,
 }: CardSendPanelProps) {
     const { t } = useTranslation("session-overview");
     const cardSend = React.useContext(CardSendContext);
@@ -504,6 +512,7 @@ export function CardSendPanel({
     const waitReply = localWaitReply ?? (cardSend?.waitReply ?? true);
     const target = useMemo<CardSendTarget>(() => ({ blockId, sessionId }), [blockId, sessionId]);
     const draftEmpty = draft.trim() === "";
+    const isRemoteBlock = connection != null && connection !== "";
     // Esc 收起：popover 只关浮层；inline 沿用原行为（collapse 展开体）。
     const closePanel = () => {
         if (onClose != null) {
@@ -523,6 +532,47 @@ export function CardSendPanel({
         const timer = window.setTimeout(() => setSaveFeedback(null), 3000);
         return () => window.clearTimeout(timer);
     }, [saveFeedback]);
+    // ── 粘贴图片（11-24 R9）：落盘 overview-send-images → 光标处插 markdown ──
+    const [pasteWarning, setPasteWarning] = useState<string | null>(null);
+    useEffect(() => {
+        if (pasteWarning == null) return;
+        const timer = window.setTimeout(() => setPasteWarning(null), 4000);
+        return () => window.clearTimeout(timer);
+    }, [pasteWarning]);
+    const insertImagesAtCaret = (blobs: Blob[]) => {
+        const node = textareaRef.current;
+        const start = node?.selectionStart ?? draft.length;
+        const end = node?.selectionEnd ?? start;
+        void materializeOverviewSendImages(blobs)
+            .then(({ markdown, failures }) => {
+                if (markdown !== "") {
+                    const next = spliceTextAtRange(draft, start, end, markdown);
+                    // 走 R4 的持久化通道：插入后天然落盘。
+                    cardSend?.setDraft(blockId, next.text);
+                    window.requestAnimationFrame(() => {
+                        const target = textareaRef.current;
+                        target?.focus();
+                        target?.setSelectionRange(next.caret, next.caret);
+                    });
+                }
+                // 落盘失败不留半截引用：失败项只给内联提示。
+                if (failures.length > 0) setPasteWarning(failures[0]);
+            })
+            .catch((error: unknown) => {
+                setPasteWarning(error instanceof Error ? error.message : String(error));
+            });
+    };
+    const handlePaste = (event: React.ClipboardEvent<HTMLTextAreaElement>) => {
+        const blobs = pickPastedImages(event.clipboardData?.items);
+        // 非图片粘贴（纯文本/HTML）零变化：不 preventDefault，交浏览器默认。
+        if (blobs.length === 0) return;
+        event.preventDefault();
+        if (isRemoteBlock) {
+            setPasteWarning(i18n.t("session-overview:panel.cardSendPasteImageRemote"));
+            return;
+        }
+        insertImagesAtCaret(blobs);
+    };
     const saveToCommonText = () => {
         if (draftEmpty) return;
         void upsertCommonTextItem({ title: "", text: draft })
@@ -559,6 +609,10 @@ export function CardSendPanel({
                 spellCheck={false}
                 aria-label={t("session-overview:panel.cardSendPlaceholder")}
                 onChange={(event) => cardSend?.setDraft(blockId, event.target.value)}
+                onPaste={(event) => {
+                    event.stopPropagation();
+                    handlePaste(event);
+                }}
                 onKeyDown={(event) => {
                     event.stopPropagation();
                     if (event.key === "Escape") {
@@ -681,6 +735,15 @@ export function CardSendPanel({
                             {t("session-overview:panel.cardSendNoWait")}
                         </button>
                     ) : null}
+                </div>
+            ) : null}
+            {/* 粘贴图片失败 / 远端块禁用：内联提示，不弹窗 */}
+            {pasteWarning != null ? (
+                <div className="session-overview-card-send-alert is-warn" data-overview-card-send-paste-warning>
+                    <span className="session-overview-card-send-alert-text">
+                        {"⚠ "}
+                        {pasteWarning}
+                    </span>
                 </div>
             ) : null}
             {/* unknown（客户端超时/取消）：结果未知，绝不给 [重试]（防重复投递），只给 [查状态] [继续等] */}

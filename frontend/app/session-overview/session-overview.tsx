@@ -1909,7 +1909,14 @@ function CardSendExpander({
             ) : null}
             {/* composer（共享面板，11-23 抽出）：Enter 发送 / Shift+Enter 换行 / Esc 收起；
                 发送/重试/改为不等待/继续等全在 overview-card-send-panel.tsx，列表行为零变化。 */}
-            <CardSendPanel variant="inline" autoFocus blockId={blockId} sessionId={block.sessionId} />
+            <CardSendPanel
+                variant="inline"
+                autoFocus
+                blockId={blockId}
+                sessionId={block.sessionId}
+                // 11-24 R9：远端块禁用图片粘贴（落盘路径在 agent 侧不存在）。
+                connection={typeof block.block?.meta?.connection === "string" ? block.block.meta.connection : ""}
+            />
         </div>
     );
 }
@@ -3052,7 +3059,7 @@ function SessionOverviewPanel({ blockId, model }: ViewComponentProps<SessionOver
 
     const submitAddAgent = React.useCallback(async (request: AddAgentSubmitRequest): Promise<void> => {
         const settings = globalStore.get(atoms.settingsAtom);
-        const blockDef = createAgentBlockDefForProfile(
+        const rawBlockDef = createAgentBlockDefForProfile(
             request.profileName,
             settings,
             buildAddAgentLaunchContext({ connection: request.connection, cwd: request.cwd }),

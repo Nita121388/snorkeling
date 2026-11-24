@@ -1,0 +1,12 @@
+# 红证（HEAD 无实现，新测试必红）—— N-1124-agentsend-image-paste
+# 复现：git worktree add <dir> HEAD && cp 两个测试进去 && npx vitest run <两个测试>
+      Tests  5 failed | 16 passed (21)
+   Start at  21:22:32
+   Duration  1.73s (transform 689ms, setup 30ms, collect 1.62s, tests 53ms, environment 706ms, prepare 142ms)
+
+JUNIT report written to /private/tmp/n1124-red-paste/test-results.xml
+npm notice
+npm notice New major version of npm available! 11.16.0 -> 12.2.3
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.3
+npm notice To update run: npm install -g npm@12.2.3
+npm notice

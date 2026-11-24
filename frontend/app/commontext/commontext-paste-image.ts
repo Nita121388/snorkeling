@@ -142,12 +142,19 @@ function getElectronDataDir(): string | null {
     return dataDir.trim();
 }
 
-/** 附件目录绝对路径；拿不到 app data dir 时返回 null（调用方给明确错误）。 */
-export function resolvePasteImageDir(dataDir: string | null = getElectronDataDir()): string | null {
+/**
+ * 附件目录绝对路径；拿不到 app data dir 时返回 null（调用方给明确错误）。
+ * `subdir` 可选（11-24 overview 发送框用 overview-send-images）：缺省仍是 commontext-images，
+ * CommonText 行为零变化（单测锁默认值）。
+ */
+export function resolvePasteImageDir(
+    dataDir: string | null = getElectronDataDir(),
+    subdir: string = PASTE_IMAGE_SUBDIR
+): string | null {
     if (dataDir == null || dataDir.trim() === "") {
         return null;
     }
-    return joinAttachmentPath(dataDir.trim(), PASTE_IMAGE_SUBDIR);
+    return joinAttachmentPath(dataDir.trim(), subdir === "" ? PASTE_IMAGE_SUBDIR : subdir);
 }
 
 function isAlreadyExistsError(err: unknown): boolean {
@@ -178,13 +185,22 @@ export function validatePasteImage(blob: { type?: string; size?: number } | null
  */
 export async function writePasteImage(
     blob: Blob,
-    opts: { dataDir?: string | null; now?: number; random?: () => number } = {}
+    opts: {
+        dataDir?: string | null;
+        /** 附件子目录；缺省 commontext-images（CommonText 既有行为不变）。 */
+        subdir?: string;
+        now?: number;
+        random?: () => number;
+    } = {}
 ): Promise<string> {
     const invalidReason = validatePasteImage(blob);
     if (invalidReason != null) {
         throw new Error(invalidReason);
     }
-    const dir = resolvePasteImageDir(opts.dataDir === undefined ? getElectronDataDir() : opts.dataDir);
+    const dir = resolvePasteImageDir(
+        opts.dataDir === undefined ? getElectronDataDir() : opts.dataDir,
+        opts.subdir ?? PASTE_IMAGE_SUBDIR
+    );
     if (dir == null) {
         throw new Error("cannot locate the attachment directory");
     }
@@ -222,8 +238,11 @@ export type PasteImageInsertResult = {
  */
 export async function materializePastedImages(
     images: Array<Blob>,
-    write: (blob: Blob) => Promise<string> = writePasteImage
+    write?: (blob: Blob) => Promise<string>,
+    subdir: string = PASTE_IMAGE_SUBDIR
 ): Promise<PasteImageInsertResult> {
+    // 显式传 writer（单测注入）时不叠 subdir；默认 writer 才带 subdir（11-24 overview 通道）。
+    const writer = write ?? ((blob: Blob) => writePasteImage(blob, { subdir }));
     const refs: string[] = [];
     const failures: string[] = [];
     for (const image of images) {

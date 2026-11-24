@@ -133,6 +133,7 @@
         "cardSendCancelWait": "取消",
         "cardSendRetryRead": "重试读取",
         "cardSendSaveCommonText": "存到 Common Text",
+        "cardSendPasteImageRemote": "远端块暂不支持粘贴图片",
         "cardSaveCommonText_saved": "已存到 Common Text",
         "cardSaveCommonText_duplicate": "已存在，未重复保存",
         "cardSaveCommonText_failed": "保存失败"    },

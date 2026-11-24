@@ -133,6 +133,7 @@
         "cardSendCancelWait": "Cancel",
         "cardSendRetryRead": "Re-read reply",
         "cardSendSaveCommonText": "Save to Common Text",
+        "cardSendPasteImageRemote": "Image paste is not supported for remote blocks",
         "cardSaveCommonText_saved": "Saved to Common Text",
         "cardSaveCommonText_duplicate": "Already exists, not saved again",
         "cardSaveCommonText_failed": "Save failed"    },

@@ -11,6 +11,7 @@ import {
     isSupportedPasteImageType,
     materializePastedImages,
     pickPastedImages,
+    resolvePasteImageDir,
     spliceTextAtRange,
     PASTE_IMAGE_MAX_BYTES,
 } from "./commontext-paste-image";
@@ -105,6 +106,21 @@ describe("paste-image markdown emission", () => {
         const out = spliceTextAtRange("abc", 99, 200, "X");
         expect(out.text).toBe("abcX");
         expect(out.caret).toBe(4);
+    });
+});
+
+describe("attachment subdir（11-24 R9）", () => {
+    it("默认子目录仍是 commontext-images（CommonText 行为零变化）", () => {
+        expect(resolvePasteImageDir("/data")).toBe("/data/commontext-images");
+        // 显式子目录（overview 发送框通道）
+        expect(resolvePasteImageDir("/data", "overview-send-images")).toBe("/data/overview-send-images");
+        // 空串回落默认，不产生裸 data dir
+        expect(resolvePasteImageDir("/data", "")).toBe("/data/commontext-images");
+    });
+
+    it("拿不到 data dir 时返回 null（调用方给明确错误）", () => {
+        expect(resolvePasteImageDir(null)).toBeNull();
+        expect(resolvePasteImageDir("   ")).toBeNull();
     });
 });
 
