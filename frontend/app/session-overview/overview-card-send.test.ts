@@ -10,7 +10,7 @@
 // 都给了，客户端只允许按 design §3 的固定顺序判定。
 
 import { describe, expect, it } from "vitest";
-import { buildCardSendRequest, outcomeFromSend } from "./overview-card-send";
+import { buildCardSendRequest, cardSendRpcTimeoutMs, outcomeFromSend } from "./overview-card-send";
 
 function rtn(over: Record<string, any> = {}) {
     return {
@@ -68,6 +68,41 @@ describe("outcomeFromSend", () => {
         const r = outcomeFromSend(null, new Error("network down"));
         expect(r.phase).toBe("failed");
         expect(r.errorCode).toBeNull();
+    });
+});
+
+describe("outcomeFromSend — 客户端超时不谎报失败（R8 假失败修复）", () => {
+    it("EC-TIME timeout → unknown（不是 failed，请求可能已生效）", () => {
+        const r = outcomeFromSend(null, new Error("EC-TIME: timeout waiting for response"));
+        expect(r.phase).toBe("unknown");
+        expect(r.errorCode).toBeNull();
+    });
+
+    it("其它客户端超时/取消（context deadline / EC-CTXT / EC-CANCEL）→ unknown", () => {
+        expect(outcomeFromSend(null, new Error("context deadline exceeded")).phase).toBe("unknown");
+        expect(outcomeFromSend(null, new Error("EC-CTXT: cancelled")).phase).toBe("unknown");
+        expect(outcomeFromSend(null, new Error("EC-CANCEL: aborted")).phase).toBe("unknown");
+    });
+
+    it("明确的注入前错误（E_BLOCK_NOT_READY）→ failed 且保留错误码", () => {
+        const r = outcomeFromSend(null, new Error("E_BLOCK_NOT_READY: block is not ready"));
+        expect(r.phase).toBe("failed");
+        expect(r.errorCode).toBe("E_BLOCK_NOT_READY");
+    });
+});
+
+describe("cardSendRpcTimeoutMs — 覆盖服务端最坏预算（R8）", () => {
+    it("等回复 60s → 290000（30s 安静等待 + 180s 提交确认 + 60s 等回复 + 20s 余量）", () => {
+        expect(cardSendRpcTimeoutMs(60000, true)).toBe(290000);
+    });
+
+    it("不等回复 → 230000（不再硬编码 60s 假杀提交确认）", () => {
+        expect(cardSendRpcTimeoutMs(undefined, false)).toBe(230000);
+    });
+
+    it("等回复窗口夹取 [5000, 300000] 且总预算不超过 360000", () => {
+        expect(cardSendRpcTimeoutMs(1000, true)).toBe(235000);
+        expect(cardSendRpcTimeoutMs(900000, true)).toBe(360000);
     });
 });
 

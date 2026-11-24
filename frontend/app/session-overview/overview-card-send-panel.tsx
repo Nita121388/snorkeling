@@ -26,6 +26,10 @@ import * as React from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
+    getSessionOverviewCacheSnapshot,
+    subscribeSessionOverviewCache,
+} from "./session-overview-session-cache";
+import {
     buildCardSendRequest,
     cardSendRpcTimeoutMs,
     CardSendPhaseLabelKey,
@@ -63,6 +67,8 @@ type CardSendState = {
     submit: (target: CardSendTarget, text: string, overrides?: CardSendSubmitOverrides) => void;
     retry: (target: CardSendTarget, overrides?: CardSendSubmitOverrides) => void;
     continueWait: (target: CardSendTarget) => void;
+    /** unknown 态的 [查状态]：先读派发回执，无记录则强刷会话比对回合数增长。 */
+    checkUnknown: (target: CardSendTarget) => void;
     cancelWait: (target: CardSendTarget) => void;
     retryRead: (target: CardSendTarget) => void;
 };
@@ -111,16 +117,16 @@ export function useCardSendState(reload: () => void): CardSendState {
             sendSeqRef.current[blockId] = seq;
             setSendByBlock((current) => ({ ...current, [blockId]: "sending" }));
             setSendingStartedAt((current) => ({ ...current, [blockId]: Date.now() }));
-            // 等回复的窗口必须放大 RPC timeout（agent-roundtrip-contract §3），
-            // 否则 60s 等待会被默认 8s 超时假杀。
-            const timeout = useWaitReply ? cardSendRpcTimeoutMs(built.req.replywaitms) : 60_000;
+            // RPC timeout 必须覆盖服务端全预算（30s 安静等待 + 180s 提交确认 + 可选等回复窗口），
+            // 否则提交确认还在路上就被客户端假杀成「发送失败」（R8 假失败事故根因）。
+            const timeout = cardSendRpcTimeoutMs(built.req.replywaitms, useWaitReply);
             RpcApi.AgentSendCommand(TabRpcClient, built.req, { timeout })
                 .then((rtn) => {
                     if (sendSeqRef.current[blockId] !== seq) return;
                     const outcome = outcomeFromSend(rtn ?? null);
                     applyOutcome(blockId, outcome);
-                    // 只有真发出去才清稿：失败时保留原文，[重试] 才能原样再发一次。
-                    if (outcome.phase !== "failed") {
+                    // 只有真发出去才清稿：失败保留给 [重试]；unknown 保留给用户核实后再处置（防重复投递）。
+                    if (outcome.phase !== "failed" && outcome.phase !== "unknown") {
                         setDraftByBlock((current) => removeRecordKey(current, blockId));
                     }
                     if (outcome.phase === "replied" || outcome.phase === "timeout") {
@@ -130,8 +136,9 @@ export function useCardSendState(reload: () => void): CardSendState {
                 .catch((error) => {
                     if (sendSeqRef.current[blockId] !== seq) return;
                     const outcome = outcomeFromSend(null, error);
-                    console.warn("[overview-card-send] 发送失败", {
+                    console.warn("[overview-card-send] 发送未完成", {
                         blockId,
+                        phase: outcome.phase,
                         code: outcome.errorCode,
                         error,
                     });
@@ -187,6 +194,74 @@ export function useCardSendState(reload: () => void): CardSendState {
         [reload]
     );
 
+    // unknown 态的 [查状态]（design §5.4）：
+    //   1) async 派发路径：读派发回执（AgentDispatchListCommand，内存态，重启即丢）；
+    //   2) 无记录（waitreply 同步路径 / 内存已丢）：强刷会话，比对 messageCount 增长
+    //      —— 涨了 = 已送达（转 submitted 并清稿）；没涨维持 unknown（诚实，不谎报）。
+    const checkUnknown = React.useCallback(
+        (target: CardSendTarget) => {
+            const blockId = target.blockId;
+            const sessionId = target.sessionId;
+            void (async () => {
+                try {
+                    const records = await RpcApi.AgentDispatchListCommand(TabRpcClient, { blockid: blockId, limit: 1 });
+                    const record = Array.isArray(records) && records.length > 0 ? records[0] : null;
+                    const state =
+                        record != null ? ((record as Record<string, unknown>).state as string | undefined) : undefined;
+                    if (state === "confirmed") {
+                        setSendByBlock((current) => {
+                            const prev = current[blockId];
+                            const base = prev != null && prev !== "sending" ? prev : outcomeFromSend(null);
+                            return { ...current, [blockId]: { ...base, phase: "submitted", warnings: [] } };
+                        });
+                        setDraftByBlock((current) => removeRecordKey(current, blockId));
+                        reload();
+                        return;
+                    }
+                    if (state === "failed") {
+                        const message = String((record as Record<string, unknown>).error ?? "");
+                        setSendByBlock((current) => {
+                            const prev = current[blockId];
+                            const base = prev != null && prev !== "sending" ? prev : outcomeFromSend(null);
+                            return { ...current, [blockId]: { ...base, phase: "failed", errorMessage: message } };
+                        });
+                        return;
+                    }
+                    if (state === "pending" || state === "delivering") {
+                        // 派发仍在途：维持 unknown，回执可再查。
+                        return;
+                    }
+                } catch (e) {
+                    console.warn("[overview-card-send] 查派发回执失败", { blockId, e });
+                }
+                if (sessionId == null || sessionId === "") return;
+                // 无派发记录：刷新会话比对回合数。
+                const before =
+                    getSessionOverviewCacheSnapshot([sessionId]).summaries[sessionId]?.messageCount ?? null;
+                reload();
+                let settled = false;
+                const unsubscribe = subscribeSessionOverviewCache(() => {
+                    if (settled) return;
+                    const after =
+                        getSessionOverviewCacheSnapshot([sessionId]).summaries[sessionId]?.messageCount ?? null;
+                    if (after == null || before == null) return;
+                    if (after > before) {
+                        settled = true;
+                        unsubscribe();
+                        setSendByBlock((current) => {
+                            const prev = current[blockId];
+                            const base = prev != null && prev !== "sending" ? prev : outcomeFromSend(null);
+                            return { ...current, [blockId]: { ...base, phase: "submitted", warnings: [] } };
+                        });
+                        setDraftByBlock((current) => removeRecordKey(current, blockId));
+                    }
+                });
+                window.setTimeout(() => unsubscribe(), 15_000);
+            })();
+        },
+        [reload]
+    );
+
     const cancelWait = React.useCallback((target: CardSendTarget) => {
         setSendByBlock((current) => removeRecordKey(current, target.blockId));
         setSendingStartedAt((current) => removeRecordKey(current, target.blockId));
@@ -230,6 +305,7 @@ export function useCardSendState(reload: () => void): CardSendState {
             submit: (target, text, overrides) => runSend(target, text, overrides),
             retry,
             continueWait,
+            checkUnknown,
             cancelWait,
             retryRead,
         }),
@@ -242,6 +318,7 @@ export function useCardSendState(reload: () => void): CardSendState {
             runSend,
             retry,
             continueWait,
+            checkUnknown,
             cancelWait,
             retryRead,
             toggleExpanded,
@@ -413,6 +490,7 @@ export function CardSendPanel({
                     <button
                         type="button"
                         className="session-overview-card-send-alert-button"
+                        data-overview-card-send-retry={blockId}
                         onClick={(event) => {
                             event.stopPropagation();
                             cardSend?.retry(target, { waitReply });
@@ -434,7 +512,37 @@ export function CardSendPanel({
                     ) : null}
                 </div>
             ) : null}
-            {/* 超时不箅失败（agent-roundtrip-contract §3）：停在等回复，给 [继续等] [取消] */}
+            {/* unknown（客户端超时/取消）：结果未知，绝不给 [重试]（防重复投递），只给 [查状态] [继续等] */}
+            {result?.phase === "unknown" ? (
+                <div className="session-overview-card-send-alert is-warn" data-overview-card-send-unknown={blockId}>
+                    <span className="session-overview-card-send-alert-text">
+                        {"⚠ "}
+                        {t("session-overview:panel.cardSendUnknown")}
+                    </span>
+                    <button
+                        type="button"
+                        className="session-overview-card-send-alert-button"
+                        data-overview-card-send-check-status={blockId}
+                        onClick={(event) => {
+                            event.stopPropagation();
+                            cardSend?.checkUnknown(target);
+                        }}
+                    >
+                        {t("session-overview:panel.cardSendCheckStatus")}
+                    </button>
+                    <button
+                        type="button"
+                        className="session-overview-card-send-alert-button"
+                        onClick={(event) => {
+                            event.stopPropagation();
+                            cardSend?.continueWait(target);
+                        }}
+                    >
+                        {t("session-overview:panel.cardSendContinueWait")}
+                    </button>
+                </div>
+            ) : null}
+            {/* 超时不算失败（agent-roundtrip-contract §3）：停在等回复，给 [继续等] [取消] */}
             {result?.phase === "timeout" ? (
                 <div className="session-overview-card-send-alert is-warn">
                     <button

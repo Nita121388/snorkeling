@@ -21,6 +21,7 @@ export type CardSendPhase =
     | "unconfirmed" // ok && !submitconfirmed（文本在输入框里，没吃到回车）
     | "replied" // replied=true（已拿到回复）
     | "timeout" // warnings 含 reply-timeout / reply-rpc-deadline（不算失败）
+    | "unknown" // 客户端超时/取消：请求可能已生效，结果未知（绝不能当 failed 让用户盲重试）
     | "failed"; // 抛错（E_AGENT_NOT_READY 等）
 
 export interface CardSendResult {
@@ -50,13 +51,32 @@ export const CardSendReplyCharsMax = 8000;
 export const CardSendReplyCharsDefault = 2000;
 
 /**
- * 等回复时 RPC timeout 必须放大：服务端窗口 60s 起步（cap 300s），
- * 沿用 8s/15s 默认会让等待窗口被假杀（agent-roundtrip-contract §3）。
- * 窗口 + 20s 余量，上限 320s。
+ * 服务端 AgentSend 的最坏等待预算（agentsend.go：DefaultSendWaitMs 30s 安静等待
+ * + DefaultSubmitWaitMs 180s 提交确认；等回复窗口只在 waitreply 时叠加）。
+ * 客户端 RPC 超时必须覆盖它，否则会「已发出却报失败」（R8 假失败事故的根因）。
  */
-export function cardSendRpcTimeoutMs(replyWaitMs?: number): number {
-    const waitMs = clampInt(replyWaitMs ?? CardSendReplyWaitMsDefault, CardSendReplyWaitMsMin, CardSendReplyWaitMsMax);
-    return Math.min(320_000, waitMs + 20_000);
+export const AgentSendServerWorstCaseMs = {
+    waitMs: 30_000,
+    submitWaitMs: 180_000,
+    marginMs: 20_000,
+} as const;
+
+/**
+ * RPC timeout 预算：注入前的两段（安静等待 + 提交确认）始终存在，
+ * 等回复窗口只在 waitReply 时叠加；上限 360s。
+ * 默认 waitReply=true（60s 等回复 → 290s）；非等回复路径也不得低于 230s，
+ * 否则 180s 提交确认会被客户端提前假杀。
+ */
+export function cardSendRpcTimeoutMs(replyWaitMs?: number, waitReply = true): number {
+    const reply = waitReply
+        ? clampInt(replyWaitMs ?? CardSendReplyWaitMsDefault, CardSendReplyWaitMsMin, CardSendReplyWaitMsMax)
+        : 0;
+    const total =
+        AgentSendServerWorstCaseMs.waitMs +
+        AgentSendServerWorstCaseMs.submitWaitMs +
+        reply +
+        AgentSendServerWorstCaseMs.marginMs;
+    return Math.min(360_000, total);
 }
 
 function clampInt(value: number, min: number, max: number): number {
@@ -87,18 +107,38 @@ function emptyOutcome(phase: CardSendPhase): CardSendResult {
 }
 
 /**
+ * 客户端侧超时/取消：请求可能已经生效，结果未知 —— 绝不能当成发送失败
+ * （否则用户点 [重试] = 重复投递，R8 事故的另一半根因）。
+ */
+export function isSendOutcomeUnknownError(error: unknown): boolean {
+    const msg = errorText(error);
+    if (msg === "") return false;
+    return (
+        /EC-TIME: timeout waiting for response/i.test(msg) ||
+        /context deadline exceeded/i.test(msg) ||
+        /\bEC-CTXT\b/i.test(msg) ||
+        /\bEC-CANCEL\b/i.test(msg)
+    );
+}
+
+/**
  * 把一次 `AgentSendCommand` 的结果映射成卡片行程状态。
  *
- * 映射顺序（design §3，不可调换）：
- *   1. 抛错 → failed（errorCode 取消息里的 `E_[A-Z_]+` 前缀）
- *   2. replied === true → replied
- *   3. warnings 含 reply-timeout / reply-rpc-deadline → timeout（不算失败）
- *   4. submitconfirmed === true → submitted
- *   5. 其余 ok → unconfirmed
+ * 映射顺序（design §5.2，顺序即契约，测试锁死；不可调换）：
+ *   1. 客户端超时/取消类抛错 → unknown（结果未知，不给盲重试）
+ *   2. 其余抛错 → failed（errorCode 取消息里的 `E_[A-Z_]+` 前缀）
+ *   3. replied === true → replied
+ *   4. warnings 含 reply-timeout / reply-rpc-deadline → timeout（不算失败）
+ *   5. submitconfirmed === true → submitted
+ *   6. 其余 ok → unconfirmed
  */
 export function outcomeFromSend(rtn: AgentSendResult | null, error?: unknown): CardSendResult {
     if (error != null) {
         const message = errorText(error);
+        // ① 客户端超时/取消：请求可能已生效（文本已注入/已提交），结果未知。
+        if (isSendOutcomeUnknownError(error)) {
+            return { ...emptyOutcome("unknown"), errorMessage: message.trim() };
+        }
         const code = ErrorCodePattern.exec(message)?.[0] ?? null;
         // 去掉 "E_XXX:" 前缀，只留人话；code 单独给 UI 徽章用。
         const detail = code == null ? message : message.replace(new RegExp(`^\\s*${code}\\s*:?\\s*`), "");
@@ -189,6 +229,7 @@ export const CardSendPhaseLabelKey = {
     unconfirmed: "session-overview:panel.cardSendUnconfirmed",
     replied: "session-overview:panel.cardSendReplied",
     timeout: "session-overview:panel.cardSendTimeout",
+    unknown: "session-overview:panel.cardSendUnknown",
     failed: "session-overview:panel.cardSendFailed",
 } as const satisfies Record<CardSendPhase, string>;
 
@@ -198,6 +239,8 @@ export const CardSendPhaseTone: Record<CardSendPhase, CardSendTone> = {
     unconfirmed: "warn",
     replied: "ok",
     timeout: "warn",
+    // 不是 danger：没失败，只是不知道（可能已送达）。
+    unknown: "warn",
     failed: "danger",
 };
 

@@ -1,0 +1,129 @@
+(node:80622) [DEP0205] DeprecationWarning: `module.register()` is deprecated. Use `module.registerHooks()` instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+
+ RUN  v3.2.4 /Users/nita/Primary/projects/snorkeling
+
+(node:80626) ExperimentalWarning: localStorage is not available because --localstorage-file was not provided.
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ✓ frontend/app/session-overview/overview-card-send.test.ts > outcomeFromSend > ok + submitconfirmed → submitted 1ms
+ ✓ frontend/app/session-overview/overview-card-send.test.ts > outcomeFromSend > ok 但 submitconfirmed=false → unconfirmed（不许谎报已提交） 0ms
+ ✓ frontend/app/session-overview/overview-card-send.test.ts > outcomeFromSend > replied=true 优先于 submitted 0ms
+ ✓ frontend/app/session-overview/overview-card-send.test.ts > outcomeFromSend > warnings 含 reply-timeout → timeout，且不是 failed 0ms
+ ✓ frontend/app/session-overview/overview-card-send.test.ts > outcomeFromSend > warnings 含 reply-rpc-deadline → timeout 0ms
+ ✓ frontend/app/session-overview/overview-card-send.test.ts > outcomeFromSend > 抛错 → failed，并取出 E_ 码 0ms
+ ✓ frontend/app/session-overview/overview-card-send.test.ts > outcomeFromSend > 抛错但没有 E_ 码 → failed 且 code=null 0ms
+ × frontend/app/session-overview/overview-card-send.test.ts > outcomeFromSend — 客户端超时不谎报失败（R8 假失败修复） > EC-TIME timeout → unknown（不是 failed，请求可能已生效） 4ms
+   → expected 'failed' to be 'unknown' // Object.is equality
+ × frontend/app/session-overview/overview-card-send.test.ts > outcomeFromSend — 客户端超时不谎报失败（R8 假失败修复） > 其它客户端超时/取消（context deadline / EC-CTXT / EC-CANCEL）→ unknown 0ms
+   → expected 'failed' to be 'unknown' // Object.is equality
+ ✓ frontend/app/session-overview/overview-card-send.test.ts > outcomeFromSend — 客户端超时不谎报失败（R8 假失败修复） > 明确的注入前错误（E_BLOCK_NOT_READY）→ failed 且保留错误码 0ms
+ × frontend/app/session-overview/overview-card-send.test.ts > cardSendRpcTimeoutMs — 覆盖服务端最坏预算（R8） > 等回复 60s → 290000（30s 安静等待 + 180s 提交确认 + 60s 等回复 + 20s 余量） 1ms
+   → expected 80000 to be 290000 // Object.is equality
+ × frontend/app/session-overview/overview-card-send.test.ts > cardSendRpcTimeoutMs — 覆盖服务端最坏预算（R8） > 不等回复 → 230000（不再硬编码 60s 假杀提交确认） 0ms
+   → expected 80000 to be 230000 // Object.is equality
+ × frontend/app/session-overview/overview-card-send.test.ts > cardSendRpcTimeoutMs — 覆盖服务端最坏预算（R8） > 等回复窗口夹取 [5000, 300000] 且总预算不超过 360000 0ms
+   → expected 25000 to be 235000 // Object.is equality
+ ✓ frontend/app/session-overview/overview-card-send.test.ts > buildCardSendRequest > 空文本（含纯空白）→ 拒绝 0ms
+ ✓ frontend/app/session-overview/overview-card-send.test.ts > buildCardSendRequest > 默认走 text64，不传裸 text 0ms
+ ✓ frontend/app/session-overview/overview-card-send.test.ts > buildCardSendRequest > waitReply=true 时绝不带 async（服务端会 E_USAGE） 0ms
+ ✓ frontend/app/session-overview/overview-card-send.test.ts > buildCardSendRequest > waitms 夹取到 [5000, 300000] 0ms
+ ✓ frontend/app/session-overview/overview-card-send.test.ts > buildCardSendRequest > chars 夹取到 [200, 8000] 0ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 5 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  frontend/app/session-overview/overview-card-send.test.ts > outcomeFromSend — 客户端超时不谎报失败（R8 假失败修复） > EC-TIME timeout → unknown（不是 failed，请求可能已生效）
+AssertionError: expected 'failed' to be 'unknown' // Object.is equality
+
+Expected: [32m"unknown"[39m
+Received: [31m"failed"[39m
+
+ ❯ frontend/app/session-overview/overview-card-send.test.ts:77:25
+     75|     it("EC-TIME timeout → unknown（不是 failed，请求可能已生效）", () => {
+     76|         const r = outcomeFromSend(null, new Error("EC-TIME: timeout wa…
+     77|         expect(r.phase).toBe("unknown");
+       |                         ^
+     78|         expect(r.errorCode).toBeNull();
+     79|     });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/5]⎯
+
+ FAIL  frontend/app/session-overview/overview-card-send.test.ts > outcomeFromSend — 客户端超时不谎报失败（R8 假失败修复） > 其它客户端超时/取消（context deadline / EC-CTXT / EC-CANCEL）→ unknown
+AssertionError: expected 'failed' to be 'unknown' // Object.is equality
+
+Expected: [32m"unknown"[39m
+Received: [31m"failed"[39m
+
+ ❯ frontend/app/session-overview/overview-card-send.test.ts:82:85
+     80| 
+     81|     it("其它客户端超时/取消（context deadline / EC-CTXT / EC-CANCEL）→ unknown", …
+     82|         expect(outcomeFromSend(null, new Error("context deadline excee…
+       |                                                                                     ^
+     83|         expect(outcomeFromSend(null, new Error("EC-CTXT: cancelled")).…
+     84|         expect(outcomeFromSend(null, new Error("EC-CANCEL: aborted")).…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/5]⎯
+
+ FAIL  frontend/app/session-overview/overview-card-send.test.ts > cardSendRpcTimeoutMs — 覆盖服务端最坏预算（R8） > 等回复 60s → 290000（30s 安静等待 + 180s 提交确认 + 60s 等回复 + 20s 余量）
+AssertionError: expected 80000 to be 290000 // Object.is equality
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- 290000[39m
+[31m+ 80000[39m
+
+ ❯ frontend/app/session-overview/overview-card-send.test.ts:96:51
+     94| describe("cardSendRpcTimeoutMs — 覆盖服务端最坏预算（R8）", () => {
+     95|     it("等回复 60s → 290000（30s 安静等待 + 180s 提交确认 + 60s 等回复 + 20s 余量）", ()…
+     96|         expect(cardSendRpcTimeoutMs(60000, true)).toBe(290000);
+       |                                                   ^
+     97|     });
+     98| 
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/5]⎯
+
+ FAIL  frontend/app/session-overview/overview-card-send.test.ts > cardSendRpcTimeoutMs — 覆盖服务端最坏预算（R8） > 不等回复 → 230000（不再硬编码 60s 假杀提交确认）
+AssertionError: expected 80000 to be 230000 // Object.is equality
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- 230000[39m
+[31m+ 80000[39m
+
+ ❯ frontend/app/session-overview/overview-card-send.test.ts:100:56
+     98| 
+     99|     it("不等回复 → 230000（不再硬编码 60s 假杀提交确认）", () => {
+    100|         expect(cardSendRpcTimeoutMs(undefined, false)).toBe(230000);
+       |                                                        ^
+    101|     });
+    102| 
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/5]⎯
+
+ FAIL  frontend/app/session-overview/overview-card-send.test.ts > cardSendRpcTimeoutMs — 覆盖服务端最坏预算（R8） > 等回复窗口夹取 [5000, 300000] 且总预算不超过 360000
+AssertionError: expected 25000 to be 235000 // Object.is equality
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- 235000[39m
+[31m+ 25000[39m
+
+ ❯ frontend/app/session-overview/overview-card-send.test.ts:104:50
+    102| 
+    103|     it("等回复窗口夹取 [5000, 300000] 且总预算不超过 360000", () => {
+    104|         expect(cardSendRpcTimeoutMs(1000, true)).toBe(235000);
+       |                                                  ^
+    105|         expect(cardSendRpcTimeoutMs(900000, true)).toBe(360000);
+    106|     });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/5]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  5 failed | 13 passed (18)
+   Start at  18:15:33
+   Duration  824ms (transform 40ms, setup 11ms, collect 53ms, tests 8ms, environment 0ms, prepare 54ms)
+
+JUNIT report written to /Users/nita/Primary/projects/snorkeling/test-results.xml
