@@ -37,7 +37,8 @@ import {
     isClaudeCodeCommand,
     type ShellIntegrationStatus,
 } from "./osc-handlers";
-import { isFileUrl, terminalFilePath, TerminalLinkRegex } from "./term-file-url";
+import { TerminalLinkRegex } from "./term-file-url";
+import { createTerminalLinkHandler } from "./term-link-handler";
 import { isAgentTerminalMeta } from "./agent-meta";
 import {
     bufferLinesToText,
@@ -187,7 +188,20 @@ export class TermWrap {
         this.lastCommandAtom = jotai.atom(null) as jotai.PrimitiveAtom<string | null>;
         this.claudeCodeActiveAtom = jotai.atom(false);
         this.webglEnabledAtom = jotai.atom(false) as jotai.PrimitiveAtom<boolean>;
-        this.terminal = new Terminal(options);
+        // 统一链接激活链（OSC 8 linkHandler 与 WebLinksAddon 共用）：开启
+        // allowNonHttpProtocols 后 xterm 不再丢弃非 http(s) 的 OSC 8 链接；activate 内自建
+        // scheme 白名单（file/vscode-file/http），平台修饰键判定只此一份（deps.isMac）。
+        const linkHandler = createTerminalLinkHandler({
+            isMac: PLATFORM === PlatformMacOS,
+            openNativePath: (path) => getApi().openNativePath(path),
+            openExternal: (uri) => getApi().openExternal(uri),
+            openLinkBlock: (uri) => fireAndForget(() => openTerminalLink(uri)),
+            onHoverChange: (uri, x, y) => {
+                this.hoveredLinkUri = uri;
+                this.onLinkHover?.(uri, x, y);
+            },
+        });
+        this.terminal = new Terminal({ ...options, linkHandler });
         this.fitAddon = new FitAddon();
         this.serializeAddon = new SerializeAddon();
         this.searchAddon = new SearchAddon();
@@ -197,33 +211,15 @@ export class TermWrap {
         this.terminal.loadAddon(
             new WebLinksAddon(
                 (e, uri) => {
-                    e.preventDefault();
-                    const modPressed = PLATFORM === PlatformMacOS ? e.metaKey : e.ctrlKey;
-                    if (!modPressed) {
-                        return;
-                    }
-                    if (isFileUrl(uri)) {
-                        // file:// 链接用系统默认程序打开（.html 走浏览器）。
-                        const nativePath = terminalFilePath(uri);
-                        if (nativePath != null) {
-                            getApi().openNativePath(nativePath);
-                            return;
-                        }
-                        // 路径解析失败时退化为交给系统浏览器。
-                        getApi().openExternal(uri);
-                        return;
-                    }
-                    fireAndForget(() => openTerminalLink(uri));
+                    linkHandler.activate(e, uri);
                 },
                 {
                     urlRegex: TerminalLinkRegex,
                     hover: (e, uri) => {
-                        this.hoveredLinkUri = uri;
-                        this.onLinkHover?.(uri, e.clientX, e.clientY);
+                        linkHandler.hover(e, uri);
                     },
                     leave: () => {
-                        this.hoveredLinkUri = null;
-                        this.onLinkHover?.(null, 0, 0);
+                        linkHandler.leave();
                     },
                 }
             )

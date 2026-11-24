@@ -1,6 +1,7 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+import { openAgentPathRef } from "@/app/element/agent-path-open";
 import { CopyButton } from "@/app/element/copybutton";
 import { IconButton } from "@/app/element/iconbutton";
 import { getFocusedBlockConnection, openFileLinkInPreview } from "@/app/view/preview/file-link-navigation";
@@ -222,9 +223,18 @@ function Link(props: React.AnchorHTMLAttributes<HTMLAnchorElement>) {
         const href = props.href ?? "";
         event.preventDefault();
         void openFileLinkInPreview(href, { connection: getFocusedBlockConnection() }).then((opened) => {
-            if (!opened) {
-                openLink(href);
+            if (opened) {
+                return;
             }
+            // 预览打不开：脏路径修复 + Search In Files 兑底，仍识别不出才退外链。
+            void openAgentPathRef(href, {
+                connection: getFocusedBlockConnection(),
+                skipPreview: true,
+            }).then((result) => {
+                if (result === "none") {
+                    openLink(href);
+                }
+            });
         });
     };
     return <a {...props} onClick={onClick} className="text-accent hover:underline" />;

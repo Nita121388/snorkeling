@@ -14,7 +14,13 @@ function makeDeps(overrides: Partial<AgentPathOpenDeps> = {}) {
         openLink,
         ...overrides,
     };
-    return { deps, openFileLinkInPreview, searchSelectionInFiles, openLink };
+    // 返回 deps 上的实际实现（override 生效后的那个），否则覆盖 mock 时断言会落在未使用的默认 mock 上。
+    return {
+        deps,
+        openFileLinkInPreview: deps.openFileLinkInPreview,
+        searchSelectionInFiles: deps.searchSelectionInFiles,
+        openLink: deps.openLink,
+    };
 }
 
 describe("openAgentPathRef", () => {

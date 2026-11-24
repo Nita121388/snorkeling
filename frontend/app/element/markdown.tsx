@@ -79,6 +79,7 @@ import {
     useInlineEdit,
     type InlineEditBlockKind,
 } from "@/app/element/markdown-inline-edit";
+import { openAgentPathRef } from "@/app/element/agent-path-open";
 import { replaceLinkInSource, wikiTargetFromHref, type LinkEditRequest } from "@/app/element/markdown-link-edit";
 import {
     getPreviousOrderedListContinuation,
@@ -209,6 +210,20 @@ const initializeMermaid = async () => {
     }
 };
 
+// 预览打不开的链接再走一次兑底：脏路径修复 + Search In Files（跨 Tab Files 树 + stat 验证），
+// 仍识别不出（"none"）才退 openLink（保持原有外链行为）。
+function openAgentPathFallback(href: string, resolveOpts: MarkdownResolveOpts | undefined): void {
+    void openAgentPathRef(href, {
+        connection: resolveOpts?.connName,
+        baseDir: resolveOpts?.baseDir,
+        skipPreview: true,
+    }).then((result) => {
+        if (result === "none") {
+            openLink(href);
+        }
+    });
+}
+
 const Link = ({
     focusHeading,
     props,
@@ -250,7 +265,7 @@ const Link = ({
                     onOpenPath,
                 }).then((opened) => {
                     if (!opened) {
-                        openLink(href);
+                        openAgentPathFallback(href, resolveOpts);
                     }
                 });
                 return;
@@ -264,7 +279,7 @@ const Link = ({
                 onOpenPath,
             }).then((opened) => {
                 if (!opened) {
-                    openLink(href);
+                    openAgentPathFallback(href, resolveOpts);
                 }
             });
         }
