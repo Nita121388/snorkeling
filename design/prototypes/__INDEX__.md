@@ -76,6 +76,7 @@
 - `overview-dashboard/overview-add-agent-card/` — 同步状态：● 已落地（2026-11-20，overview-add-agent{,-modal} + board/panel 接线）｜Tab 分组看板底部「＋ 新建」占位卡 → 居中弹窗（chrome 与 New Agent 弹窗同款：profile chip 行 + 模型框 + 可滚动路径候选列表）→ 建块入该 Tab｜镜像源：frontend/app/session-overview/overview-board.tsx, session-overview.tsx, commontext-send-button.tsx
 - `overview-dashboard/overview-group-views/` — 同步状态：（待确认）
 - `overview-dashboard/overview-kanban/` — 
+- `overview-dashboard/tab-group-more-actions/` — 同步状态：▲ 设计活跃（2026-11-24，等 nita 拍板）｜**Overview 分区模型**：用「打开的 Tab / 更多 Tab（默认折叠一行入口）」两段替代右上角「本次打开的 Tab」过滤按钮；配套组头右键「收藏到更多 / 查看更多」+ Tab 栏「更多」下拉「★ 已收藏」分区；含三视图影响矩阵与 D1–D6｜镜像源：session-overview.tsx, overview-tab-groups.ts, overview-board.tsx, session-overview-model.ts, tab-more-menu.tsx, tab-more-model.ts, tab-collapse-state.ts, emain/tab-collapse-store.ts
 
 ## persona
 - `persona/` — 同步状态：▲ 设计活跃（未实现）｜设计文档 `design/plans/persona-system.md`（人设系统：右键创建向导 / 🎭 悬浮登场 / 人设名册 Block / 渐进披露 L0-L1-L2）

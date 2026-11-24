@@ -1,0 +1,1544 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Overview Tab 组头 · 右键「收藏到更多 / 查看更多」原型</title>
+<style>
+:root {
+    --bg: #0b0d0e;
+    --stage: #0f1113;
+    --panel: #15181b;
+    --panel-2: #1b1f23;
+    --line: #272b30;
+    --line-soft: #202429;
+    --text: #e6e9ec;
+    --text-2: #9aa2ab;
+    --text-3: #6d747c;
+
+    --accent: #7c9cf5;
+    --accent-soft: rgba(124, 156, 245, 0.14);
+    --work: #7c9cf5;
+    --idle: #565d65;
+    --done: #5fb87c;
+    --think: #b08ce8;
+    --star: #f2c14e;
+
+    --row-hover: rgba(255, 255, 255, 0.055);
+    --shadow: 0 12px 34px rgba(0, 0, 0, 0.55), 0 2px 6px rgba(0, 0, 0, 0.4);
+}
+
+* { box-sizing: border-box; }
+
+html, body { height: 100%; }
+
+body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 13px/1.45 -apple-system, "SF Pro Text", "Segoe UI", "PingFang SC", system-ui, sans-serif;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 320px;
+    height: 100vh;
+    overflow: hidden;
+}
+
+/* ───────────────────────── 舞台 ───────────────────────── */
+.stage {
+    padding: 20px 22px;
+    overflow: auto;
+    min-width: 0;
+}
+
+.stage-top {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    margin-bottom: 4px;
+}
+
+.stage-top h1 {
+    font-size: 15px;
+    font-weight: 600;
+    margin: 0;
+    letter-spacing: 0.2px;
+}
+
+.stage-top .src {
+    color: var(--text-3);
+    font-size: 11.5px;
+    font-family: "SF Mono", ui-monospace, monospace;
+}
+
+.stage-lead {
+    color: var(--text-2);
+    font-size: 12.5px;
+    margin: 0 0 14px;
+    max-width: 720px;
+}
+
+.stage-lead b { color: var(--text); font-weight: 600; }
+
+.win {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.35);
+    position: relative;
+    min-height: 560px;
+}
+
+.win-bar {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    height: 34px;
+    padding: 0 12px;
+    background: var(--panel-2);
+    border-bottom: 1px solid var(--line);
+}
+
+.win-bar .d {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #3a3f45;
+}
+
+.win-bar .t {
+    margin-left: 8px;
+    color: var(--text-3);
+    font-size: 11.5px;
+}
+
+/* ───────────────────────── Tab 栏（真实 tabbar，作为对照） ───────────────────────── */
+.tabbar {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    height: 38px;
+    padding: 0 8px;
+    border-bottom: 1px solid var(--line);
+    background: var(--stage);
+    position: relative;
+    z-index: 30;
+}
+
+.tab {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: 28px;
+    padding: 0 10px;
+    border-radius: 7px;
+    color: var(--text-2);
+    font-size: 12px;
+    white-space: nowrap;
+    cursor: default;
+    border: 1px solid transparent;
+    transition: background 0.12s, color 0.12s, transform 0.16s, opacity 0.16s;
+}
+
+.tab:hover { background: var(--row-hover); color: var(--text); }
+.tab.active { background: var(--panel-2); border-color: var(--line); color: var(--text); }
+.tab .ico { color: var(--text-3); font-size: 11px; }
+.tab.active .ico { color: var(--accent); }
+
+.tab.leaving { transform: scale(0.9); opacity: 0; width: 0; padding: 0; margin: 0; }
+.tab.entering { animation: tabIn 0.22s ease-out; }
+
+@keyframes tabIn {
+    from { transform: scale(0.9); opacity: 0; }
+    to { transform: scale(1); opacity: 1; }
+}
+
+.tab .sdot {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: var(--work);
+}
+
+.tab-add {
+    width: 24px;
+    height: 24px;
+    display: grid;
+    place-items: center;
+    border-radius: 6px;
+    color: var(--text-3);
+    font-size: 14px;
+    margin-left: 2px;
+    cursor: default;
+}
+
+.tab-add:hover { background: var(--row-hover); color: var(--text-2); }
+
+.tabbar-spacer { flex: 1; }
+
+.more-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: 26px;
+    padding: 0 9px;
+    border-radius: 7px;
+    color: var(--text-2);
+    font-size: 12px;
+    border: 1px solid transparent;
+    position: relative;
+}
+
+.more-btn:hover, .more-btn.open { background: var(--panel-2); border-color: var(--line); color: var(--text); }
+
+.more-btn .badge {
+    min-width: 16px;
+    height: 16px;
+    padding: 0 4px;
+    border-radius: 8px;
+    background: var(--accent-soft);
+    color: var(--accent);
+    font-size: 10.5px;
+    display: grid;
+    place-items: center;
+    font-weight: 600;
+}
+
+.more-btn .badge.pulse { animation: badgePulse 0.5s ease-out; }
+
+@keyframes badgePulse {
+    0% { transform: scale(1); }
+    40% { transform: scale(1.35); background: var(--accent); color: #0b0d0e; }
+    100% { transform: scale(1); }
+}
+
+/* ───────────────────────── 「更多」下拉 ───────────────────────── */
+.more-pop {
+    position: absolute;
+    top: 40px;
+    right: 10px;
+    width: 330px;
+    max-height: 420px;
+    background: var(--panel-2);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    box-shadow: var(--shadow);
+    z-index: 60;
+    display: none;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.more-pop.open { display: flex; animation: popIn 0.13s ease-out; }
+
+@keyframes popIn {
+    from { opacity: 0; transform: translateY(-4px) scale(0.99); }
+    to { opacity: 1; transform: none; }
+}
+
+.more-search {
+    padding: 8px;
+    border-bottom: 1px solid var(--line-soft);
+}
+
+.more-search input {
+    width: 100%;
+    height: 28px;
+    background: var(--stage);
+    border: 1px solid var(--line);
+    border-radius: 7px;
+    color: var(--text);
+    padding: 0 9px;
+    font-size: 12px;
+    outline: none;
+}
+
+.more-search input:focus { border-color: var(--accent); }
+
+.more-list { overflow: auto; padding: 4px 6px 8px; }
+
+.more-sec {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 6px 4px;
+    color: var(--text-3);
+    font-size: 10.5px;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+}
+
+.more-sec .star { color: var(--star); }
+
+.more-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: 30px;
+    padding: 0 8px;
+    border-radius: 7px;
+    font-size: 12.5px;
+    color: var(--text-2);
+    cursor: default;
+    border: 1px solid transparent;
+    position: relative;
+}
+
+.more-row:hover { background: var(--row-hover); color: var(--text); }
+.more-row.is-starred { color: var(--text); }
+.more-row.is-starred .name::after { content: "★"; color: var(--star); font-size: 10px; margin-left: 5px; }
+.more-row.is-flash { background: var(--accent-soft); border-color: rgba(124, 156, 245, 0.45); animation: flash 1.1s ease-out; }
+
+@keyframes flash {
+    0%, 55% { background: rgba(124, 156, 245, 0.24); }
+    100% { background: transparent; }
+}
+
+.more-row .ico { color: var(--text-3); font-size: 11px; width: 12px; }
+.more-row .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.more-row .dots { display: flex; gap: 3px; }
+.more-row .dots i { width: 5px; height: 5px; border-radius: 50%; background: var(--idle); }
+.more-row .dots i.work { background: var(--work); }
+.more-row .unstar {
+    display: none;
+    color: var(--text-3);
+    font-size: 11px;
+    padding: 2px 5px;
+    border-radius: 4px;
+}
+.more-row:hover .unstar { display: block; }
+.more-row .unstar:hover { background: rgba(255, 255, 255, 0.1); color: var(--text); }
+
+.more-empty { color: var(--text-3); font-size: 12px; padding: 10px 8px; }
+
+/* ───────────────────────── Overview 列表 ───────────────────────── */
+.overview {
+    padding: 14px 16px 26px;
+    background: var(--stage);
+    min-height: 460px;
+}
+
+.ov-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+.ov-head h2 { font-size: 13px; font-weight: 600; margin: 0; color: var(--text); }
+.ov-head .chip {
+    font-size: 11px;
+    color: var(--text-2);
+    background: var(--panel-2);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 2px 7px;
+}
+.ov-head .spacer { flex: 1; }
+.ov-hint { color: var(--text-3); font-size: 11.5px; }
+
+.grp {
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: var(--panel);
+    margin-bottom: 10px;
+    overflow: hidden;
+}
+
+.grp.dim { opacity: 0.72; }
+
+.grp-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: 36px;
+    padding: 0 10px;
+    cursor: default;
+    user-select: none;
+    transition: background 0.12s;
+}
+
+.grp-head:hover { background: var(--row-hover); }
+.grp-head.ctx { background: var(--accent-soft); }
+
+.grp-head .chev { color: var(--text-3); font-size: 9px; width: 10px; }
+.grp-head .tico { color: var(--text-3); font-size: 11px; }
+.grp-head .gname { font-size: 12.5px; color: var(--text); font-weight: 500; }
+.grp-head .gcount {
+    font-size: 11px;
+    color: var(--text-2);
+    background: var(--panel-2);
+    border: 1px solid var(--line-soft);
+    border-radius: 5px;
+    padding: 0 5px;
+    min-width: 18px;
+    text-align: center;
+}
+
+.tag {
+    font-size: 10.5px;
+    padding: 1px 6px;
+    border-radius: 5px;
+    border: 1px solid transparent;
+}
+
+.tag.starred { color: var(--star); background: rgba(242, 193, 78, 0.12); border-color: rgba(242, 193, 78, 0.28); }
+.tag.unopened { color: var(--text-3); background: var(--panel-2); border-color: var(--line-soft); }
+.tag.new { color: var(--accent); background: var(--accent-soft); border-color: rgba(124, 156, 245, 0.3); }
+
+.grp-head .spacer { flex: 1; }
+
+.mini-status {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 10.5px;
+    color: var(--text-2);
+    background: var(--panel-2);
+    border: 1px solid var(--line-soft);
+    border-radius: 6px;
+    padding: 1px 6px;
+    height: 19px;
+}
+
+.mini-status i { width: 5px; height: 5px; border-radius: 50%; background: var(--work); }
+
+.jump {
+    width: 22px;
+    height: 22px;
+    display: grid;
+    place-items: center;
+    border-radius: 6px;
+    color: var(--text-3);
+    font-size: 11px;
+    cursor: default;
+}
+
+.jump:hover { background: var(--row-hover); color: var(--text); }
+
+.grp-body { border-top: 1px solid var(--line-soft); padding: 8px; display: flex; flex-direction: column; gap: 6px; }
+.grp.collapsed .grp-body { display: none; }
+
+.row {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    height: 40px;
+    padding: 0 10px;
+    border-radius: 8px;
+    border: 1px solid var(--line-soft);
+    background: var(--panel-2);
+    font-size: 12px;
+    color: var(--text-2);
+}
+
+.row:hover { border-color: #33383f; }
+.row .emoji { font-size: 14px; }
+.row .title { color: var(--text); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row .time { color: var(--text-3); font-size: 11px; }
+.row .state { font-size: 10.5px; padding: 1px 6px; border-radius: 5px; background: rgba(124, 156, 245, 0.13); color: var(--work); }
+.row .state.done { background: rgba(95, 184, 124, 0.13); color: var(--done); }
+
+.row-add {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    height: 32px;
+    border: 1px dashed var(--line);
+    border-radius: 8px;
+    color: var(--text-3);
+    font-size: 11.5px;
+    cursor: default;
+}
+
+.row-add:hover { border-color: #3c424a; color: var(--text-2); }
+
+/* ───── 分区模型：打开区 + 更多区 ───── */
+.seg-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: 30px;
+    padding: 0 6px;
+    margin: 6px 0 8px;
+    border-radius: 7px;
+    color: var(--text-2);
+    font-size: 11px;
+    letter-spacing: 0.6px;
+    border: none;
+    background: transparent;
+    width: 100%;
+    font-family: inherit;
+    text-align: left;
+    cursor: default;
+}
+
+.seg-head.static { cursor: default; }
+
+.seg-head.collapsible { cursor: pointer; }
+.seg-head.collapsible:hover { background: var(--row-hover); color: var(--text); }
+
+.seg-head .chev { font-size: 8px; color: var(--text-3); width: 9px; }
+.seg-head .seg-title { font-size: 11px; text-transform: uppercase; letter-spacing: 0.8px; }
+.seg-head .seg-sub { font-size: 11px; color: var(--text-3); }
+.seg-head .seg-sub .st { color: var(--star); }
+.seg-head .seg-count {
+    font-size: 10.5px;
+    color: var(--text-2);
+    background: var(--panel-2);
+    border: 1px solid var(--line-soft);
+    border-radius: 5px;
+    padding: 0 5px;
+}
+
+.grp.is-flash { outline: 1px solid rgba(124, 156, 245, 0.5); animation: flash 1.1s ease-out; }
+
+.seg-tip {
+    color: var(--text-3);
+    font-size: 10.5px;
+    padding: 0 6px;
+    margin-top: -2px;
+    margin-bottom: 8px;
+}
+
+/* ───────────────────────── 视图切换 / 看板 / 时间轴 ───────────────────────── */
+.view-switch {
+    display: flex;
+    gap: 2px;
+    padding: 2px;
+    background: var(--panel-2);
+    border: 1px solid var(--line);
+    border-radius: 7px;
+}
+
+.view-switch button {
+    font: inherit;
+    font-size: 11.5px;
+    color: var(--text-3);
+    background: transparent;
+    border: 0;
+    border-radius: 5px;
+    padding: 3px 9px;
+    cursor: pointer;
+}
+
+.view-switch button:hover { color: var(--text-2); }
+.view-switch button.on { background: var(--panel); color: var(--text); border: 1px solid var(--line); }
+
+.group-pick {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 11.5px;
+    color: var(--text-3);
+}
+
+.group-pick select {
+    font: inherit;
+    font-size: 11.5px;
+    color: var(--text-2);
+    background: var(--panel-2);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 3px 6px;
+    outline: none;
+}
+
+.board {
+    display: flex;
+    gap: 8px;
+    align-items: flex-start;
+    overflow-x: auto;
+    padding-bottom: 8px;
+}
+
+.col {
+    flex: 0 0 240px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 8px;
+    min-height: 120px;
+}
+
+.col.is-empty { opacity: 0.55; }
+
+.col-head {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    height: 26px;
+    padding: 0 4px;
+    margin-bottom: 6px;
+    border-radius: 6px;
+    cursor: default;
+}
+
+.col-head.ctx { background: var(--accent-soft); }
+
+.col-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--idle); }
+.col-dot.is-working { background: var(--work); }
+.col-dot.is-done { background: var(--done); }
+
+.col-title { font-size: 12px; color: var(--text); font-weight: 500; }
+.col-count {
+    font-size: 10.5px;
+    color: var(--text-2);
+    background: var(--panel-2);
+    border: 1px solid var(--line-soft);
+    border-radius: 5px;
+    padding: 0 5px;
+}
+.col-head .anno { margin-left: 2px; }
+
+.bcard {
+    border: 1px solid var(--line-soft);
+    background: var(--panel-2);
+    border-radius: 8px;
+    padding: 7px 8px;
+    margin-bottom: 6px;
+    font-size: 11.5px;
+    color: var(--text-2);
+}
+
+.bcard .bc-title { color: var(--text); display: flex; gap: 6px; align-items: center; margin-bottom: 4px; }
+.bcard .bc-title span.t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bcard .bc-meta { display: flex; gap: 6px; align-items: center; color: var(--text-3); font-size: 10.5px; }
+
+.timeline { display: flex; flex-direction: column; gap: 6px; padding: 4px 0; }
+.tl-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    height: 34px;
+    padding: 0 10px;
+    border: 1px solid var(--line-soft);
+    border-radius: 8px;
+    background: var(--panel);
+    font-size: 11.5px;
+}
+.tl-row .tl-name { width: 130px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tl-track { flex: 1; height: 8px; border-radius: 4px; background: #1a1d21; position: relative; }
+.tl-bar { position: absolute; top: 0; height: 8px; border-radius: 4px; background: rgba(124, 156, 245, 0.6); }
+.tl-row .tl-tab { font-size: 10px; color: var(--text-3); border: 1px solid var(--line-soft); border-radius: 4px; padding: 0 4px; }
+
+/* ───────────────────────── 右键菜单 ───────────────────────── */
+.menu {
+    position: fixed;
+    min-width: 208px;
+    background: #1c2025;
+    border: 1px solid #31363d;
+    border-radius: 9px;
+    box-shadow: var(--shadow);
+    padding: 5px;
+    z-index: 200;
+    display: none;
+    font-size: 12.5px;
+}
+
+.menu.open { display: block; animation: popIn 0.1s ease-out; }
+
+.menu-item {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    height: 28px;
+    padding: 0 8px;
+    border-radius: 6px;
+    color: var(--text);
+    cursor: default;
+    white-space: nowrap;
+}
+
+.menu-item:hover { background: rgba(255, 255, 255, 0.08); }
+.menu-item .mi { width: 14px; text-align: center; color: var(--text-2); font-size: 11.5px; }
+.menu-item.star .mi { color: var(--star); }
+.menu-item .sub { color: var(--text-3); font-size: 11px; margin-left: auto; padding-left: 12px; }
+.menu-item.disabled { color: var(--text-3); }
+.menu-item.disabled:hover { background: transparent; }
+.menu-sep { height: 1px; background: #2a2f35; margin: 4px 6px; }
+.menu-title {
+    padding: 5px 8px 3px;
+    font-size: 10.5px;
+    color: var(--text-3);
+    letter-spacing: 0.4px;
+    text-transform: uppercase;
+}
+
+/* ───────────────────────── 注释徽标 ───────────────────────── */
+.anno {
+    display: none;
+    width: 15px;
+    height: 15px;
+    border-radius: 50%;
+    background: var(--accent);
+    color: #0b0d0e;
+    font-size: 10px;
+    font-weight: 700;
+    place-items: center;
+    margin-left: 4px;
+}
+
+body.annotate .anno { display: inline-grid; }
+
+/* 只在原型里出现：新点位虚线框 */
+body.annotate .grp-head { outline: 1px dashed rgba(124, 156, 245, 0.5); outline-offset: -3px; }
+
+/* ───────────────────────── 右栏说明 ───────────────────────── */
+.notes {
+    border-left: 1px solid var(--line);
+    background: #0d0f11;
+    padding: 18px 16px 40px;
+    overflow: auto;
+}
+
+.notes h3 {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.7px;
+    color: var(--text-3);
+    margin: 0 0 8px;
+}
+
+.notes h3:not(:first-child) { margin-top: 20px; }
+
+.notes p, .notes li { color: var(--text-2); font-size: 12px; line-height: 1.6; }
+.notes ol, .notes ul { margin: 0; padding-left: 18px; }
+.notes li { margin-bottom: 6px; }
+.notes b { color: var(--text); }
+.notes code {
+    font-family: "SF Mono", ui-monospace, monospace;
+    font-size: 11px;
+    background: var(--panel-2);
+    border: 1px solid var(--line-soft);
+    border-radius: 4px;
+    padding: 0 4px;
+    color: #b9c6d6;
+}
+
+.qa {
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 10px 11px;
+    margin-bottom: 9px;
+    background: var(--panel);
+}
+
+.qa .q { color: var(--text); font-size: 12px; font-weight: 600; margin-bottom: 4px; }
+.qa .a { color: var(--text-2); font-size: 11.5px; }
+.qa .rec { color: var(--done); font-size: 11px; margin-top: 5px; }
+
+.btn-row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+
+.btn {
+    font: inherit;
+    font-size: 11.5px;
+    color: var(--text-2);
+    background: var(--panel-2);
+    border: 1px solid var(--line);
+    border-radius: 7px;
+    padding: 5px 9px;
+    cursor: pointer;
+}
+
+.btn:hover { color: var(--text); border-color: #3a4048; }
+.btn.on { color: var(--accent); border-color: rgba(124, 156, 245, 0.45); background: var(--accent-soft); }
+
+/* toast */
+.toast {
+    position: fixed;
+    left: 50%;
+    bottom: 26px;
+    transform: translateX(-50%) translateY(14px);
+    background: #1c2025;
+    border: 1px solid #31363d;
+    color: var(--text);
+    font-size: 12px;
+    padding: 7px 13px;
+    border-radius: 8px;
+    box-shadow: var(--shadow);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.18s, transform 0.18s;
+    z-index: 300;
+}
+
+.toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+
+<main class="stage">
+    <div class="stage-top">
+        <h1>Overview Tab 组头 · 右键「收藏到更多 / 查看更多」</h1>
+        <span class="src">session-overview.tsx · tab-more-menu.tsx · tab-collapse-state.ts</span>
+    </div>
+    <p class="stage-lead">
+        核心变化：右上角「本次打开的 Tab」过滤按钮（一刀切藏掉未打开组）改为<b>分区模型</b>——
+        列表分两段：<b>打开的 Tab</b>（默认展开）与<b>更多 Tab</b>（默认折叠成一行入口，收着收藏的和未打开的）。
+        右键组头可收藏/取消收藏，收藏 = 移入「更多」区且在 Tab 栏也收进 ⋯ 下拉。
+    </p>
+
+    <div class="win">
+        <div class="win-bar">
+            <span class="d"></span><span class="d"></span><span class="d"></span>
+            <span class="t">snorkeling — overview tab group context menu</span>
+        </div>
+
+        <!-- 真实 Tab 栏（对照用，非本次改动点） -->
+        <div class="tabbar" id="tabbar">
+            <div class="tabbar-spacer"></div>
+            <div class="more-btn" id="more-btn">
+                <span>⋯</span><span>更多</span><span class="badge" id="more-badge">0</span>
+            </div>
+
+            <div class="more-pop" id="more-pop">
+                <div class="more-search" id="more-search-wrap" style="display:none">
+                    <input id="more-search" placeholder="搜索 Tab…" />
+                </div>
+                <div class="more-list" id="more-list"></div>
+            </div>
+        </div>
+
+        <!-- Overview 列表视图 -->
+        <div class="overview">
+            <div class="ov-head">
+                <h2>Overview</h2>
+                <div class="view-switch" id="view-switch">
+                    <button data-view="list" class="on">列表</button>
+                    <button data-view="board">看板</button>
+                    <button data-view="timeline">时间轴</button>
+                </div>
+                <label class="group-pick" id="group-pick" style="display:none">
+                    分组
+                    <select id="board-group">
+                        <option value="tab">按 Tab</option>
+                        <option value="status">按状态</option>
+                    </select>
+                </label>
+                <span class="spacer"></span>
+                <span class="ov-hint" id="ov-hint">右键组头试试 →</span>
+            </div>
+            <div id="groups"></div>
+            <div id="board" class="board" style="display:none"></div>
+            <div id="timeline" class="timeline" style="display:none"></div>
+        </div>
+    </div>
+
+    <div class="toast" id="toast"></div>
+</main>
+
+<aside class="notes">
+    <h3>怎么玩</h3>
+    <ol>
+        <li>列表视图现在是<b>两段</b>：上面「打开的 Tab」（默认展开），下面「更多 Tab」<b>一行入口</b>（默认折叠）。</li>
+        <li>右键「打开的」区任意组头 → <b>收藏到「更多」</b>：该组立刻掉进「更多」区，Tab 栏同步收进 ⋯。</li>
+        <li>点「更多 Tab」入口行 → 展开，里面分 ★ 收藏 / 未打开 两类。</li>
+        <li>菜单里「<b>查看「更多」区</b>」→ 自动展开该分区并闪烁高亮目标 Tab。</li>
+        <li>看板切「按 Tab」后列头右键 → 同一份菜单；时间轴无 Tab 维度。</li>
+        <li>右上角旧的「本次打开的 Tab」过滤按钮<b>已取消</b> —— 它的职责被「更多」分区（默认折叠）接管。</li>
+    </ol>
+
+    <h3>本次新增点</h3>
+    <ul>
+        <li><b>①</b> 列表组头右键菜单（打开 Tab / 收藏 / 查看「更多」区 / 重命名 / 复制 ID / 关闭）。</li>
+        <li><b>②</b> Tab 栏「更多」下拉新增「★ 已收藏」分区。</li>
+        <li><b>③</b> 收藏 = 收起 + 星标：Tab 栏与 Overview 两个面用<b>同一个意图</b>。</li>
+        <li><b>④</b> 组头状态徽标：<code>★ 已收藏</code> / <code>未打开</code>。</li>
+        <li><b>⑤</b> 看板「按 Tab」列头接同一菜单 builder。</li>
+        <li><b>⑥</b> <b>分区模型</b>：打开区 / 更多区，替代旧的「本次打开的 Tab」过滤按钮。</li>
+    </ul>
+
+    <h3>为什么旧过滤按钮有问题</h3>
+    <div class="qa">
+        <div class="q">旧语义：一刀切隐藏</div>
+        <div class="a"><code>hideUnopenedTabs</code> 打开后，所有「本次启动未打开」的组<b>直接从 DOM 消失</b>，没有入口、没有计数，用户不知道藏了多少、也回不去。</div>
+        <div class="rec">新语义：折叠成一行入口 + 计数 + 收藏/未打开分项。</div>
+    </div>
+    <div class="qa">
+        <div class="q">两套隐藏体系对不上</div>
+        <div class="a">Tab 栏用 <code>collapsedTabIds</code>（手动收起 + 未打开），Overview 用 <code>openedThisLaunch</code>（只认本次启动）。同一个 Tab 在两个面命运不同。</div>
+        <div class="rec">新语义：两个面共用「打开 / 更多」两桶，收藏动作双向同步。</div>
+    </div>
+    <div class="qa">
+        <div class="q">「只显示 Agent」还留着吗？</div>
+        <div class="a">它是<b>视图内过滤</b>（只过滤组内行，不删组），与这次的分区是正交的。</div>
+        <div class="rec">推荐：保留不动。</div>
+    </div>
+
+    <h3>待你拍板</h3>
+    <div class="qa">
+        <div class="q">D1 · 分区归属规则</div>
+        <div class="a">推荐：<code>starred</code> 或 <code>!openedThisLaunch</code> → 「更多」区；其余 → 「打开」区。收藏优先级最高（打开过也进更多）。</div>
+        <div class="rec">这就是「收藏的 + 更多的 = 默认不展示」。</div>
+    </div>
+    <div class="qa">
+        <div class="q">D2 · 旧过滤按钮怎么处理</div>
+        <div class="a">A：删除按钮，用「更多」分区默认折叠替代（推荐）。B：保留但改名为「只看打开的」且默认开。</div>
+        <div class="rec">推荐 A —— 用户不用再记一个开关。</div>
+    </div>
+    <div class="qa">
+        <div class="q">D3 · 分区展开状态是否持久</div>
+        <div class="a">旧 key <code>snorkeling:session-overview:hide-unopened-tabs</code> 可迁移成「更多区是否展开」的初值。</div>
+        <div class="rec">推荐：持久（默认折叠）。</div>
+    </div>
+    <div class="qa">
+        <div class="q">D4 · 收藏存储</div>
+        <div class="a">A：扩 <code>tab-collapse-store</code>；B：Tab meta <code>tab:starred</code>（走 <code>SetMetaCommand</code>，零新 IPC）。</div>
+        <div class="rec">推荐 B。</div>
+    </div>
+    <div class="qa">
+        <div class="q">D5 · 「查看更多」打开谁</div>
+        <div class="a">改成展开 Overview 的「更多」分区并高亮（本原型）。</div>
+        <div class="rec">推荐：是。Tab 栏 ⋯ 下拉仍独立存在，不混。</div>
+    </div>
+
+    <h3>面板</h3>
+    <div class="btn-row">
+        <button class="btn on" id="btn-anno">标注 ①-⑥</button>
+        <button class="btn" id="btn-reset">重置状态</button>
+    </div>
+</aside>
+
+<!-- 右键菜单（唯一实例） -->
+<div class="menu" id="menu"></div>
+
+<script>
+(function () {
+    "use strict";
+
+    // ── 数据：模拟 workspace.tabids + 块 ─────────────────────────
+    const state = {
+        tabs: [
+            { id: "t-ppt", name: "PPT", ico: "▤", open: true, blocks: 4, agents: 0, emoji: "📊" },
+            { id: "t-ai", name: "aisessions", ico: "◫", open: true, blocks: 3, agents: 3, emoji: "🧠" },
+            { id: "t-files", name: "Files", ico: "▥", open: true, blocks: 3, agents: 1, emoji: "📁" },
+            { id: "t-vcs", name: "VCS", ico: "▦", open: false, blocks: 2, agents: 1, emoji: "🌿" },
+            { id: "t-ct", name: "commontext", ico: "✦", open: false, blocks: 1, agents: 0, emoji: "💬" },
+            { id: "t-hero", name: "hero:studio", ico: "★", open: false, blocks: 4, agents: 2, emoji: "🎭" },
+            { id: "t-log", name: "日志", ico: "▤", open: true, blocks: 1, agents: 0, emoji: "📝" },
+        ],
+        starred: new Set(),      // 收藏（显式、持久）
+        collapsed: new Set(),    // 收起到更多（隐式，可被打开覆盖）
+        activeId: "t-ai",
+        collapsedGroups: new Set(),
+        moreSectionOpen: false, // 「更多」分区默认折叠（分区模型替代 hideUnopenedTabs 过滤按钮）
+        view: "list",          // list | board | timeline（镜像 overviewViewModeAtom）
+        boardGroup: "tab",     // tab | status（镜像 overviewBoardGroupAtom，真实共 5 种分组）
+    };
+
+    const byId = (id) => state.tabs.find((t) => t.id === id);
+
+    /** Tab 栏可见：不是收藏、不是收起、且本次启动打开过（或就是当前激活）。 */
+    function isBarVisible(tab) {
+        if (tab.id === state.activeId) return true;         // 激活优先（口径同 isTabHiddenFromBar）
+        if (state.starred.has(tab.id)) return false;
+        if (state.collapsed.has(tab.id)) return false;
+        return tab.open;
+    }
+
+    /** 「更多」里的行：收藏 > 未打开 > 已收起。 */
+    function moreSections() {
+        const starred = [];
+        const unopened = [];
+        const collapsed = [];
+        for (const tab of state.tabs) {
+            if (state.starred.has(tab.id)) { starred.push(tab); continue; }
+            if (state.collapsed.has(tab.id)) { collapsed.push(tab); continue; }
+            if (!tab.open) { unopened.push(tab); }
+        }
+        return { starred, unopened, collapsed };
+    }
+
+    // ── 渲染：Tab 栏 ────────────────────────────────────────────
+    const tabbar = document.getElementById("tabbar");
+    const moreBtn = document.getElementById("more-btn");
+    const moreBadge = document.getElementById("more-badge");
+    const morePop = document.getElementById("more-pop");
+    const moreList = document.getElementById("more-list");
+    const searchWrap = document.getElementById("more-search-wrap");
+    const searchInput = document.getElementById("more-search");
+
+    function renderTabbar() {
+        tabbar.querySelectorAll(".tab, .tab-add").forEach((el) => el.remove());
+        const spacer = tabbar.querySelector(".tabbar-spacer");
+        const add = document.createElement("div");
+        add.className = "tab-add";
+        add.textContent = "+";
+        for (const tab of state.tabs) {
+            if (!isBarVisible(tab)) continue;
+            const el = document.createElement("div");
+            el.className = "tab" + (tab.id === state.activeId ? " active" : "");
+            el.dataset.tabId = tab.id;
+            el.innerHTML =
+                '<span class="ico">' + tab.ico + "</span>" +
+                "<span>" + tab.name + "</span>" +
+                (tab.agents > 0 ? '<span class="sdot"></span>' : "");
+            el.addEventListener("contextmenu", (ev) => {
+                ev.preventDefault();
+                openTabbarMenu(ev, tab);
+            });
+            tabbar.insertBefore(el, spacer);
+        }
+        tabbar.insertBefore(add, spacer);
+        renderMoreBadge();
+    }
+
+    function renderMoreBadge() {
+        const { starred, unopened, collapsed } = moreSections();
+        const total = starred.length + unopened.length + collapsed.length;
+        moreBadge.textContent = String(total);
+        if (total > 8) searchWrap.style.display = "block";
+        else searchWrap.style.display = "none";
+    }
+
+    // ── 渲染：「更多」下拉 ──────────────────────────────────────
+    function renderMoreList(query) {
+        const q = (query || "").trim().toLowerCase();
+        const secs = moreSections();
+        const parts = [];
+
+        function secRow(label, icon) {
+            return '<div class="more-sec"><span class="' + (icon === "★" ? "star" : "") + '">' + icon + "</span>" + label + "</div>";
+        }
+
+        function tabRow(tab, kind) {
+            if (q && !tab.name.toLowerCase().includes(q)) return "";
+            const dots = [];
+            for (let i = 0; i < Math.min(tab.agents, 3); i++) {
+                dots.push('<i class="' + (i === 0 ? "work" : "") + '"></i>');
+            }
+            return (
+                '<div class="more-row' + (kind === "starred" ? " is-starred" : "") + '" data-row-id="' + tab.id + '">' +
+                '<span class="ico">' + tab.ico + "</span>" +
+                '<span class="name">' + tab.name + "</span>" +
+                '<span class="dots">' + dots.join("") + "</span>" +
+                (kind === "starred" ? '<span class="unstar" data-unstar="' + tab.id + '" title="取消收藏">✕</span>' : "") +
+                "</div>"
+            );
+        }
+
+        if (secs.starred.length) {
+            parts.push(secRow("已收藏 · " + secs.starred.length, "★"));
+            parts.push(secs.starred.map((t) => tabRow(t, "starred")).join(""));
+        }
+        if (secs.unopened.length) {
+            parts.push(secRow("本次启动未打开 · " + secs.unopened.length, "○"));
+            parts.push(secs.unopened.map((t) => tabRow(t, "unopened")).join(""));
+        }
+        if (secs.collapsed.length) {
+            parts.push(secRow("已收起 · " + secs.collapsed.length, "⌄"));
+            parts.push(secs.collapsed.map((t) => tabRow(t, "collapsed")).join(""));
+        }
+        if (!parts.length) {
+            parts.push('<div class="more-empty">没有收起或未打开的 Tab。</div>');
+        }
+        moreList.innerHTML = parts.join("");
+    }
+
+    function openMorePop(focusId) {
+        renderMoreList(searchInput.value);
+        morePop.classList.add("open");
+        moreBtn.classList.add("open");
+        if (focusId) {
+            const row = moreList.querySelector('[data-row-id="' + focusId + '"]');
+            if (row) {
+                row.scrollIntoView({ block: "nearest" });
+                row.classList.add("is-flash");
+                setTimeout(() => row.classList.remove("is-flash"), 1200);
+            } else {
+                toast("这个 Tab 还不在「更多」里 —— 先收藏它");
+            }
+        }
+    }
+
+    function closeMorePop() {
+        morePop.classList.remove("open");
+        moreBtn.classList.remove("open");
+    }
+
+    moreBtn.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        if (morePop.classList.contains("open")) closeMorePop();
+        else openMorePop();
+    });
+
+    morePop.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        const un = ev.target.closest("[data-unstar]");
+        if (un) {
+            const id = un.dataset.unstar;
+            unstarTab(id);
+            return;
+        }
+        const row = ev.target.closest("[data-row-id]");
+        if (row) {
+            toast("（真实行为：切到该 Tab）" + byId(row.dataset.rowId).name);
+        }
+    });
+
+    searchInput.addEventListener("input", () => renderMoreList(searchInput.value));
+
+    // ── 渲染：Overview 分组 ────────────────────────────────────
+    const groupsEl = document.getElementById("groups");
+    const ROWS = {
+        "t-ppt": [["📊", "季度汇报 v3", "12:04", ""], ["📈", "数据附表", "11:52", "done"]],
+        "t-ai": [["🧠", "Overview agent 卡融合", "12:31", ""], ["🤖", "发送链路超时预算", "12:18", ""], ["⚙️", "opencode 扫描修复", "11:40", "done"]],
+        "t-files": [["📁", "design/prototypes", "12:20", ""]],
+        "t-vcs": [["🌿", "main · 38 改动", "12:10", ""]],
+        "t-ct": [["💬", "CommonText 草稿", "10:22", "done"]],
+        "t-hero": [["🎭", "hero:studio", "12:02", ""], ["⏱", "定时任务 · 夜间批次", "09:30", "done"]],
+        "t-log": [["📝", "夜间 loop 日志", "08:12", "done"]],
+    };
+
+    function statusOf(tab) {
+        if (state.starred.has(tab.id)) return { cls: "tag starred", text: "★ 已收藏" };
+        if (!tab.open) return { cls: "tag unopened", text: "未打开" };
+        return null;
+    }
+
+    /** 分区判定：收藏的、本次启动未打开的 → 「更多」区；其余 → 「打开」区。 */
+    function groupBucket(tab) {
+        if (state.starred.has(tab.id)) return "more";
+        if (!tab.open) return "more";
+        return "open";
+    }
+
+    function groupSection(tab) {
+        const collapsed = state.collapsedGroups.has(tab.id);
+        const sec = document.createElement("section");
+        sec.className = "grp" + (collapsed ? " collapsed" : "") + (!tab.open && !state.starred.has(tab.id) ? " dim" : "");
+        sec.dataset.groupId = tab.id;
+
+        const st = statusOf(tab);
+        const rows = (ROWS[tab.id] || []).map((r) =>
+            '<div class="row">' +
+            '<span class="emoji">' + r[0] + "</span>" +
+            '<span class="title">' + r[1] + "</span>" +
+            '<span class="time">' + r[2] + "</span>" +
+            (r[3] ? '<span class="state ' + r[3] + '">' + (r[3] === "done" ? "done" : "working") + "</span>" : "") +
+            "</div>"
+        ).join("");
+
+        sec.innerHTML =
+            '<div class="grp-head" data-group-head="' + tab.id + '">' +
+                '<span class="chev">' + (collapsed ? "▶" : "▼") + "</span>" +
+                '<span class="tico">' + tab.ico + "</span>" +
+                '<span class="gname">' + tab.name + "</span>" +
+                '<span class="gcount">' + tab.blocks + "</span>" +
+                (st ? '<span class="' + st.cls + '">' + st.text + "</span>" : "") +
+                '<span class="anno">①</span>' +
+                '<span class="spacer"></span>' +
+                (tab.agents > 0 ? '<span class="mini-status"><i></i>' + tab.agents + " working</span>" : "") +
+                '<span class="jump">↗</span>' +
+            "</div>" +
+            '<div class="grp-body">' + rows +
+                '<div class="row-add">＋ 新建 Agent</div>' +
+            "</div>";
+
+        sec.querySelector("[data-group-head]").addEventListener("contextmenu", (ev) => {
+            ev.preventDefault();
+            ev.stopPropagation();
+            openGroupMenu(ev, tab);
+        });
+
+        sec.querySelector("[data-group-head]").addEventListener("click", () => {
+            if (state.collapsedGroups.has(tab.id)) state.collapsedGroups.delete(tab.id);
+            else state.collapsedGroups.add(tab.id);
+            renderGroups();
+        });
+
+        return sec;
+    }
+
+    function renderGroups() {
+        groupsEl.innerHTML = "";
+        const openTabs = state.tabs.filter((tab) => groupBucket(tab) === "open");
+        const moreTabs = state.tabs.filter((tab) => groupBucket(tab) === "more");
+        const starredCount = moreTabs.filter((tab) => state.starred.has(tab.id)).length;
+        const unopenedCount = moreTabs.length - starredCount;
+
+        // 段 1：打开的 Tab（默认全展开）
+        const seg1 = document.createElement("div");
+        seg1.className = "seg-head static";
+        seg1.innerHTML =
+            '<span class="seg-title">打开的 Tab</span>' +
+            '<span class="seg-count">' + openTabs.length + "</span>" +
+            '<span class="seg-sub">本次启动打开过 / 当前激活</span>' +
+            '<span class="anno">⑥</span>';
+        groupsEl.appendChild(seg1);
+        for (const tab of openTabs) {
+            groupsEl.appendChild(groupSection(tab));
+        }
+
+        // 段 2：「更多」区（默认折叠成一行入口 —— 替代旧的「本次打开的 Tab」过滤按钮）
+        const seg2 = document.createElement("button");
+        seg2.type = "button";
+        seg2.className = "seg-head collapsible";
+        seg2.dataset.moreSeg = "1";
+        seg2.innerHTML =
+            '<span class="chev">' + (state.moreSectionOpen ? "▼" : "▶") + "</span>" +
+            '<span class="seg-title">更多 Tab</span>' +
+            '<span class="seg-count">' + moreTabs.length + "</span>" +
+            '<span class="seg-sub"><span class="st">★ 收藏 ' + starredCount + "</span> · 未打开 " + unopenedCount + "</span>" +
+            '<span class="spacer"></span>' +
+            '<span class="seg-sub">' + (state.moreSectionOpen ? "点击收起" : "点击展开") + "</span>";
+        seg2.addEventListener("click", () => {
+            state.moreSectionOpen = !state.moreSectionOpen;
+            renderGroups();
+        });
+        groupsEl.appendChild(seg2);
+
+        if (state.moreSectionOpen) {
+            for (const tab of moreTabs) {
+                groupsEl.appendChild(groupSection(tab));
+            }
+            if (moreTabs.length === 0) {
+                const empty = document.createElement("div");
+                empty.className = "seg-tip";
+                empty.textContent = "没有收藏或未打开的 Tab。";
+                groupsEl.appendChild(empty);
+            }
+        } else {
+            const tip = document.createElement("div");
+            tip.className = "seg-tip";
+            tip.textContent =
+                moreTabs.length === 0
+                    ? "没有收藏或未打开的 Tab。"
+                    : "默认不展示（收藏的 + 本次启动未打开的）。右键上方组头可收藏到「更多」。";
+            groupsEl.appendChild(tip);
+        }
+    }
+
+    /** 「查看更多」：展开段 2 并滚动高亮目标 Tab（替代旧的过滤按钮语义）。 */
+    function openMoreSection(tabId) {
+        state.moreSectionOpen = true;
+        renderOverview();
+        const el = groupsEl.querySelector('[data-group-id="' + tabId + '"]');
+        if (el == null) {
+            toast("该 Tab 在「打开的 Tab」区 —— 先收藏它才会进「更多」区");
+            return;
+        }
+        el.scrollIntoView({ block: "nearest" });
+        el.classList.add("is-flash");
+        setTimeout(() => el.classList.remove("is-flash"), 1200);
+    }
+
+    // ── 渲染：看板（真实 groupOverviewCardsByTab：有卡才有列，不补空列） ──
+    const boardEl = document.getElementById("board");
+    const timelineEl = document.getElementById("timeline");
+
+    function boardCards() {
+        const cards = [];
+        for (const tab of state.tabs) {
+            for (const r of ROWS[tab.id] || []) {
+                cards.push({ tab, emoji: r[0], title: r[1], time: r[2], state: r[3] || "idle" });
+            }
+        }
+        return cards;
+    }
+
+    function renderBoard() {
+        boardEl.innerHTML = "";
+        const cards = boardCards();
+        let columns;
+        if (state.boardGroup === "status") {
+            columns = ["working", "done", "idle"].map((s) => ({
+                key: "status:" + s,
+                title: s === "working" ? "进行中" : s === "done" ? "已完成" : "空闲",
+                tone: s,
+                tab: null,
+                cards: cards.filter((c) => c.state === s),
+            }));
+        } else {
+            // 与真实 groupOverviewCardsByTab 同构：没有卡的 Tab 不出列（空 Tab 只在列表视图）
+            columns = state.tabs
+                .filter((tab) => (ROWS[tab.id] || []).length > 0)
+                .map((tab) => ({
+                    key: "tab:" + tab.id,
+                    title: tab.name,
+                    tone: null,
+                    tab,
+                    cards: cards.filter((c) => c.tab.id === tab.id),
+                }));
+        }
+        for (const col of columns) {
+            const sec = document.createElement("section");
+            sec.className = "col" + (col.cards.length === 0 ? " is-empty" : "");
+            const st = col.tab ? statusOf(col.tab) : null;
+            const head = document.createElement("div");
+            head.className = "col-head";
+            if (col.tab) head.dataset.colHead = col.tab.id;
+            head.innerHTML =
+                (col.tone != null
+                    ? '<span class="col-dot is-' + col.tone + '"></span>'
+                    : '<span style="color:var(--text-3);font-size:11px">' + col.tab.ico + "</span>") +
+                '<span class="col-title">' + col.title + "</span>" +
+                (st ? '<span class="' + st.cls + '">' + st.text + "</span>" : "") +
+                (col.tab ? '<span class="anno">⑤</span>' : "") +
+                '<span class="col-count">' + col.cards.length + "</span>";
+            if (col.tab) {
+                head.addEventListener("contextmenu", (ev) => {
+                    ev.preventDefault();
+                    ev.stopPropagation();
+                    openGroupMenu(ev, col.tab);
+                });
+            } else {
+                head.addEventListener("contextmenu", (ev) => {
+                    ev.preventDefault();
+                    toast("状态列没有 Tab 维度 —— 切到「按 Tab」分组右键才有菜单");
+                });
+            }
+            sec.appendChild(head);
+            for (const c of col.cards) {
+                const b = document.createElement("div");
+                b.className = "bcard";
+                b.innerHTML =
+                    '<div class="bc-title"><span>' + c.emoji + '</span><span class="t">' + c.title + "</span></div>" +
+                    '<div class="bc-meta"><span>' + c.state + "</span><span>" + c.time + "</span></div>";
+                sec.appendChild(b);
+            }
+            boardEl.appendChild(sec);
+        }
+    }
+
+    // ── 渲染：时间轴（行 = 块级，没有 Tab 维度，菜单不接） ──
+    function renderTimeline() {
+        timelineEl.innerHTML = "";
+        boardCards().forEach((c, i) => {
+            const left = 6 + ((i * 37) % 62);
+            const width = 8 + ((i * 23) % 42);
+            const row = document.createElement("div");
+            row.className = "tl-row";
+            row.innerHTML =
+                '<span class="tl-name">' + c.emoji + " " + c.title + "</span>" +
+                '<span class="tl-track"><span class="tl-bar" style="left:' + left + "%;width:" + width + '%"></span></span>' +
+                '<span class="tl-tab">' + c.tab.name + "</span>";
+            timelineEl.appendChild(row);
+        });
+    }
+
+    function syncViewUI() {
+        document.querySelectorAll("#view-switch button").forEach((b) => {
+            b.classList.toggle("on", b.dataset.view === state.view);
+        });
+        document.getElementById("group-pick").style.display = state.view === "board" ? "" : "none";
+        groupsEl.style.display = state.view === "list" ? "" : "none";
+        boardEl.style.display = state.view === "board" ? "" : "none";
+        timelineEl.style.display = state.view === "timeline" ? "" : "none";
+        document.getElementById("ov-hint").textContent =
+            state.view === "list"
+                ? "右键组头试试（看「更多 Tab」入口行）→"
+                : state.view === "board"
+                  ? "按 Tab 分组时右键列头试试 →"
+                  : "时间轴是块级行，没有 Tab 维度";
+    }
+
+    function renderOverview() {
+        renderTabbar();
+        renderGroups();
+        renderBoard();
+        renderTimeline();
+        renderMoreList(searchInput.value);
+        syncViewUI();
+    }
+
+    // ── 动作 ────────────────────────────────────────────────────
+    function starTab(id, opts) {
+        const tab = byId(id);
+        if (!tab) return;
+        state.starred.add(id);
+        state.collapsed.add(id);
+        if (state.activeId === id) {
+            const next = state.tabs.find((t) => t.id !== id && isBarVisible(t));
+            if (next) state.activeId = next.id;
+        }
+        renderOverview();
+        moreBadge.classList.add("pulse");
+        setTimeout(() => moreBadge.classList.remove("pulse"), 520);
+        if (!opts || opts.toast !== false) toast("已收藏「" + tab.name + "」到「更多」");
+    }
+
+    function unstarTab(id) {
+        const tab = byId(id);
+        if (!tab) return;
+        state.starred.delete(id);
+        state.collapsed.delete(id);
+        tab.open = true;
+        renderOverview();
+        toast("「" + tab.name + "」已回到 Tab 栏");
+    }
+
+    let toastTimer = null;
+    const toastEl = document.getElementById("toast");
+    function toast(msg) {
+        toastEl.textContent = msg;
+        toastEl.classList.add("show");
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => toastEl.classList.remove("show"), 1900);
+    }
+
+    // ── 右键菜单 ────────────────────────────────────────────────
+    const menuEl = document.getElementById("menu");
+
+    function closeMenu() {
+        menuEl.classList.remove("open");
+        menuEl.innerHTML = "";
+        document.querySelectorAll(".grp-head.ctx, .col-head.ctx").forEach((el) => el.classList.remove("ctx"));
+    }
+
+    function placeMenu(ev) {
+        menuEl.classList.add("open");
+        const r = menuEl.getBoundingClientRect();
+        let x = ev.clientX;
+        let y = ev.clientY;
+        if (x + r.width > window.innerWidth - 8) x = window.innerWidth - r.width - 8;
+        if (y + r.height > window.innerHeight - 8) y = window.innerHeight - r.height - 8;
+        menuEl.style.left = x + "px";
+        menuEl.style.top = y + "px";
+    }
+
+    function item(html, onClick, cls) {
+        const el = document.createElement("div");
+        el.className = "menu-item" + (cls ? " " + cls : "");
+        el.innerHTML = html;
+        if (onClick) el.addEventListener("click", () => { closeMenu(); onClick(); });
+        return el;
+    }
+
+    function sep() {
+        const el = document.createElement("div");
+        el.className = "menu-sep";
+        return el;
+    }
+
+    function title(text) {
+        const el = document.createElement("div");
+        el.className = "menu-title";
+        el.textContent = text;
+        return el;
+    }
+
+    /** Overview Tab 组头 / 看板「按 Tab」列头 右键：本次新增。 */
+    function openGroupMenu(ev, tab) {
+        closeMenu();
+        document
+            .querySelector('[data-group-head="' + tab.id + '"], [data-col-head="' + tab.id + '"]')
+            ?.classList.add("ctx");
+        const starred = state.starred.has(tab.id);
+
+        menuEl.appendChild(title(tab.name));
+        menuEl.appendChild(item('<span class="mi">↗</span>打开 Tab', () => {
+            state.activeId = tab.id;
+            renderOverview();
+        }));
+
+        menuEl.appendChild(sep());
+        if (starred) {
+            menuEl.appendChild(item('<span class="mi">★</span>取消收藏<span class="sub">回到 Tab 栏</span>', () => unstarTab(tab.id), "star"));
+        } else {
+            menuEl.appendChild(item('<span class="mi">★</span>收藏到「更多」<span class="sub">隐藏 Tab 栏</span>', () => starTab(tab.id), "star"));
+        }
+        menuEl.appendChild(item('<span class="mi">⋯</span>查看「更多」区<span class="sub">展开 Overview 分区</span>', () => openMoreSection(tab.id)));
+
+        menuEl.appendChild(sep());
+        menuEl.appendChild(item('<span class="mi">✎</span>重命名 Tab', () => toast("（原型未实现：走 Tab 内联重命名）")));
+        menuEl.appendChild(item('<span class="mi">⧉</span>复制 Tab ID', () => toast("已复制：" + tab.id)));
+
+        menuEl.appendChild(sep());
+        menuEl.appendChild(item('<span class="mi">✕</span>关闭 Tab', () => toast("（原型不执行关闭，避免破坏演示状态）")));
+
+        placeMenu(ev);
+    }
+
+    /** Tab 栏右键：现有菜单（对照，标出与「收藏」的关系）。右键不切激活态。 */
+    function openTabbarMenu(ev, tab) {
+        closeMenu();
+
+        menuEl.appendChild(title("Tab · " + tab.name));
+        menuEl.appendChild(item('<span class="mi">✎</span>重命名 Tab', () => toast("（现有能力）")));
+        menuEl.appendChild(item('<span class="mi">⧉</span>复制 Tab ID', () => toast("已复制：" + tab.id)));
+        menuEl.appendChild(sep());
+        menuEl.appendChild(item('<span class="mi">⌄</span>收起到更多<span class="sub">现有</span>', () => {
+            state.collapsed.add(tab.id);
+            renderOverview();
+            toast("已收起到「更多」（未打星）");
+        }));
+        if (!state.starred.has(tab.id)) {
+            menuEl.appendChild(item('<span class="mi star">★</span>收藏到「更多」<span class="sub">本次新增</span>', () => starTab(tab.id), "star"));
+        }
+        placeMenu(ev);
+    }
+
+    document.addEventListener("click", (ev) => {
+        if (!menuEl.contains(ev.target)) closeMenu();
+        if (!morePop.contains(ev.target) && !moreBtn.contains(ev.target)) closeMorePop();
+    });
+    document.addEventListener("keydown", (ev) => {
+        if (ev.key === "Escape") { closeMenu(); closeMorePop(); }
+    });
+    window.addEventListener("blur", () => { closeMenu(); closeMorePop(); });
+
+    // ── 面板按钮 ────────────────────────────────────────────────
+    const annoBtn = document.getElementById("btn-anno");
+    annoBtn.addEventListener("click", () => {
+        document.body.classList.toggle("annotate");
+        annoBtn.classList.toggle("on", document.body.classList.contains("annotate"));
+    });
+
+    document.getElementById("btn-reset").addEventListener("click", () => {
+        state.starred.clear();
+        state.collapsed.clear();
+        state.collapsedGroups.clear();
+        state.activeId = "t-ai";
+        state.tabs.forEach((t, i) => { t.open = i < 3 || i === 6; });
+        searchInput.value = "";
+        closeMorePop();
+        closeMenu();
+        state.view = "list";
+        state.boardGroup = "tab";
+        state.moreSectionOpen = false;
+        document.getElementById("board-group").value = "tab";
+        renderOverview();
+        toast("已重置");
+    });
+
+    // ── 视图切换 / 看板分组（镜像 overviewViewModeAtom + overviewBoardGroupAtom） ──
+    document.querySelectorAll("#view-switch button").forEach((btn) => {
+        btn.addEventListener("click", () => {
+            state.view = btn.dataset.view;
+            renderOverview();
+        });
+    });
+    document.getElementById("board-group").addEventListener("change", (ev) => {
+        state.boardGroup = ev.target.value;
+        renderBoard();
+        syncViewUI();
+    });
+
+    // ── 启动：默认先演示一个已收藏的 Tab ─────────────────────────
+    renderOverview();
+    starTab("t-hero", { toast: false });
+
+    // 截图/自检开关：?ctx=1 直接展开组头菜单，?more=1 直接展开「更多」下拉。
+    const params = new URLSearchParams(location.search);
+    if (params.get("view")) {
+        state.view = params.get("view");
+        renderOverview();
+    }
+    if (params.get("seg") === "1") {
+        state.moreSectionOpen = true;
+        renderOverview();
+    }
+    if (params.get("ctx") === "1") {
+        const head = document.querySelector('[data-group-head="t-ai"], [data-col-head="t-ai"]');
+        const r = head.getBoundingClientRect();
+        openGroupMenu({ clientX: r.left + 54, clientY: r.bottom + 6 }, byId("t-ai"));
+    } else if (params.get("more") === "1") {
+        openMorePop("t-hero");
+    }
+})();
+</script>
+</body>
+</html>
