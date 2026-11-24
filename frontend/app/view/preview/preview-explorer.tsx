@@ -46,7 +46,7 @@ import { FILES_VCS_TREE_STATUS_ENABLED, normalizeVcsPath } from "./vcs-tree-stat
 import { VcsFileMarkTitleKey, useDirectoryVcsTreeStatus } from "./vcs-tree-status-hook";
 import { useFolderIndexBadges } from "./folder-index/folder-index-hook";
 import { idxBadgesMetaValue, isIdxBadgesEnabled } from "./folder-index/folder-index-meta";
-import { lookupDecoration, toRelPath } from "./folder-index/folder-index-model";
+import { applyDecorationToNode, lookupDecoration, toRelPath } from "./folder-index/folder-index-model";
 import * as WOS from "@/app/store/wos";
 
 const TreeFetchLimit = 1024;
@@ -545,26 +545,29 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
                 }
             }
             const visibleEntries = showHiddenFiles ? entries : entries.filter((entry) => !isHiddenEntry(entry));
-            // 索引徽标注入：徽标是渲染层概念，只写进 TreeNodeData.badge，不碰 FileInfo。
-            // 相对路径优先（评审记录/2024-年报.md），文件名兜底（与索引表两种写法兼容）。
-            const nodes = visibleEntries.slice(0, limit).map((entry) => {
-                const node = toTreeNode(entry, id, directoryIconColor);
-                if (!entry.isdir) {
-                    const deco = lookupDecoration(folderIndex.decorations, toRelPath(rootPath, entry.path), entry.name);
-                    if (deco != null) {
-                        node.badge = {
-                            emoji: deco.emoji,
-                            title: [deco.title, deco.note].filter(Boolean).join(" — ") || undefined,
-                            color: deco.color,
-                        };
-                    }
+            // 装饰落地（v2）：hidden 过滤 → order 稳定排序 → badge/icon/labelColor 写进 TreeNodeData。
+            // 徽标/图标/文件名颜色都是渲染层概念，不碰 FileInfo。
+            const decorated: { node: TreeNodeData; order?: number }[] = [];
+            for (const entry of visibleEntries) {
+                const deco = entry.isdir
+                    ? null
+                    : lookupDecoration(folderIndex.decorations, toRelPath(rootPath, entry.path), entry.name);
+                if (deco?.hidden === true) {
+                    continue;
                 }
-                return node;
+                const node = applyDecorationToNode(toTreeNode(entry, id, directoryIconColor), deco);
+                decorated.push({ node, order: deco?.order });
+            }
+            // 仅当有 order 时才改变顺序；都无 order = 保持后端顺序（稳定排序）
+            decorated.sort((a, b) => {
+                const ao = a.order ?? Number.POSITIVE_INFINITY;
+                const bo = b.order ?? Number.POSITIVE_INFINITY;
+                return ao === bo ? 0 : ao < bo ? -1 : 1;
             });
             return {
-                nodes,
-                capped: visibleEntries.length > limit,
-                totalKnown: visibleEntries.length,
+                nodes: decorated.slice(0, limit).map((item) => item.node),
+                capped: decorated.length > limit,
+                totalKnown: decorated.length,
             };
         },
         [directoryIconColor, env.rpc, folderIndex.decorations, model, rootPath, showHiddenFiles]

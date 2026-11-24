@@ -1,0 +1,17 @@
+{
+  "g1": {
+    "at": "2026-11-24T03:56:33Z",
+    "by": "nita",
+    "verdict": "confirmed",
+    "prdHash": "14d131cf4a4d"
+  },
+  "g2": {
+    "redProof": "loop/red/N-1124-idxbadges-decoration-protocol.txt",
+    "at": "2026-11-24T03:56:33Z"
+  },
+  "g5": {
+    "ok": true,
+    "executedAt": "2026-11-24T03:56:34Z",
+    "by": "compliance"
+  }
+}

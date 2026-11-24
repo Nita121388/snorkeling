@@ -19,7 +19,11 @@ import type { PreviewEnv } from "../previewenv";
 
 const IdxBadgesDebounceMs = 250;
 const IdxBadgesCacheTtlMs = 10_000;
-const IdxBadgesEntryLimit = 2_000;
+const IdxBadgesListLimit = 500;
+// BFS 全树上下文（v2）：脚本能看到子目录，但必须有界（限深/限目录数/限总项，超限静默截断）
+const IdxBadgesMaxDepth = 3;
+const IdxBadgesMaxDirs = 50;
+const IdxBadgesMaxEntries = 1500;
 
 export interface FolderIndexBadgesState {
     /** 合并后的徽标表：key = 相对根目录路径（也兼容文件名兜底，查表用 lookupDecoration） */
@@ -51,33 +55,58 @@ async function readRemoteText(model: PreviewModel, rpc: PreviewEnv["rpc"], path:
     }
 }
 
+/**
+ * 全树 entry（脚本上下文）：从 root BFS 下钻（限深 3 层 / 限 50 目录 / 限 1500 项，超限截断）。
+ * 每层一次 FileListStreamCommand；目录不 size，文件带 size。
+ */
 async function listEntries(
     model: PreviewModel,
     rpc: PreviewEnv["rpc"],
     rootPath: string
 ): Promise<FolderIndexEntry[]> {
-    const remotePath = await model.formatRemoteUri(rootPath, globalStore.get);
-    const entries: FolderIndexEntry[] = [];
-    const stream = rpc.FileListStreamCommand(
-        TabRpcClient,
-        { path: remotePath, opts: { limit: IdxBadgesEntryLimit } },
-        null
-    );
-    for await (const chunk of stream) {
-        if (chunk?.fileinfo == null) {
-            continue;
+    const out: FolderIndexEntry[] = [];
+    const queue: { dir: string; depth: number }[] = [{ dir: rootPath, depth: 0 }];
+    let dirsVisited = 0;
+    while (queue.length > 0 && out.length < IdxBadgesMaxEntries && dirsVisited < IdxBadgesMaxDirs) {
+        const { dir, depth } = queue.shift()!;
+        dirsVisited++;
+        const remotePath = await model.formatRemoteUri(dir, globalStore.get);
+        const stream = rpc.FileListStreamCommand(
+            TabRpcClient,
+            { path: remotePath, opts: { limit: IdxBadgesListLimit } },
+            null
+        );
+        const startIdx = out.length;
+        for await (const chunk of stream) {
+            if (out.length >= IdxBadgesMaxEntries) {
+                break;
+            }
+            if (chunk?.fileinfo == null) {
+                continue;
+            }
+            for (const info of chunk.fileinfo) {
+                if (out.length >= IdxBadgesMaxEntries) {
+                    break;
+                }
+                out.push({
+                    name: info.name,
+                    path: info.path,
+                    relPath: toRelPath(rootPath, info.path),
+                    isDir: !!info.isdir,
+                    modtime: info.modtime || undefined,
+                    size: info.isdir ? undefined : info.size || undefined,
+                });
+            }
         }
-        for (const info of chunk.fileinfo) {
-            entries.push({
-                name: info.name,
-                path: info.path,
-                relPath: toRelPath(rootPath, info.path),
-                isDir: !!info.isdir,
-                modtime: info.modtime || undefined,
-            });
+        if (depth + 1 < IdxBadgesMaxDepth) {
+            for (let i = startIdx; i < out.length; i++) {
+                if (out[i].isDir && out[i].relPath !== "") {
+                    queue.push({ dir: out[i].path, depth: depth + 1 });
+                }
+            }
         }
     }
-    return entries;
+    return out;
 }
 
 /**

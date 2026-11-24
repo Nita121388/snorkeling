@@ -34,6 +34,8 @@ export interface TreeNodeData {
     iconColor?: string;
     /** 文件夹索引徽标（实验插件）：图标后的前缀 emoji 徽标；不传 = 零变化 */
     badge?: TreeNodeBadgeData;
+    /** 装饰协议 v2：文件名颜色（#rrggbb）；不传 = 继承行色 */
+    labelColor?: string;
     isReadonly?: boolean;
     notfound?: boolean;
     staterror?: string;
@@ -1294,6 +1296,7 @@ export const TreeView = forwardRef<TreeViewRef, TreeViewProps>((props, ref) => {
                                                             isDirectory: !!row.isDirectory,
                                                         })
                                                     )}
+                                                    style={{ color: row.node.labelColor }}
                                                     title={getLabelTitle?.({
                                                         id: row.id,
                                                         node: row.node,

@@ -1,0 +1,12 @@
+# red proof: N-1124-idxbadges-decoration-protocol
+# date: 2026-11-24T03:55:19Z
+# v2 契约未实现：buildStatusRegistry / applyDecorationToNode 不存在，BadgeDeco 无 icon/labelColor/hidden/order → 6 条新测试红（预期红；旧用例全绿）
+
+[31m   → (0 , buildStatusRegistry) is not a function[39m
+[31m   → (0 , buildStatusRegistry) is not a function[39m
+[31m   → (0 , buildStatusRegistry) is not a function[39m
+[31m   → (0 , applyDecorationToNode) is not a function[39m
+[31m   → (0 , applyDecorationToNode) is not a function[39m
+[31m⎯⎯⎯⎯⎯⎯⎯[39m[1m[41m Failed Tests 6 [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯[39m
+[31m[1mTypeError[22m: (0 , buildStatusRegistry) is not a function[39m
+[31m[1mTypeError[22m: (0 , buildStatusRegistry) is not a function[39m

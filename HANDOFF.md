@@ -54,6 +54,18 @@
   （folder-index 15 断言 / refresh 6 断言 / treeview-badge 3 断言 / eslint 0 error）；tsc 58 = 基线不变、新文件 0 错。
 - 纯前端实现，零 Go 改动；改动 = `frontend/app/view/preview/folder-index/`（5 新文件）+ `preview-explorer.tsx` + `treeview.tsx`。
 
+**2026-11-24 追加：agent 入口 + 装饰协议 v2 已交付**
+
+| 包 | commit | 证据 | 状态 |
+|---|---|---|---|
+| `N-1124-idxbadges-agent-surface` | `7d5b9dfe` | prove 4/4（wsh block refresh 子命令 + agent guide 条目） | G1-G5 清，G7 待 nita |
+| `N-1124-idxbadges-decoration-protocol` | 本次 | prove 4/4（folder-index 23 断言 + render 3 + eslint） | G1-G5 清，G7 待 nita |
+
+- `wsh block refresh [<block|this>]`：agent 改完 index.md / badges.js 后一条命令让树重生（写 `preview:idxrefresh`，零新 RPC）。
+- `wsh agent guide` 已含该条目 → `wsh agent install-skill` 自动同步，**不需要新建 skill**。
+- 装饰词表 v2：`emoji/color/title/note` + `icon/iconColor/labelColor/hidden/order` + 自定义状态注册表；脚本上下文 BFS 全树（≤3 层/≤50 目录/≤1500 项）。
+- 文档：`docs/project/folder-index-badges.md`（含自定义状态与词表示例）。
+
 **G7 真机验收步骤（nita 手动，约 2 分钟）**
 
 1. 起一个 Files block（某目录），右键树空白处 → 「开启索引徽标（实验）」→ 树暂无变化（目录没索引，正常）。

@@ -42,7 +42,39 @@ Files 树里每个文件可以按目录内的索引文档显示**状态徽标**�
 
    返回 `{ status }` 用内置四态；返回 `{ emoji, label, color, title }` 完全自定义。
    脚本在 Web Worker 里执行（5s 超时、单条 try/catch）；worker 起不来时降级主线程执行。
-   合并策略：**脚本 > 表格 > 无徽标**。
+   合并策略：**脚本 > 表格 > 无装饰**。
+
+## 装饰词表（v2，`N-1124-idxbadges-decoration-protocol`）
+
+装饰不再只有徽标，`decorate(entry)` 可返回任意组合：
+
+| 字段 | 效果 |
+|---|---|
+| `emoji` + `color` + `title` + `note` | 图标后的前缀徽标（tooltip 显示 title — note） |
+| `icon`（fa 名，如 `fa-flask`） | 替换文件图标 |
+| `iconColor` | 图标颜色 |
+| `labelColor` | 文件名颜色 |
+| `hidden: true` | 不显示该文件行（目录行不生效） |
+| `order: n` | 同目录排序权重（小的在前；无 order 保持后端顺序） |
+| `status` + 自定义注册表 | 走状态注册表取 emoji/颜色/说明 |
+
+**自定义状态**：`index.md` 里可再写一张注册表，声明任意状态名（不再锁死四态）：
+
+```markdown
+| 状态 | 徽标 | 颜色 | 说明 |
+|---|---|---|---|
+| 验收 | ✅ | #4ade80 | 已过验收 |
+| 废弃 | 🪦 | #8a9097 | 不要再引用 |
+
+| 文件 | 状态 | 备注 |
+|---|---|---|
+| 接口设计.md | 验收 | 三次评审通过 |
+```
+
+注册表与内置四态合成（显式声明覆盖内置）；没有注册表 = 只用内置四态，v1 文档零改动照常工作。
+
+**脚本上下文**：`entry = { name, path, relPath, isDir, modtime, size }`，
+覆盖**全树**（BFS 深度 ≤3 层 / ≤50 目录 / ≤1500 项，超限静默截断），子目录文件也能被脚本装饰。
 
 ## 怎么开
 
@@ -98,12 +130,15 @@ wsh setmeta -b <blockid> preview:idxrefresh=$(date +%s%3N)
 
 - 文件 watch 自动刷新（目前只有 meta 触发 / 手点开关 / 树刷新）。
 - 多级索引继承、frontmatter 形态、`.index/` 多文件目录。
-- 脚本只能看到**根目录一层**的 entry 列表（索引表可写嵌套相对路径）。
+- 脚本 entry 有界：深度 ≤3 层、目录 ≤50、总项 ≤1500（超限截断，不报错）；要更深得等后续版本。
+- 不做分组（group）、不做内容级 entry（脚本拿不到文件内容）。
 
 ## 验收
 
-- 判据（`queue prove --id N-1124-folder-index-badges-3`）：4/4 绿
-  （`folder-index.test.ts` 15 断言 / `refresh.test.ts` 6 断言 / `treeview-badge.test.tsx` 3 断言 / eslint 0 error）。
+- 判据（`queue prove --id N-1124-folder-index-badges-3`）：4/4 绿（v1）
+- 判据（`queue prove --id N-1124-idxbadges-agent-surface`）：4/4 绿（`wsh block refresh` + guide 条目）
+- 判据（`queue prove --id N-1124-idxbadges-decoration-protocol`）：4/4 绿
+  （`folder-index.test.ts` 23 断言 / `refresh.test.ts` 6 断言 / `treeview-badge.test.tsx` 3 断言 / eslint 0 error）
 - 红证：`loop/red/N-1124-folder-index-badges-2.txt`（实现前三个测试文件全红）。
 - tsc：全局 58 错误 = 基线不变，新增文件 0 错误。
 - G7 真机验收步骤见 HANDOFF「文件夹索引徽标」条目。
