@@ -11,7 +11,7 @@
 
 import { modalsModel } from "@/app/store/modalmodel";
 import { globalStore } from "@/app/store/jotaiStore";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { runWidgetAction, ScheduledTaskManagerWidgetAction } from "./widget-actions";
 
 function modalStack() {

@@ -216,9 +216,15 @@ try {
     })()`);
     await sleep(600);
 
-    // ── S4. 工具栏「定时任务」入口 → 管理弹窗：行数 = 任务数 ───────────────
+    // ── S4. 右侧 WidgetsBar「scheduled tasks」入口 → 管理弹窗：行数 = 任务数 ──
+    // 入口回归右侧 widget（action 模式，与 defwidget@commontext 同构）：点 widget 打开
+    // 弹窗、不建块。widget 无专属 data 锚点，按 label 文本定位到可点容器。
     const managerClicked = await client.evaluate(`(() => {
-        const btn = document.querySelector("[data-overview-schedtask-manager]");
+        const label = Array.from(document.querySelectorAll("div")).find(
+            (d) => d.childElementCount === 0 && d.textContent.trim() === "scheduled tasks"
+        );
+        if (label == null) return false;
+        const btn = label.closest("div.cursor-pointer");
         if (btn == null) return false;
         btn.click();
         return true;
@@ -234,7 +240,7 @@ try {
             heroNodes: modal.querySelectorAll("[data-schedtask-hero]").length,
         };
     })()`, { timeoutMs: 20000 });
-    reporter.check("manager-entry-in-toolbar", managerClicked === true, "[data-overview-schedtask-manager] 可点");
+    reporter.check("manager-entry-in-widget", managerClicked === true, "右侧 scheduled tasks widget 可点");
     reporter.check("manager-modal-opens", managerState?.rows === 2, `行=${managerState?.rows}/2`);
     reporter.check("manager-new-button", managerState?.newButton === true, "「新建任务」存在");
     reporter.check("manager-no-hero-when-unbound", managerState?.heroNodes === 0, `无 hero 不渲染 emoji=${managerState?.heroNodes}`);

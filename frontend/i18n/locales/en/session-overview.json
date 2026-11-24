@@ -210,8 +210,5 @@
         "statusPending": "pending",
         "cardTitle": "Edit {{name}}",
         "toggleLabel": "Enable or disable {{name}}"
-    },
-    "schedTasks": {
-        "openManager": "Scheduled tasks"
     }
 }

@@ -226,32 +226,26 @@ export function ScheduledTaskManagerModal({ onClose }: ScheduledTaskManagerModal
 
     return (
         <Modal
-            title={t("modals:schedTaskManager.title")}
-            subtitle={t("modals:schedTaskManager.subtitle")}
+            // 版式对齐 CommonText compose（11-24-schedtask-entry-fix）：尺寸同值
+            // （commontext-compose-modal.tsx 首开兜底尺寸），走默认 padding/scrollBody。
+            // min-w/min-h 写死防埌缩，max-w/max-h 留屏幕边界。
+            className="schedtask-manager-modal pt-6 pb-3"
+            style={{
+                width: "min(85vw, 900px)",
+                height: "min(78vh, 620px)",
+                minWidth: "500px",
+                minHeight: "350px",
+                maxWidth: "96vw",
+                maxHeight: "92vh",
+            }}
+            title={<span className="text-base">{t("modals:schedTaskManager.title")}</span>}
             onClose={handleClose}
-            padding={false}
-            scrollBody={false}
-            className="schedtask-manager-modal"
         >
             {/* Esc 挂在内容根上：React 事件在 #main 根容器收口，stopPropagation 可挡住
-                keymodel 的 document 级全局 Escape，避免"自己关一次、全局再关一次"。 */}
-            <div className="schedtask-manager flex flex-col min-h-0 h-full" onKeyDown={handleKeyDown}>
-                <div className="flex items-center gap-2 px-4 py-2 border-b border-border shrink-0">
-                    <span className="text-xs text-muted flex-1">
-                        {i18n.t("modals:schedTaskManager.count", { count: tasks.length })}
-                    </span>
-                    <button
-                        type="button"
-                        data-schedtask-new=""
-                        className="px-2.5 py-1 text-xs rounded bg-action text-actiontext hover:bg-actionhover cursor-pointer"
-                        onClick={openCreate}
-                    >
-                        {t("modals:schedTaskManager.newTask")}
-                    </button>
-                </div>
-
-                {error != null && <div className="px-4 py-2 text-xs text-error shrink-0">{error}</div>}
-                {status !== "" && <div className="px-4 py-1 text-xs text-muted shrink-0">{status}</div>}
+                keymodel 的 document 级全局 Escape，避免“自己关一次、全局再关一次”。 */}
+            <div className="schedtask-manager flex flex-col gap-3 min-h-0 flex-1" onKeyDown={handleKeyDown}>
+                {error != null && <div className="px-1 py-2 text-xs text-error shrink-0">{error}</div>}
+                {status !== "" && <div className="px-1 py-1 text-xs text-muted shrink-0">{status}</div>}
 
                 {loading ? (
                     <div className="flex-1 flex items-center justify-center text-secondary text-sm">
@@ -269,7 +263,7 @@ export function ScheduledTaskManagerModal({ onClose }: ScheduledTaskManagerModal
                         <div className="text-xs text-muted">{t("modals:schedTaskManager.empty.description")}</div>
                     </div>
                 ) : (
-                    <div className="flex-1 overflow-y-auto wide-scrollbar">
+                    <div className="flex-1 overflow-y-auto wide-scrollbar -mx-1 px-1">
                         {tasks.map((task) => (
                             <TaskRow
                                 key={task.id}
@@ -286,6 +280,21 @@ export function ScheduledTaskManagerModal({ onClose }: ScheduledTaskManagerModal
                         ))}
                     </div>
                 )}
+
+                {/* 底部动作行：计数在左、「新建任务」在右（与 CommonText 底栏同构）。 */}
+                <div data-schedtask-actions="" className="flex items-center gap-2 shrink-0">
+                    <span className="text-xs text-muted flex-1">
+                        {i18n.t("modals:schedTaskManager.count", { count: tasks.length })}
+                    </span>
+                    <button
+                        type="button"
+                        data-schedtask-new=""
+                        className="px-2.5 py-1 text-xs rounded bg-action text-actiontext hover:bg-actionhover cursor-pointer"
+                        onClick={openCreate}
+                    >
+                        {t("modals:schedTaskManager.newTask")}
+                    </button>
+                </div>
             </div>
         </Modal>
     );

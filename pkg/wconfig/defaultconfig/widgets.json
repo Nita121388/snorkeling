@@ -100,10 +100,6 @@
         "icon": "clock",
         "label": "scheduled tasks",
         "description": "Create and run scheduled agent tasks",
-        "blockdef": {
-            "meta": {
-                "view": "scheduledtasks"
-            }
-        }
+        "action": "scheduledtasks:manager"
     }
 }

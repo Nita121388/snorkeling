@@ -216,7 +216,8 @@
           "type": "string",
           "enum": [
             "commontext:search",
-            "note"
+            "note",
+            "scheduledtasks:manager"
           ]
         },
         "blockdef": {

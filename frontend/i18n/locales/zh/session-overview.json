@@ -210,8 +210,5 @@
         "statusPending": "未运行",
         "cardTitle": "编辑 {{name}}",
         "toggleLabel": "启用或停用 {{name}}"
-    },
-    "schedTasks": {
-        "openManager": "定时任务"
     }
 }
