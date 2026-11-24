@@ -33,6 +33,7 @@ import {
     type BoardSnapshot,
 } from "./overview-board-motion";
 import { CardSendPanel } from "./overview-card-send-panel";
+import { SendStatusChip } from "./send-status-chip";
 import { SessionMessageSquares } from "./session-message-squares";
 import {
     decodeDragPayload,
@@ -378,6 +379,12 @@ function BoardCardImpl({
                     onPickEmoji={pickEmoji ? openEmojiPicker : undefined}
                 />
                 <span className="session-overview-board-card-title">{card.title}</span>
+                {/* 常驻发送状态（11-24 R6）：无行程不占位；点击重开该卡 composer */}
+                <SendStatusChip
+                    blockId={card.blockId}
+                    surface="board"
+                    onOpen={(event) => onOpenSendPanel?.(card, event.currentTarget)}
+                />
                 {age ? (
                     <span className="session-overview-board-card-age" title={ageTitle} aria-label={ageTitle}>
                         {age}

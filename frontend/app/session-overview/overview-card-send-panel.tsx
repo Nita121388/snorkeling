@@ -47,6 +47,13 @@ export type CardSendTarget = {
 
 type CardSendEntry = CardSendResult | "sending";
 
+/** 异步派发回执（R7，11-24-agentsend-status）：进程内存态，重启即丢（D4）。 */
+export type CardSendDispatchEntry = {
+    dispatchId: string;
+    state: string;
+    updatedAt: number;
+};
+
 type CardSendSubmitOverrides = {
     /** 显式覆盖「等回复」勾选（失败重试用同一值，「改为不等待」用 false+dispatch）。 */
     waitReply?: boolean;
@@ -54,11 +61,13 @@ type CardSendSubmitOverrides = {
     dispatch?: boolean;
 };
 
-type CardSendState = {
+export type CardSendState = {
     expandedBlockId: string | null;
     draftByBlock: Record<string, string>;
     sendByBlock: Record<string, CardSendEntry>;
     sendingStartedAt: Record<string, number>;
+    /** 异步派发行程（R7）：blockId → 最近一次派发回执；仅应用存活期内有效。 */
+    dispatchByBlock: Record<string, CardSendDispatchEntry>;
     waitReply: boolean;
     setWaitReply: (value: boolean) => void;
     toggleExpanded: (blockId: string) => void;
@@ -71,6 +80,15 @@ type CardSendState = {
     checkUnknown: (target: CardSendTarget) => void;
     cancelWait: (target: CardSendTarget) => void;
     retryRead: (target: CardSendTarget) => void;
+    /** R7：建块后立刻建立本地「正在派发」行程（卡片常驻可见，投递不再隐形）。 */
+    markDispatching: (blockId: string) => void;
+    /** R7：AgentSendCommand(queued) 回来后记录 dispatchId / state。 */
+    markDispatchReceipt: (blockId: string, receipt: { dispatchId?: string; state?: string }) => void;
+    /** R7：SendStatusChip 轮询到回执后应用（confirmed→submitted 清稿 / failed→failed）。 */
+    applyDispatchReceipt: (
+        blockId: string,
+        record: { dispatchid?: string; state?: string; error?: string } | null
+    ) => void;
 };
 
 export const CardSendContext = React.createContext<CardSendState | null>(null);
@@ -88,6 +106,7 @@ export function useCardSendState(reload: () => void): CardSendState {
     const [sendByBlock, setSendByBlock] = useState<Record<string, CardSendEntry>>({});
     const [sendingStartedAt, setSendingStartedAt] = useState<Record<string, number>>({});
     const [waitReply, setWaitReply] = useState(true);
+    const [dispatchByBlock, setDispatchByBlock] = useState<Record<string, CardSendDispatchEntry>>({});
     // 引用镜像：回调里要读最新值，但不想为此每次渲染都换函数引用。
     const waitReplyRef = useRef(waitReply);
     waitReplyRef.current = waitReply;
@@ -286,6 +305,60 @@ export function useCardSendState(reload: () => void): CardSendState {
         [reload]
     );
 
+    // ── R7 异步派发可追溯（11-24-agentsend-status）──
+    // pkg/agentdispatch 是纯内存 Store，重启即丢（决策 D4：v1 不落盘）。
+    // 重启后卡片不显示历史派发状态，也绝不能因此显示「未发送」。
+    const markDispatching = React.useCallback((blockId: string) => {
+        setSendByBlock((current) => ({ ...current, [blockId]: "sending" }));
+        setSendingStartedAt((current) => ({ ...current, [blockId]: Date.now() }));
+    }, []);
+
+    const markDispatchReceipt = React.useCallback(
+        (blockId: string, receipt: { dispatchId?: string; state?: string }) => {
+            if (receipt.state == null || receipt.state === "") return;
+            setDispatchByBlock((current) => ({
+                ...current,
+                [blockId]: {
+                    dispatchId: receipt.dispatchId ?? current[blockId]?.dispatchId ?? "",
+                    state: receipt.state,
+                    updatedAt: Date.now(),
+                },
+            }));
+        },
+        []
+    );
+
+    const applyDispatchReceipt = React.useCallback(
+        (
+            blockId: string,
+            record: { dispatchid?: string; state?: string; error?: string } | null
+        ) => {
+            const state = record?.state;
+            if (state == null || state === "") return;
+            markDispatchReceipt(blockId, { dispatchId: record?.dispatchid, state });
+            if (state === "confirmed") {
+                setSendByBlock((current) => {
+                    const prev = current[blockId];
+                    const base = prev != null && prev !== "sending" ? prev : outcomeFromSend(null);
+                    return { ...current, [blockId]: { ...base, phase: "submitted", warnings: [] } };
+                });
+                setDraftByBlock((current) => removeRecordKey(current, blockId));
+                return;
+            }
+            if (state === "failed") {
+                setSendByBlock((current) => {
+                    const prev = current[blockId];
+                    const base = prev != null && prev !== "sending" ? prev : outcomeFromSend(null);
+                    return {
+                        ...current,
+                        [blockId]: { ...base, phase: "failed", errorMessage: record?.error ?? "" },
+                    };
+                });
+            }
+        },
+        [markDispatchReceipt]
+    );
+
     const toggleExpanded = React.useCallback((blockId: string) => {
         // 互斥：再点同一张卡 = 收起；面板同一时刻只有一张卡展开。
         setExpandedBlockId((current) => (current === blockId ? null : blockId));
@@ -297,6 +370,7 @@ export function useCardSendState(reload: () => void): CardSendState {
             draftByBlock,
             sendByBlock,
             sendingStartedAt,
+            dispatchByBlock,
             waitReply,
             setWaitReply,
             toggleExpanded,
@@ -308,12 +382,16 @@ export function useCardSendState(reload: () => void): CardSendState {
             checkUnknown,
             cancelWait,
             retryRead,
+            markDispatching,
+            markDispatchReceipt,
+            applyDispatchReceipt,
         }),
         [
             expandedBlockId,
             draftByBlock,
             sendByBlock,
             sendingStartedAt,
+            dispatchByBlock,
             waitReply,
             runSend,
             retry,
@@ -321,12 +399,15 @@ export function useCardSendState(reload: () => void): CardSendState {
             checkUnknown,
             cancelWait,
             retryRead,
+            markDispatching,
+            markDispatchReceipt,
+            applyDispatchReceipt,
             toggleExpanded,
         ]
     );
 }
 
-function useSendingSeconds(startedAt: number | undefined): number {
+export function useSendingSeconds(startedAt: number | undefined): number {
     const [elapsed, setElapsed] = useState(0);
     useEffect(() => {
         if (startedAt == null) {

@@ -77,6 +77,7 @@ import {
     type OverviewViewModeImplemented,
 } from "./overview-board-model";
 import { CardSendContext, CardSendPanel, useCardSendState } from "./overview-card-send-panel";
+import { SendStatusChip } from "./send-status-chip";
 import { SessionMessageSquares } from "./session-message-squares";
 import { OverviewTimeline } from "./overview-timeline";
 import { buildTabGroups, type OverviewTabGroup } from "./overview-tab-groups";
@@ -2039,6 +2040,8 @@ function BlockRow({
                                     onAck={onAckAgentStatus}
                                 />
                             ) : null}
+                            {/* 常驻发送状态（11-24 R6）：无行程不占位；点击展开该卡 composer */}
+                            <SendStatusChip blockId={block.blockId} surface="row" />
                         </>
                     ) : (
                         <>
@@ -3042,6 +3045,10 @@ function SessionOverviewPanel({ blockId, model }: ViewComponentProps<SessionOver
             defaultConnection: tabConnection,
         };
     }, [addAgentTab]);
+    // 卡片展开 + composer 发送的共享状态（面板级，不持久化；切换视图/重开即收起）
+    const reloadOverview = React.useCallback(() => model.refresh(), [model]);
+    const cardSend = useCardSendState(reloadOverview);
+
     const submitAddAgent = React.useCallback(async (request: AddAgentSubmitRequest): Promise<void> => {
         const settings = globalStore.get(atoms.settingsAtom);
         const blockDef = createAgentBlockDefForProfile(
@@ -3062,6 +3069,9 @@ function SessionOverviewPanel({ blockId, model }: ViewComponentProps<SessionOver
         // 就绪门 + 提交确认都在 agentsend 后端做。这里只记日志，失败不阻塞、不回滚块。
         const text = request.message;
         if (text != null && text !== "") {
+            // R7（11-24-agentsend-status）：建块后**立刻**建立本地「正在派发」行程 ——
+            // 卡片当场出现发送状态，投递不再隐形（「292/aaaa」事故的根因）。
+            cardSend.markDispatching(blockId);
             fireAndForget(async () => {
                 try {
                     const sendResult = await RpcApi.AgentSendCommand(TabRpcClient, {
@@ -3072,19 +3082,25 @@ function SessionOverviewPanel({ blockId, model }: ViewComponentProps<SessionOver
                         async: true,
                         requester: "desktop",
                     });
+                    if (sendResult?.queued && sendResult.dispatchid != null && sendResult.dispatchid !== "") {
+                        cardSend.markDispatchReceipt(blockId, {
+                            dispatchId: sendResult.dispatchid,
+                            state: "pending",
+                        });
+                    }
                     if (sendResult?.submitconfirmed === false) {
                         console.warn("[overview-add-agent] 消息已放入输入框但未确认提交", { blockId });
                     }
                 } catch (error) {
                     console.warn("[overview-add-agent] 首发消息投递失败", { blockId, error });
+                    cardSend.applyDispatchReceipt(blockId, {
+                        state: "failed",
+                        error: error instanceof Error ? error.message : String(error),
+                    });
                 }
             });
         }
-    }, []);
-
-    // 卡片展开 + composer 发送的共享状态（面板级，不持久化；切换视图/重开即收起）
-    const reloadOverview = React.useCallback(() => model.refresh(), [model]);
-    const cardSend = useCardSendState(reloadOverview);
+    }, [cardSend]);
 
     // ── 「＋ 新建 Tab」（F-1122-overview-new-tab）：工具栏 + 组列表尾部两处入口同一弹窗 ──
     const [newTabOpen, setNewTabOpen] = useState(false);

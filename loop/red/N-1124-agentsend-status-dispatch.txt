@@ -1,0 +1,14 @@
+# 红证（HEAD 无实现，新测试必红）—— N-1124-agentsend-status-dispatch
+# 复现：git worktree add <dir> HEAD && cp 两个新测试进去 && npx vitest run <两个测试>
+ ❯ EnvironmentPluginContainer.transform ../../../Users/nita/Primary/projects/snorkeling/node_modules/vite/dist/node/chunks/dep-Dq2t6Dq0.js:42348:18
+ ❯ loadAndTransform ../../../Users/nita/Primary/projects/snorkeling/node_modules/vite/dist/node/chunks/dep-Dq2t6Dq0.js:35740:27
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  2 failed (2)
+      Tests  no tests
+   Start at  19:58:07
+   Duration  637ms (transform 30ms, setup 21ms, collect 0ms, tests 0ms, environment 646ms, prepare 109ms)
+
+JUNIT report written to /private/tmp/n1124-red-status/test-results.xml
