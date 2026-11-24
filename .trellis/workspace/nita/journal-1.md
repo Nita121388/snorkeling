@@ -498,3 +498,13 @@ composer 编辑器/列表（重渲染、IME、hover）。这次真机 CDP 走查
 `shouldRefocusActiveView` 补 focus。判据：registry 6 + modal.dom 10 + compose-modal.dom 25 +
 emain-window 12 全绿；真机探针 6/6 PASS（弹窗开着时新建 Tab 生效、切 Tab 往返弹窗仍在可编辑）。
 教训已入 quality-guidelines：这类问题先分 DOM/外壳/窗口三层，别再改输入框内部。
+
+## 2026-11-24 晚 · 11-24 全批八包实现（主 agent：pi）
+
+- nita 指示：实现 11-24 任务，真机验证由本人做。三个子代理并行（pathlinks / schedtask / herorestore），主代理串行发送链路六包。
+- pathlinks/herorestore 子代理 30min 超时但改动已基本落地，测试全绿后由主代理接手收尾；agent-path-open.test 的 makeDeps 是红证自带 harness 缺陷（override 后返回未用的默认 mock），经拍板同 widget-actions vi import 一并修复（断言零改动）。
+- 八包全部独立 commit；红证统一用 HEAD worktree 法采集（新测试拷进 HEAD 必红），g2 门全部登记。
+- 三个 feature 包（status-dispatch / input-memory / image-paste）g1 待 nita 签。
+- 实现踩坑三记：① R7 轮询上限计数必须放 ref（context 重建 interval 会归零）；② localStorage 纯逻辑的 now 必须全链路注入（混用真实时钟会把新写的草稿判成两年前裁掉）；③ i18n JSON 插 key 时尾逗号/首插点要小心（坏过一次 parity）。
+- 全量回归 3961/3962，唯一红为 11-19 批次存量（commontext-compose-modal 源码契约测试）。
+- 工作区还有另一 agent 在途改动（agent-launch/clientservice/agentlaunch.go、design/prototypes/tab-group-more-actions），未触碰未提交。

@@ -1,5 +1,33 @@
 # HANDOFF — 接手必读（2026-11-24 更新）
 
+## 2026-11-25 凌晨：11-24 全批八包已实现并按包提交（真机验证 G7 待 nita）
+
+> 2026-11-24 晚 nita 指示「开始实现，不需要真机验证，完成后由我验证」。本轮把 11-24 在案的全部待实现包做完，
+> 每包独立 commit + 红证入库 + loop g2 门登记。全量前端回归 **3961/3962**（唯一红为 11-19 批次存量源码契约测试，HEAD 即红）。
+> 测试基线：session-overview 29 files/351 例、term 171、element 723、go 3 包 ok、tsc 58=基线、i18n parity 0。
+
+| 包 | commit | 判据 | 状态 |
+|---|---|---|---|
+| N-1124-agentsend-false-fail（S1 发版阻断，R8） | 见 git log | overview-card-send 19 例 + unknown 无重试 DOM 锁；prove ok | G2 清，**G7 待 nita** |
+| N-1124-overview-agent-fuse（R1/R2 卡列融合+去恢复） | 同上 | board-message-squares 6 例 + card-actions 4 例；prove ok:true | G2 清，**G7 待 nita** |
+| N-1124-agentsend-status-dispatch（R6/R7 常驻状态+派发回执） | 同上 | send-status-chip 6 例 + dispatch-status 5 例 | blocked:g1（feature 需 nita 签 G1），**G7 待 nita** |
+| N-1124-overview-input-memory（R3/R4/R5 输入记忆+存 CommonText） | 同上 | input-memory 11 例 + panel dom 6 例 | blocked:g1，**G7 待 nita** |
+| N-1124-agentsend-image-paste（R9 图片粘贴） | 同上 | paste-image 16 例 + send-paste 5 例 | blocked:g1，**G7 待 nita** |
+| N-1124-schedtask-entry-fix（入口回归 widget + 版式对齐） | 同上 | widget-actions + modal 15 例全绿；prove 3/4（eslint 红为 widgets.tsx:181 HEAD 存量） | G2 清，**G7 待 nita** |
+| F-1124-agent-path-links（OSC8 激活+脏路径+Search 兜底） | 同上 | 三模块 29 例 + term 全套 171 + element 723 | G1/G2/G5 清，**G7 待 nita** |
+| N-1124-hero-restore-header（恢复块盖 hero 身份 meta） | 同上 | go 3 包 ok + 前端 113 例（judge 里 powershell 两条是 Windows 专用，macOS 等价命令已过） | G2 清，**G7 待 nita** |
+
+**关键实现事实（别重复调研）**：
+- R8：`cardSendRpcTimeoutMs(waitReply)` 覆盖服务端 30s+180s+回复窗口+20s（上限 360s）；EC-TIME/EC-CTXT/EC-CANCEL/context-deadline → `unknown`（tone=warn，**无重试**，只有 [查状态][继续等]）；[查状态] 先读 AgentDispatchListCommand，无记录则 reload + 订阅缓存比 messageCount。
+- R7 轮询坑已修：3s×40 上限计数必须放 ref —— context 每次回执更新都会重建 interval，计数放 effect 内会永远到不了上限。
+- R4 持久化键：`sessionoverview:senddrafts` / `sessionoverview:addagent`（localStorage，LRU 50 / 14 天 / 8KB 截断，400ms 防抖）。
+- R9 附件目录 `overview-send-images`（writePasteImage 加可选 subdir，CommonText 零变化有单测锁）；远端块按 `cmd:connection` 禁贴（列表行已接，看板浮层无连接信息暂按本地，注释已记）。
+
+**存量红（都不是本轮引入，别当 bug 修）**：commontext-compose-modal.test.ts「flushes pending search」源码契约测试（HEAD 即红）；commontext-compose-modal.tsx:1153 exhaustive-deps 规则缺失；widgets.tsx:181 no-control-regex。
+
+**nita 验收（G7）建议路径**：① Overview 看板 agent 卡看会话方块条/无恢复按钮/发送状态 chip；② 新建 agent 弹窗关了再开看记忆；③ 慢 agent（>80s 回合）发送不再假失败；④ 终端里 ctrl/cmd+click agent 输出的 file:// 路径；⑤ 右侧定时任务 widget 开弹窗；⑥ 从 AISessions 恢复 hero 会话看 header 是否 hero 样式。
+
+---
 ## 2026-11-24 傍晚：Overview agent 卡融合与发送链路批次（**9 需求，文档已就绪，当晚开发**）
 
 > nita 2026-11-24 分四轮反馈 9 条需求，本轮**只落文档不写代码**（用户下班前要求「详细记录，晚上继续开发，避免信息错误导致需求偏差」）。
