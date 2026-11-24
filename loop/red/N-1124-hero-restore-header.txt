@@ -1,0 +1,22 @@
+# 红证（HEAD 无实现，新测试必红）—— N-1124-hero-restore-header
+# 复现：git worktree add <dir> HEAD && cp 新测试进去 && go test ./pkg/agentcontrol ./pkg/hero -count=1
+# github.com/wavetermdev/waveterm/pkg/hero [github.com/wavetermdev/waveterm/pkg/hero.test]
+pkg/hero/match_test.go:27:14: undefined: MatchProjectPath
+pkg/hero/match_test.go:40:12: undefined: MatchProjectPath
+pkg/hero/match_test.go:44:12: undefined: MatchProjectPath
+pkg/hero/match_test.go:51:12: undefined: MatchProjectPath
+pkg/hero/match_test.go:54:12: undefined: MatchProjectPath
+pkg/hero/match_test.go:57:12: undefined: MatchProjectPath
+pkg/hero/match_test.go:60:12: undefined: MatchProjectPath
+pkg/hero/match_test.go:68:12: undefined: MatchProjectPath
+# github.com/wavetermdev/waveterm/pkg/agentcontrol [github.com/wavetermdev/waveterm/pkg/agentcontrol.test]
+pkg/agentcontrol/restore_test.go:29:29: undefined: heroMetaKeyHero
+pkg/agentcontrol/restore_test.go:29:46: undefined: heroMetaKeyName
+pkg/agentcontrol/restore_test.go:29:63: undefined: heroMetaKeyDisplayName
+pkg/agentcontrol/restore_test.go:29:87: undefined: heroMetaKeyAgentEmoji
+pkg/agentcontrol/restore_test.go:92:4: unknown field HeroId in struct literal of type RestoreContext
+pkg/agentcontrol/restore_test.go:93:4: unknown field HeroName in struct literal of type RestoreContext
+pkg/agentcontrol/restore_test.go:94:4: unknown field HeroEmoji in struct literal of type RestoreContext
+pkg/agentcontrol/restore_test.go:106:4: unknown field HeroId in struct literal of type RestoreContext
+pkg/agentcontrol/restore_test.go:175:12: fx.Ctx.HeroId undefined (type RestoreContext has no field or method HeroId)
+pkg/agentcontrol/restore_test.go:183:10: undefined: heroMetaKeyHero

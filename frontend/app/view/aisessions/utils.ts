@@ -1,6 +1,8 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 import { copyText as writeTextToClipboard } from "@/util/clipboard";
+import { AgentEmojiMetaKey } from "@/app/view/term/agent-logo";
+import { AgentHeroIdMetaKey, AgentHeroNameMetaKey } from "@/app/workspace/hero-launch";
 import { formatFileSize } from "@/util/fileformat";
 import { isWindows } from "@/util/platformutil";
 import { i18n } from "@/i18n/config";
@@ -759,6 +761,23 @@ export function restoreMetaForSession(context: AISessionsRestoreContextResponse)
         meta["cmd:env"] = { CLAUDE_CONFIG_DIR: context.configdir };
         meta["agent:claudevendorid"] = context.vendorid;
         meta["agent:claudevendorname"] = context.vendorname;
+    }
+    // Hero identity (N-1124-hero-restore-header): a restored hero session must
+    // display like its stage entry, so the same keys buildHeroLaunchBlockDef
+    // writes at launch are stamped here from the restore context. With no hero
+    // (all three fields blank) nothing is written and the meta stays
+    // byte-identical to the pre-hero build. The emoji lives in agent:emoji only
+    // — hero:name carries the plain name so the header never shows it twice.
+    const heroId = (context.hero ?? "").trim();
+    if (heroId !== "") {
+        meta[AgentHeroIdMetaKey] = heroId;
+        const heroLabel = (context.heroname ?? "").trim() || heroId;
+        meta[AgentHeroNameMetaKey] = heroLabel;
+        meta["display:name"] = heroLabel;
+        const heroEmoji = (context.heroemoji ?? "").trim();
+        if (heroEmoji !== "") {
+            meta[AgentEmojiMetaKey] = heroEmoji;
+        }
     }
     return meta;
 }

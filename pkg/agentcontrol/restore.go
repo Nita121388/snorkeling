@@ -54,7 +54,8 @@ const VendorConfigurationUnavailableMessage = "Vendor configuration is no longer
 // AISessionsRestoreContextResponse: everything needed to rebuild one session's
 // agent block. SessionId/Source/ProjectPath come from the summary; the
 // ConfigDir/Vendor* trio is claude-vendor isolation detail (empty = plain
-// claude with no cc-switch vendor).
+// claude with no cc-switch vendor); the Hero* trio is the owning hero identity
+// (empty = the session belongs to no hero).
 type RestoreContext struct {
 	SessionId   string
 	Source      string
@@ -62,7 +63,26 @@ type RestoreContext struct {
 	ConfigDir   string
 	VendorId    string
 	VendorName  string
+	// HeroId is the hero id (= home-base directory name); empty = no hero.
+	HeroId string
+	// HeroName is the plain display name (never carries the emoji prefix;
+	// falls back to HeroId when hero.json's name is blank).
+	HeroName string
+	// HeroEmoji is the hero emoji; empty = do not stamp agent:emoji.
+	HeroEmoji string
 }
+
+// Block meta keys stamped for a restored hero session. They mirror
+// frontend/app/workspace/hero-launch.ts buildHeroLaunchBlockDef exactly (the
+// launch path is the reference contract): hero identity is an identity of the
+// block, so a resumed hero session displays like its stage entry instead of
+// falling back to the provider logo + basename(cmd:cwd).
+const (
+	heroMetaKeyHero        = "hero"
+	heroMetaKeyName        = "hero:name"
+	heroMetaKeyDisplayName = "display:name"
+	heroMetaKeyAgentEmoji  = "agent:emoji"
+)
 
 // resumeCmdBySource is the AgentResumeCmdBySource table from
 // frontend/app/view/aisessions/utils.ts (restoreMetaForSession). The two tables
@@ -105,6 +125,16 @@ func ResolveVendorRestoreContext(ctx context.Context, summary *aisessions.Sessio
 		SessionId:   summary.ID,
 		Source:      summary.Source,
 		ProjectPath: summary.ProjectPath,
+	}
+	// Hero identity is resolved before the claude-vendor branch so both the GUI
+	// RestoreContext RPC and the CLI/MCP resume path carry it from one place,
+	// and vendor-specific refusals never depend on it. Best-effort: a missing
+	// roster just leaves the trio empty (no hero stamping, today's behavior).
+	if heroIdentity := ResolveHeroForSummary(summary); heroIdentity.ID != "" {
+		restoreCtx.HeroId = heroIdentity.ID
+		restoreCtx.HeroName = heroIdentity.Name
+		restoreCtx.HeroEmoji = heroIdentity.Emoji
+		debugf("RestoreContext hero key=%q hero=%q name=%q", summary.Key, heroIdentity.ID, heroIdentity.Name)
 	}
 	if summary.Source != aisessions.SourceClaude {
 		return restoreCtx, nil
@@ -217,5 +247,30 @@ func BuildResumeBlockMeta(restoreCtx RestoreContext, cwdOverride string) waveobj
 		meta["agent:claudevendorid"] = restoreCtx.VendorId
 		meta["agent:claudevendorname"] = restoreCtx.VendorName
 	}
+	applyHeroResumeMeta(meta, restoreCtx)
 	return meta
+}
+
+// applyHeroResumeMeta stamps the owning hero identity onto a resumed block,
+// matching frontend restoreMetaForSession / hero-launch.ts
+// buildHeroLaunchBlockDef field for field. With no hero (HeroId empty) it
+// writes nothing, so the zero-hero meta stays byte-identical to before this
+// feature; the parity test locks both sides.
+func applyHeroResumeMeta(meta waveobj.MetaMapType, restoreCtx RestoreContext) {
+	heroID := strings.TrimSpace(restoreCtx.HeroId)
+	if heroID == "" {
+		return
+	}
+	meta[heroMetaKeyHero] = heroID
+	name := strings.TrimSpace(restoreCtx.HeroName)
+	if name == "" {
+		name = heroID
+	}
+	// Plain name only: the emoji lives in agent:emoji (N-1119), otherwise the
+	// header would render the same emoji twice.
+	meta[heroMetaKeyName] = name
+	meta[heroMetaKeyDisplayName] = name
+	if emoji := strings.TrimSpace(restoreCtx.HeroEmoji); emoji != "" {
+		meta[heroMetaKeyAgentEmoji] = emoji
+	}
 }

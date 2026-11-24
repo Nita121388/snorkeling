@@ -5,6 +5,7 @@ package agentcontrol
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/wavetermdev/waveterm/pkg/aisessions"
@@ -15,13 +16,17 @@ import (
 // test below locks the backend builder to that contract: change either side
 // without the other and this test goes red.
 type RestoreContextFixture struct {
-	Name          string
-	Ctx           RestoreContext
-	ExpectedCmd   string
-	ExpectedCwd   bool // cmd:cwd set from ProjectPath
-	ExpectedEnv   bool // cmd:env CLAUDE_CONFIG_DIR + vendor meta keys
+	Name           string
+	Ctx            RestoreContext
+	ExpectedCmd    string
+	ExpectedCwd    bool // cmd:cwd set from ProjectPath
+	ExpectedEnv    bool // cmd:env CLAUDE_CONFIG_DIR + vendor meta keys
 	ExpectedVendor bool
 }
+
+// heroMetaKeys are the four block meta keys a hero restore stamps
+// (hero-launch.ts buildHeroLaunchBlockDef is the reference contract).
+var heroMetaKeys = []string{heroMetaKeyHero, heroMetaKeyName, heroMetaKeyDisplayName, heroMetaKeyAgentEmoji}
 
 // restoreParityFixtures: five sources, matching design §4's table (D2).
 var restoreParityFixtures = []RestoreContextFixture{
@@ -73,9 +78,35 @@ var restoreParityFixtures = []RestoreContextFixture{
 			VendorId:   "pro",
 			VendorName: "Pro",
 		},
-		ExpectedCmd:   "claude",
-		ExpectedEnv:   true,
+		ExpectedCmd:    "claude",
+		ExpectedEnv:    true,
 		ExpectedVendor: true,
+	},
+	{
+		// A hero session: the resumed block must display like its stage entry.
+		Name: "pi-with-hero",
+		Ctx: RestoreContext{
+			SessionId:   "sess-hero-1",
+			Source:      "pi",
+			ProjectPath: "/heroes/alpha",
+			HeroId:      "alpha",
+			HeroName:    "Alpha",
+			HeroEmoji:   "🦊",
+		},
+		ExpectedCmd: "pi",
+		ExpectedCwd: true,
+	},
+	{
+		// Hero with no display name and no emoji: hero:name falls back to the
+		// id and agent:emoji must not be written at all.
+		Name: "codex-hero-blank-name-emoji",
+		Ctx: RestoreContext{
+			SessionId: "sess-hero-2",
+			Source:    "codex",
+			HeroId:    "writer",
+		},
+		ExpectedCmd: "codex",
+		ExpectedCwd: false,
 	},
 }
 
@@ -131,7 +162,47 @@ func TestBuildResumeBlockMetaParity(t *testing.T) {
 					t.Errorf("[%s] agent:claudevendorname = %v, want %v", fx.Name, meta["agent:claudevendorname"], fx.Ctx.VendorName)
 				}
 			}
+			assertHeroResumeMeta(t, fx, meta)
 		})
+	}
+}
+
+// assertHeroResumeMeta locks the hero half of the parity contract: with a hero
+// the four keys are stamped exactly like the launch path, and without one none
+// of them appears (zero-hero meta stays byte-identical to the pre-hero build).
+func assertHeroResumeMeta(t *testing.T, fx RestoreContextFixture, meta map[string]any) {
+	t.Helper()
+	if fx.Ctx.HeroId == "" {
+		for _, key := range heroMetaKeys {
+			if value, ok := meta[key]; ok {
+				t.Errorf("[%s] meta[%q] = %v, want absent for a session with no hero", fx.Name, key, value)
+			}
+		}
+		return
+	}
+	if meta[heroMetaKeyHero] != fx.Ctx.HeroId {
+		t.Errorf("[%s] hero = %v, want %v", fx.Name, meta[heroMetaKeyHero], fx.Ctx.HeroId)
+	}
+	wantName := fx.Ctx.HeroName
+	if wantName == "" {
+		wantName = fx.Ctx.HeroId
+	}
+	if meta[heroMetaKeyName] != wantName {
+		t.Errorf("[%s] hero:name = %v, want %q", fx.Name, meta[heroMetaKeyName], wantName)
+	}
+	if meta[heroMetaKeyDisplayName] != wantName {
+		t.Errorf("[%s] display:name = %v, want %q", fx.Name, meta[heroMetaKeyDisplayName], wantName)
+	}
+	if fx.Ctx.HeroEmoji != "" {
+		if meta[heroMetaKeyAgentEmoji] != fx.Ctx.HeroEmoji {
+			t.Errorf("[%s] agent:emoji = %v, want %q", fx.Name, meta[heroMetaKeyAgentEmoji], fx.Ctx.HeroEmoji)
+		}
+		// N-1119: the emoji lives in agent:emoji only, never inside hero:name.
+		if name, _ := meta[heroMetaKeyName].(string); strings.Contains(name, fx.Ctx.HeroEmoji) {
+			t.Errorf("[%s] hero:name %q carries the emoji prefix, want the plain name", fx.Name, name)
+		}
+	} else if value, ok := meta[heroMetaKeyAgentEmoji]; ok {
+		t.Errorf("[%s] agent:emoji = %v, want absent when the hero has no emoji", fx.Name, value)
 	}
 }
 

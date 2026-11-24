@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import {
     AgentHeroIdMetaKey,
     AgentHeroInjectWorkdirMetaKey,
+    AgentHeroNameMetaKey,
     buildHeroLaunchBlockDef,
     heroInjectionPrompt,
     heroRosterLabel,
@@ -191,5 +192,36 @@ describe("buildHeroLaunchBlockDef", () => {
         expect(meta["cmd"]).toBe("codex");
         expect(meta[AgentHeroIdMetaKey]).toBe("bare");
         expect(meta["cmd:cwd"]).toBe("C:/heroes/bare");
+    });
+});
+
+// N-1124-hero-restore-header source contract: the restore path
+// (aisessions/utils.ts restoreMetaForSession) stamps the exact same hero meta
+// keys the launch path writes here, so a restored hero block displays like its
+// stage entry. If either side renames a key, this test plus the backend parity
+// test (pkg/agentcontrol/restore_test.go) go red.
+describe("hero meta keys shared with the restore path", () => {
+    it("launch and restore stamp the same hero meta keys", async () => {
+        const { restoreMetaForSession } = await import("@/app/view/aisessions/utils");
+        const { AgentEmojiMetaKey } = await import("@/app/view/term/agent-logo");
+
+        const launch = buildHeroLaunchBlockDef({
+            hero: { id: "alpha", name: "Alpha", emoji: "🦊" },
+            root: "/heroes",
+        });
+        const launchMeta = launch.blockDef.meta as Record<string, unknown>;
+
+        const restoreMeta = restoreMetaForSession({
+            sessionid: "session-hero",
+            source: "pi",
+            projectpath: "/heroes/alpha",
+            hero: "alpha",
+            heroname: "Alpha",
+            heroemoji: "🦊",
+        });
+
+        for (const key of [AgentHeroIdMetaKey, AgentHeroNameMetaKey, "display:name", AgentEmojiMetaKey]) {
+            expect(restoreMeta[key]).toBe(launchMeta[key]);
+        }
     });
 });

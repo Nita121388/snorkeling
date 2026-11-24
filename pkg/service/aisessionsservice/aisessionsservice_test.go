@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/wavetermdev/waveterm/pkg/aisessions"
+	"github.com/wavetermdev/waveterm/pkg/hero"
 	"github.com/wavetermdev/waveterm/pkg/wavebase"
 )
 
@@ -97,6 +98,11 @@ func TestVendorSessionDetailNoteStatAndRestoreContext(t *testing.T) {
 	if restore.VendorID != "vendor-live" || restore.VendorName != "Live Vendor" || restore.ConfigDir == "" {
 		t.Fatalf("unexpected restore context: %#v", restore)
 	}
+	// No hero on this session: the hero trio must stay empty so the frontend
+	// stamps no hero keys (zero-hero meta is byte-identical to before).
+	if restore.Hero != "" || restore.HeroName != "" || restore.HeroEmoji != "" {
+		t.Fatalf("unexpected hero identity on a plain session: %#v", restore)
+	}
 
 	_, err = service.RestoreContext(context.Background(), &AISessionsRestoreContextRequest{ID: "session-stale"})
 	if err == nil || err.Error() != VendorConfigurationUnavailableError {
@@ -104,6 +110,44 @@ func TestVendorSessionDetailNoteStatAndRestoreContext(t *testing.T) {
 	}
 	if _, err := os.Stat(stalePath); err != nil {
 		t.Fatalf("stale vendor session data was modified: %v", err)
+	}
+}
+
+func TestRestoreContextCarriesHeroIdentity(t *testing.T) {
+	home, _ := setupVendorSessionServiceTest(t)
+	heroRoot := t.TempDir()
+	// Restore resolves the hero root through settings/env exactly like the
+	// session list does (hero.ResolveRoot).
+	t.Setenv(hero.EnvRoot, heroRoot)
+	writeTestHero(t, heroRoot, "alpha", `{"schemaVersion":1,"id":"alpha","name":"Alpha","emoji":"🦊","createdAt":"2026-11-12T00:00:00Z"}`)
+
+	projectDir := filepath.Join(heroRoot, "alpha", "work")
+	sessionID := "session-hero-rpc"
+	sessionPath := filepath.Join(home, ".claude", "projects", "hero-project", sessionID+".jsonl")
+	if err := os.MkdirAll(filepath.Dir(sessionPath), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	line := fmt.Sprintf(`{"type":"user","message":{"role":"user","content":"hero work"},"sessionId":%q,"timestamp":"2026-07-25T00:00:00Z","cwd":%q}`, sessionID, projectDir)
+	if err := os.WriteFile(sessionPath, []byte(line+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	service := &AISessionsService{}
+	detail, err := service.Detail(context.Background(), &AISessionsDetailRequest{ID: sessionID})
+	if err != nil {
+		t.Fatalf("Detail: %v", err)
+	}
+	restore, err := service.RestoreContext(context.Background(), &AISessionsRestoreContextRequest{ID: detail.Summary.Key})
+	if err != nil {
+		t.Fatalf("RestoreContext: %v", err)
+	}
+	if restore.Hero != "alpha" || restore.HeroName != "Alpha" || restore.HeroEmoji != "🦊" {
+		t.Fatalf("restore hero = %q/%q/%q, want alpha/Alpha/🦊", restore.Hero, restore.HeroName, restore.HeroEmoji)
+	}
+	// The rest of the contract is unchanged: the source and project path still
+	// drive the resumed block.
+	if restore.Source != "claude" || restore.ProjectPath != projectDir {
+		t.Fatalf("restore context regression: %#v", restore)
 	}
 }
 

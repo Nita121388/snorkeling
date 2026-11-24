@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -203,12 +202,19 @@ type AISessionsHeroRosterResponse struct {
 //   - both separators and case are normalized (Windows roots are C:\… while pi
 //     encodes session dirs with '/').
 //
+// The matcher itself lives in hero.MatchProjectPath so the restore path
+// (pkg/agentcontrol.ResolveHeroForSummary) resolves hero identity with the
+// exact same rules.
+//
 // Mutates rows in place; no-op when the roster is unavailable.
 func deriveHeroProps(rows []aisessions.SessionSummary, root string, heroes []HeroSummary) {
 	if strings.TrimSpace(root) == "" || len(heroes) == 0 || len(rows) == 0 {
 		return
 	}
-	normalizedRoot := normalizeMatchPath(root)
+	matchHeroes := make([]hero.Hero, 0, len(heroes))
+	for _, p := range heroes {
+		matchHeroes = append(matchHeroes, hero.Hero{ID: p.ID})
+	}
 	for idx := range rows {
 		if rows[idx].Props != nil {
 			if _, ok := rows[idx].Props[HeroPropertyKey]; ok {
@@ -219,38 +225,19 @@ func deriveHeroProps(rows []aisessions.SessionSummary, root string, heroes []Her
 		if projectPath == "" {
 			continue
 		}
-		normalizedProject := normalizeMatchPath(projectPath)
-		for _, p := range heroes {
-			id := strings.TrimSpace(p.ID)
-			if id == "" {
-				continue
-			}
-			homeBase := normalizedRoot + "/" + strings.ToLower(id)
-			if normalizedProject != homeBase && !strings.HasPrefix(normalizedProject, homeBase+"/") {
-				continue
-			}
-			if rows[idx].Props == nil {
-				rows[idx].Props = make(map[string]aisessions.PropertyCell, 1)
-			}
-			rows[idx].Props[HeroPropertyKey] = aisessions.PropertyCell{
-				Value:  id,
-				Type:   "text",
-				Source: HeroDerivedSource,
-			}
-			break
+		id := hero.MatchProjectPath(root, matchHeroes, projectPath)
+		if id == "" {
+			continue
+		}
+		if rows[idx].Props == nil {
+			rows[idx].Props = make(map[string]aisessions.PropertyCell, 1)
+		}
+		rows[idx].Props[HeroPropertyKey] = aisessions.PropertyCell{
+			Value:  id,
+			Type:   "text",
+			Source: HeroDerivedSource,
 		}
 	}
-}
-
-// normalizeMatchPath lowercases and slash-normalizes a path for prefix matching.
-// Clean resolves ".."/"." segments so a root declared with parent hops still
-// matches the same directory spelled plainly.
-func normalizeMatchPath(raw string) string {
-	trimmed := strings.TrimSpace(raw)
-	trimmed = strings.ReplaceAll(trimmed, "\\", "/")
-	trimmed = path.Clean(trimmed)
-	trimmed = strings.TrimRight(trimmed, "/")
-	return strings.ToLower(trimmed)
 }
 
 type AISessionsTagsRequest struct {
@@ -554,6 +541,12 @@ type AISessionsRestoreContextResponse struct {
 	VendorID    string `json:"vendorid,omitempty"`
 	VendorName  string `json:"vendorname,omitempty"`
 	ConfigDir   string `json:"configdir,omitempty"`
+	// Hero identity of the session (empty = no hero). The frontend stamps these
+	// into the resumed block meta so its header/title render like the stage
+	// entry that launched it (restoreMetaForSession).
+	Hero      string `json:"hero,omitempty"`
+	HeroName  string `json:"heroname,omitempty"`
+	HeroEmoji string `json:"heroemoji,omitempty"`
 }
 
 type AISessionsStatRequest struct {
@@ -1391,6 +1384,9 @@ func (svc *AISessionsService) RestoreContext(ctx context.Context, request *AISes
 		VendorID:    restoreCtx.VendorId,
 		VendorName:  restoreCtx.VendorName,
 		ConfigDir:   restoreCtx.ConfigDir,
+		Hero:        restoreCtx.HeroId,
+		HeroName:    restoreCtx.HeroName,
+		HeroEmoji:   restoreCtx.HeroEmoji,
 	}, nil
 }
 

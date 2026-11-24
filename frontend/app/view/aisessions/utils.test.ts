@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { initI18n } from "@/i18n/config";
+import { AgentEmojiMetaKey } from "@/app/view/term/agent-logo";
+import { AgentHeroIdMetaKey, AgentHeroNameMetaKey } from "@/app/workspace/hero-launch";
 import { PlatformMacOS, PlatformWindows, setPlatform } from "@/util/platformutil";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -481,6 +483,70 @@ describe("AI session detail timeline", () => {
             "agent:claudevendorid": "vendor-a",
             "agent:claudevendorname": "Vendor A",
         });
+    });
+
+    // N-1124-hero-restore-header: the resumed block must carry the same hero
+    // identity keys the launch path writes (hero-launch.ts), so the header
+    // shows the hero emoji + name instead of the provider logo + cwd basename.
+    it("stamps hero identity meta from a hero restore context", () => {
+        const meta = restoreMetaForSession({
+            sessionid: "session-hero",
+            source: "pi",
+            projectpath: "/heroes/alpha",
+            hero: "alpha",
+            heroname: "Alpha",
+            heroemoji: "🦊",
+        });
+        expect(meta[AgentHeroIdMetaKey]).toBe("alpha");
+        expect(meta[AgentHeroNameMetaKey]).toBe("Alpha");
+        expect(meta["display:name"]).toBe("Alpha");
+        expect(meta[AgentEmojiMetaKey]).toBe("🦊");
+        // N-1119: the emoji stays in agent:emoji, never inside hero:name.
+        expect(String(meta[AgentHeroNameMetaKey])).not.toContain("🦊");
+        // The rest of the resume contract is untouched.
+        expect(meta.cmd).toBe("pi");
+        expect(meta["cmd:cwd"]).toBe("/heroes/alpha");
+    });
+
+    it("falls back to the hero id and omits agent:emoji when the hero is bare", () => {
+        const meta = restoreMetaForSession({
+            sessionid: "session-hero-2",
+            source: "codex",
+            hero: " writer ",
+            heroname: "   ",
+            heroemoji: "",
+        });
+        expect(meta[AgentHeroIdMetaKey]).toBe("writer");
+        expect(meta[AgentHeroNameMetaKey]).toBe("writer");
+        expect(meta["display:name"]).toBe("writer");
+        expect(meta).not.toHaveProperty(AgentEmojiMetaKey);
+    });
+
+    it("writes no hero keys for a session that belongs to no hero", () => {
+        const meta = restoreMetaForSession({
+            sessionid: "session-plain",
+            source: "claude",
+            projectpath: "C:\\work",
+        });
+        expect(meta).not.toHaveProperty(AgentHeroIdMetaKey);
+        expect(meta).not.toHaveProperty(AgentHeroNameMetaKey);
+        expect(meta).not.toHaveProperty("display:name");
+        expect(meta).not.toHaveProperty(AgentEmojiMetaKey);
+        // Zero-hero meta stays byte-identical to the pre-hero build.
+        expect(Object.keys(meta).sort()).toEqual(
+            [
+                "agent:autoresume",
+                "agent:provider",
+                "agent:sessionid",
+                "cmd",
+                "cmd:cwd",
+                "cmd:jwt",
+                "cmd:runonstart",
+                "cmd:shell",
+                "controller",
+                "view",
+            ].sort()
+        );
     });
 });
 
