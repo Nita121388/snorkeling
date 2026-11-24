@@ -1135,18 +1135,51 @@ export function createAgentBlockDefForTarget(
     return createAgentBlockDefForProfile(profileName!, settings, context, vendorOptions, vendorId, vendorModel);
 }
 
+// 本机启动也要解析成绝对路径：GUI 启动的 app 进程 PATH 是 launchd 裸 PATH（不含 ~/.zshrc 追加的
+// ~/.opencode/bin 等目录），而 cmd 块由 `shell -c <cmd>` 执行且继承该裸 PATH —— 裸命令名会直接
+// `zsh:1: command not found`。弹窗侧一直靠 FindCommand 的回退扫描探测，启动侧不解析就是两条链路
+// 不对称（2026-11-24 实踩：New Agent 里能选 OpenCode，建块即报 command not found）。
+//
+// 但替换绝对路径有代价（直接进 meta.cmd、由 shell 执行），以下情况保持裸命令，交给 shell 自己按 PATH 找：
+//  - 解析为空：探测与启动之间的罕见竞态（刚卸载）；不新增阻断点，退回旧行为
+//  - 含空格：blockcontroller 对 cmd:shell=false 的 cmd 明确禁止空格
+//  - Windows shim（.cmd/.bat/.ps1）：脚本不能被 shell -c 直接 exec，Windows GUI PATH 通常本就可查
+function shouldUseLocalResolvedCmd(resolvedCmd: string): boolean {
+    if (isBlank(resolvedCmd)) {
+        return false;
+    }
+    if (resolvedCmd.includes(" ")) {
+        return false;
+    }
+    return !/\.(cmd|bat|ps1)$/i.test(resolvedCmd);
+}
+
 export async function resolveAgentBlockCommandForLaunch(
     blockDef: BlockDef,
     resolveCommand: AgentCommandResolver
 ): Promise<BlockDef> {
     const meta = blockDef.meta ?? {};
     const cmd = typeof meta.cmd === "string" ? meta.cmd.trim() : "";
-    const connection = normalizeConnection(meta.connection);
-    if (isBlank(cmd) || !isRemoteExecutionConnection(connection)) {
+    if (isBlank(cmd)) {
         return blockDef;
     }
+    const connection = normalizeConnection(meta.connection);
     const cwd = normalizePath(meta["cmd:cwd"]) ?? "";
-    const resolvedCmd = (await resolveCommand(cmd, connection!, cwd)).trim();
+    // 本机连接传 "local"：服务端 FindCommandForConnection 按 IsLocalConnName 直接走本机 FindCommand
+    // （含 candidateDirSpecs 回退扫描 + login-shell PATH 兜底），与弹窗探测同源。
+    const resolvedCmd = (await resolveCommand(cmd, connection ?? "local", cwd)).trim();
+    if (!isRemoteExecutionConnection(connection)) {
+        if (!shouldUseLocalResolvedCmd(resolvedCmd) || resolvedCmd === cmd) {
+            return blockDef;
+        }
+        return {
+            ...blockDef,
+            meta: {
+                ...meta,
+                cmd: resolvedCmd,
+            },
+        };
+    }
     if (isBlank(resolvedCmd)) {
         throw new Error(
             `Agent command "${cmd}" was not found on ${connection}. Install it on that machine or add it to that machine's PATH.`

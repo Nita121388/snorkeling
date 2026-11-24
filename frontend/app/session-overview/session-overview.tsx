@@ -23,7 +23,7 @@ import { atoms, setActiveTab, WOS } from "@/app/store/global";
 import { globalStore } from "@/app/store/jotaiStore";
 import { uxCloseBlock } from "@/app/store/keymodel";
 import { modalsModel } from "@/app/store/modalmodel";
-import { AISessionsServiceType, BlockServiceType, ObjectService, WorkspaceService } from "@/app/store/services";
+import { AISessionsServiceType, BlockServiceType, ClientService, ObjectService, WorkspaceService } from "@/app/store/services";
 import { RpcApi } from "@/app/store/wshclientapi";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
 import { primeSessionNote } from "@/app/store/session-note-cache";
@@ -40,6 +40,7 @@ import { resolveAgentSessionIdFromMeta } from "@/app/view/term/agent-session";
 import {
     collectAgentLaunchTargetsInTab,
     createAgentBlockDefForProfile,
+    resolveAgentBlockCommandForLaunch,
     resolveWorkspaceAgentContextMeta,
 } from "@/app/workspace/agent-launch";
 import { i18n } from "@/i18n/config";
@@ -3060,6 +3061,11 @@ function SessionOverviewPanel({ blockId, model }: ViewComponentProps<SessionOver
             undefined,
             request.modelOverride ?? undefined
         );
+        // 本机建块也必须解析成绝对路径：GUI 启动的 app 进程 PATH 是 launchd 裸 PATH，裸命令名
+        // （如 opencode 装在 ~/.opencode/bin）会让 zsh 报 command not found。与弹窗探测同源。
+        const blockDef = await resolveAgentBlockCommandForLaunch(rawBlockDef, (command, connection, cwd) =>
+            ClientService.FindCommandForConnection(command, connection, cwd)
+        );
         const runtimeOpts: RuntimeOpts = { termsize: { rows: 25, cols: 80 } };
         // activateTargetTab=false：建块后不抢焦点，用户留在 Overview 看到新卡入列。
         // 抛出异常 = 建块失败（可重试）；建块成功就关弹窗，绝不把用户卡在「创建中」。
@@ -3115,11 +3121,15 @@ function SessionOverviewPanel({ blockId, model }: ViewComponentProps<SessionOver
             const tabId = await WorkspaceService.CreateTab(workspaceId, request.name, false);
             if (request.addAgent && request.profileName != null) {
                 const settings = globalStore.get(atoms.settingsAtom);
-                const blockDef = createAgentBlockDefForProfile(
+                const rawBlockDef = createAgentBlockDefForProfile(
                     request.profileName,
                     settings,
                     // 新 Tab 没有自己的 context：显式不继承焦点块 context（与 add-agent 同一兑底）。
                     buildAddAgentLaunchContext({ connection: null, cwd: null })
+                );
+                // 同 submitAddAgent：本机建块也解析绝对路径，避免 GUI 裸 PATH 下找不到命令。
+                const blockDef = await resolveAgentBlockCommandForLaunch(rawBlockDef, (command, connection, cwd) =>
+                    ClientService.FindCommandForConnection(command, connection, cwd)
                 );
                 const runtimeOpts: RuntimeOpts = { termsize: { rows: 25, cols: 80 } };
                 // activateTargetTab=false：建 agent 块同样不抢焦点。

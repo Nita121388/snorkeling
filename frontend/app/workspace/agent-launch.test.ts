@@ -849,24 +849,78 @@ describe("agent launch context", () => {
         expect(blockDef.meta?.cmd).toBe("claude");
     });
 
-    it("does not resolve local agent commands before launch", async () => {
+    it("resolves local agent commands to an absolute path before launch", async () => {
         const blockDef = {
             meta: {
                 view: "term",
                 controller: "cmd",
-                cmd: "claude",
+                cmd: "opencode",
                 connection: "local",
+                "cmd:cwd": "/Users/nita/project",
             },
         } as BlockDef;
-        let called = false;
+        const calls: string[][] = [];
 
-        const resolved = await resolveAgentBlockCommandForLaunch(blockDef, async () => {
-            called = true;
-            return "/should/not/run";
+        const resolved = await resolveAgentBlockCommandForLaunch(blockDef, async (command, connection, cwd) => {
+            calls.push([command, connection, cwd]);
+            return "/Users/nita/.opencode/bin/opencode";
         });
 
+        expect(calls).toEqual([["opencode", "local", "/Users/nita/project"]]);
+        expect(resolved.meta?.cmd).toBe("/Users/nita/.opencode/bin/opencode");
+        expect(blockDef.meta?.cmd).toBe("opencode");
+    });
+
+    it("resolves local agent commands with a null connection", async () => {
+        const blockDef = {
+            meta: { view: "term", controller: "cmd", cmd: "opencode" },
+        } as BlockDef;
+
+        const resolved = await resolveAgentBlockCommandForLaunch(blockDef, async (command, connection) => {
+            expect(connection).toBe("local");
+            return "/Users/nita/.opencode/bin/opencode";
+        });
+
+        expect(resolved.meta?.cmd).toBe("/Users/nita/.opencode/bin/opencode");
+    });
+
+    it("keeps the bare cmd when local resolution returns empty (no throw)", async () => {
+        const blockDef = {
+            meta: { view: "term", controller: "cmd", cmd: "opencode", connection: "local" },
+        } as BlockDef;
+
+        const resolved = await resolveAgentBlockCommandForLaunch(blockDef, async () => "");
+
         expect(resolved).toBe(blockDef);
-        expect(called).toBe(false);
+        expect(resolved.meta?.cmd).toBe("opencode");
+    });
+
+    it("keeps the bare cmd when the local resolved path contains spaces", async () => {
+        const blockDef = {
+            meta: { view: "term", controller: "cmd", cmd: "claude", connection: "local" },
+        } as BlockDef;
+
+        const resolved = await resolveAgentBlockCommandForLaunch(
+            blockDef,
+            async () => "/opt/My Tools/bin/claude"
+        );
+
+        expect(resolved).toBe(blockDef);
+        expect(resolved.meta?.cmd).toBe("claude");
+    });
+
+    it("keeps the bare cmd when the local resolved path is a Windows shim", async () => {
+        const blockDef = {
+            meta: { view: "term", controller: "cmd", cmd: "claude", connection: "local" },
+        } as BlockDef;
+
+        const resolved = await resolveAgentBlockCommandForLaunch(
+            blockDef,
+            async () => "C:\\Users\\nita\\AppData\\Roaming\\npm\\claude.cmd"
+        );
+
+        expect(resolved).toBe(blockDef);
+        expect(resolved.meta?.cmd).toBe("claude");
     });
 
     it("reports missing remote agent commands before launch", async () => {

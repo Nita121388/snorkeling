@@ -2903,7 +2903,10 @@ const Widgets = memo(() => {
                     }}
                     onLaunch={(blockDef) => {
                         fireAndForget(async () => {
-                            await env.createBlock(blockDef, false);
+                            // Hero 块的 cmd 也是裸命令名（hero 实例常由调度/弹窗创建），
+                            // 同样要解析成绝对路径，否则 GUI 裸 PATH 下会 command not found。
+                            const resolvedBlockDef = await prepareAgentBlockDef(blockDef);
+                            await env.createBlock(resolvedBlockDef, false);
                         });
                     }}
                 />
