@@ -57,7 +57,6 @@ import { OverviewAddAgentModal, type AddAgentSubmitRequest } from "./overview-ad
 import { OverviewNewTabModal, type NewTabSubmitRequest } from "./overview-new-tab-modal";
 import { OverviewBoard } from "./overview-board";
 import { OverviewScheduledTasksSection } from "./overview-scheduled-tasks-panel";
-import type { BoardCardResumeOutcome } from "./overview-board";
 import {
     normalizeBoardTags,
     OVERVIEW_BOARD_ENABLED,
@@ -78,6 +77,7 @@ import {
     type OverviewViewModeImplemented,
 } from "./overview-board-model";
 import { CardSendContext, CardSendPanel, useCardSendState } from "./overview-card-send-panel";
+import { SessionMessageSquares } from "./session-message-squares";
 import { OverviewTimeline } from "./overview-timeline";
 import { buildTabGroups, type OverviewTabGroup } from "./overview-tab-groups";
 import {
@@ -192,6 +192,9 @@ function messagePreview(message: Message | null): string {
     if (text.length <= 140) return text;
     return `${text.slice(0, 140)}...`;
 }
+
+/** 看板卡方块条上限（11-24 R1）：卡高不随消息数跳动，超出渲染 `+n`。 */
+const BoardMessageSquareLimit = 10;
 
 function readableMessages(detail: SessionDetail | null): Message[] {
     return (detail?.messages ?? []).filter((message) => {
@@ -1254,6 +1257,8 @@ function MessageDialog({
     );
 }
 
+// 列表行方块条（11-24 R1）：薄封装 —— 只负责 loading / error / noSessionId 三个文本态，
+// 结构渲染交给共用组件 `SessionMessageSquares`（看板卡消费同一份实现，视觉零漂移）。
 function MessageSquares({
     block,
     detailState,
@@ -1290,35 +1295,24 @@ function MessageSquares({
     }
     const messages = readableMessages(detailState?.detail);
     const visibleMessages = messages.slice(-limit);
-    if (messages.length === 0 && !detailState?.loading) {
-        return <div className="session-overview-muted">{unreadText || t("session-overview:dialog.noPreview")}</div>;
-    }
     return (
-        <div className="session-overview-message-strip">
-            {messages.length > visibleMessages.length ? (
-                <span className="session-overview-more">+{messages.length - visibleMessages.length}</span>
-            ) : null}
-            {visibleMessages.map((message) => (
-                <button
-                    key={message.seq}
-                    type="button"
-                    className={cn("session-overview-message-square", message.role === "user" ? "is-user" : "is-ai")}
-                    title={messagePreview(message)}
-                    onClick={(event) => {
-                        event.stopPropagation();
-                        onOpenMessage(block, message);
-                    }}
-                    aria-label={i18n.t("session-overview:dialog.messageSeq", {
-                        role: message.role,
-                        seq: message.seq,
-                    })}
-                />
-            ))}
-            {unreadText ? <span className="session-overview-unread-time">{unreadText}</span> : null}
-            {detailState?.loading ? (
-                <i className={cn(makeIconClass("spinner", false), "session-overview-loading-icon")} />
-            ) : null}
-        </div>
+        <SessionMessageSquares
+            surface="row"
+            items={visibleMessages.map((message) => ({
+                seq: message.seq,
+                role: message.role,
+                preview: messagePreview(message),
+                label: i18n.t("session-overview:dialog.messageSeq", { role: message.role, seq: message.seq }),
+            }))}
+            overflow={messages.length - visibleMessages.length}
+            unreadText={unreadText}
+            loading={detailState?.loading === true}
+            emptyText={unreadText || t("session-overview:dialog.noPreview")}
+            onOpen={(seq) => {
+                const message = messages.find((item) => item.seq === seq);
+                if (message != null) onOpenMessage(block, message);
+            }}
+        />
     );
 }
 
@@ -2813,35 +2807,19 @@ function SessionOverviewPanel({ blockId, model }: ViewComponentProps<SessionOver
         },
         [blocks, model, sessionAction.deletingSessionId, sessionService]
     );
-    /**
-     * 看板卡「恢复」（11-23-board-card-actions R1.1 / design §3）：按会话恢复到卡片所在 Tab 的
-     * 新块，不抢焦点（nofocus）。成功 bump refreshSeq（组会带出新块，旧卡仍在 —— 恢复=再开一个块，
-     * 不是替换）；失败只回传 code/msg，由卡片原地 ⚠ [重试]，不弹窗（R3）。
-     */
-    const handleResumeBoardCard = React.useCallback(
-        async (card: OverviewBoardCard): Promise<BoardCardResumeOutcome> => {
-            try {
-                await RpcApi.AgentResumeCommand(
-                    TabRpcClient,
-                    {
-                        identifier: card.sessionId,
-                        tab: card.tabId,
-                        nofocus: true,
-                        wait: true,
-                        waitms: 8000,
-                    },
-                    { timeout: 60_000 }
-                );
-                model.refresh();
-                return { ok: true, code: null, message: "" };
-            } catch (error) {
-                const rawMessage = error instanceof Error ? error.message : String(error);
-                const code = /\bE_[A-Z_]+/.exec(rawMessage)?.[0] ?? null;
-                const message = code == null ? rawMessage : rawMessage.replace(new RegExp(`^\\s*${code}\\s*:?\\s*`), "");
-                return { ok: false, code, message: message.trim() !== "" ? message.trim() : rawMessage.trim() };
-            }
+    // 看板方块条点击 → 复用列表的消息弹窗链路（setSelected）：11-24 R1 卡列融合。
+    // 恢复入口已移除（R2，决策 D6：只删看板卡入口，AgentResumeCommand 与 AISessions 恢复保留）。
+    const handleOpenBoardMessage = React.useCallback(
+        (card: OverviewBoardCard, seq: number) => {
+            const block = blocks.find((item) => item.blockId === card.blockId);
+            if (block == null) return;
+            const message = readableMessages(details[block.sessionId]?.detail ?? null).find((item) => item.seq === seq);
+            if (message == null) return;
+            setSelectedBlockId(block.blockId);
+            overviewModel.markBlockViewed(block.blockId);
+            setSelected({ block, message });
         },
-        [model]
+        [blocks, details]
     );
     // 跨 Tab 拖拽（11-23）：落点执行 = 既有 ObjectService.MoveBlockToTab（与块菜单「移动到 Tab」同一条后端路径）。
     const handleMoveBoardCard = React.useCallback(
@@ -2936,6 +2914,14 @@ function SessionOverviewPanel({ blockId, model }: ViewComponentProps<SessionOver
                     messages.length > 0 ? messagePreview(messages[messages.length - 1]) : "",
                     160
                 );
+                // 方块条数据（11-24 R1）：与列表同一份 readableMessages / messagePreview 管线，
+                // 只裁到上限，点击回传 seq 由面板层复用消息弹窗链路打开。
+                const recentMessages = messages.slice(-BoardMessageSquareLimit).map((message) => ({
+                    seq: message.seq,
+                    role: message.role,
+                    preview: messagePreview(message),
+                    label: i18n.t("session-overview:dialog.messageSeq", { role: message.role, seq: message.seq }),
+                }));
                 const sessionTitle = (summary?.title ?? detailSummary?.title ?? "").trim();
                 return {
                     blockId: nextBlock.blockId,
@@ -2965,6 +2951,8 @@ function SessionOverviewPanel({ blockId, model }: ViewComponentProps<SessionOver
                     propRows: resolveBoardPropRows(summary?.props ?? detailSummary?.props ?? null),
                     kindLabel: nextBlock.isAgentLike ? "" : blockViewToName(nextBlock.view),
                     preview,
+                    recentMessages,
+                    messagesOverflow: Math.max(0, messages.length - recentMessages.length),
                     note,
                     updatedAt: normalizeTimeMs(summary?.updatedAt ?? detailSummary?.updatedAt),
                     // 度量轨（session-metrics）：全部来自已存在的 SessionSummary，不新增 RPC。
@@ -3342,7 +3330,7 @@ function SessionOverviewPanel({ blockId, model }: ViewComponentProps<SessionOver
                                 onJumpCard={handleJumpBoardCard}
                                 onCloseCard={handleCloseBoardCard}
                                 onDeleteSession={handleDeleteBoardSession}
-                                onResumeCard={handleResumeBoardCard}
+                                onOpenMessage={handleOpenBoardMessage}
                                 deletingSessionId={sessionAction.deletingSessionId}
                                 onAddAgent={openAddAgent}
                                 onMoveCard={handleMoveBoardCard}

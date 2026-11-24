@@ -33,6 +33,7 @@ import {
     type BoardSnapshot,
 } from "./overview-board-motion";
 import { CardSendPanel } from "./overview-card-send-panel";
+import { SessionMessageSquares } from "./session-message-squares";
 import {
     decodeDragPayload,
     encodeDragPayload,
@@ -155,11 +156,10 @@ export type OverviewBoardProps = {
     deletingSessionId?: string;
     onAckStatus?: (blockId: string, status: AgentStatus) => void;
     /**
-     * 「恢复 agent」（11-23-board-card-actions R1.1 / design §3）：AgentResumeCommand 的
-     * RPC + 刷新在面板层执行；结果回传给卡片做内联失败展示（⚠ code [重试]，不弹窗）。
-     * 不传 = 看板不提供恢复入口（测试/嵌入场景）。
+     * 会话方块条点击打开该条消息（11-24 R1）：复用列表的消息弹窗链路（setSelected）。
+     * 不传 = 方块条只展示不响应点击（测试/嵌入场景）。
      */
-    onResumeCard?: (card: OverviewBoardCard) => Promise<BoardCardResumeOutcome>;
+    onOpenMessage?: (card: OverviewBoardCard, seq: number) => void;
     /**
      * 「＋ 新建」入口：仅在容器型分组（tab）渲染。传 tabId + tabName。
      * 不传 = 看板不提供新建入口（测试/嵌入场景）。
@@ -176,9 +176,6 @@ export type OverviewBoardProps = {
      */
     tabTargets?: readonly { tabId: string; tabName: string }[];
 };
-
-/** 恢复结果：ok=true（RPC 成功，面板已刷）；ok=false 时 code/msg 供卡片内联展示。 */
-export type BoardCardResumeOutcome = { ok: boolean; code: string | null; message: string };
 
 function BoardAvatar({
     avatar,
@@ -237,7 +234,7 @@ function BoardCardImpl({
     onDeleteSession,
     deletingSessionId,
     onAckStatus,
-    onResumeCard,
+    onOpenMessage,
     onOpenSendPanel,
     miniSegments,
     onDragStartCard,
@@ -256,8 +253,8 @@ function BoardCardImpl({
     onDeleteSession?: (card: OverviewBoardCard) => void;
     deletingSessionId?: string;
     onAckStatus?: (blockId: string, status: AgentStatus) => void;
-    /** 见 OverviewBoardProps.onResumeCard；未传则该卡不渲染恢复按钮。 */
-    onResumeCard?: (card: OverviewBoardCard) => Promise<BoardCardResumeOutcome>;
+    /** 见 OverviewBoardProps.onOpenMessage；未传则方块条只展示。 */
+    onOpenMessage?: (card: OverviewBoardCard, seq: number) => void;
     /** 「发消息」→ 打开看板级 composer 浮层（引稳的 useCallback，看板提供）。 */
     onOpenSendPanel?: (card: OverviewBoardCard, anchor: HTMLElement) => void;
     /**
@@ -298,33 +295,15 @@ function BoardCardImpl({
     const showDeleteSession = onDeleteSession != null && card.sessionId !== "";
     // 没有 tabId 的卡片无处可跳（理论上不会出现；留着防脏数据长出死按钮）。
     const showJump = onJumpCard != null && card.tabId !== "";
-    // 恢复 / 发消息（11-23-board-card-actions）：能力判定是纯函数（vitest 锁），
+    // 发消息（11-23-board-card-actions R1.2）：能力判定是纯函数（vitest 锁），
     // 这里只叠加「上层有没有提供处理函数」——未提供就不渲死按钮（测试/嵌入场景）。
+    // 恢复按钮已于 11-24 R2 移除（能力位 canRestore 一并删除）；AISessions 的恢复入口保留。
     const capabilities = boardCardCapabilities({
         isAgentLike: card.isAgentLike,
         sessionId: card.sessionId,
         blockId: card.blockId,
     });
-    const showRestore = capabilities.canRestore && onResumeCard != null;
     const showSend = capabilities.canSend && onOpenSendPanel != null;
-    const [restoring, setRestoring] = useState(false);
-    const [restoreError, setRestoreError] = useState<{ code: string | null; message: string } | null>(null);
-    // 恢复 = 按会话在该卡所在 Tab 再开一个块（不抢焦点）。失败留内联 ⚠ [重试]，不弹窗（R3）。
-    const runRestore = () => {
-        if (onResumeCard == null || restoring) return;
-        setRestoring(true);
-        setRestoreError(null);
-        onResumeCard(card)
-            .then((outcome) => {
-                if (!outcome.ok) {
-                    setRestoreError({ code: outcome.code, message: outcome.message });
-                }
-            })
-            .catch(() => {
-                setRestoreError({ code: null, message: i18n.t("session-overview:board.restoreFailed") });
-            })
-            .finally(() => setRestoring(false));
-    };
     const stopCardEvent = (event: React.SyntheticEvent) => {
         event.preventDefault();
         event.stopPropagation();
@@ -409,22 +388,6 @@ function BoardCardImpl({
                     onClick={stopCardEvent}
                     onMouseDown={stopCardEvent}
                 >
-                    {showRestore ? (
-                        <button
-                            type="button"
-                            className={cn(
-                                "session-overview-board-card-action",
-                                restoring && "is-busy"
-                            )}
-                            data-board-restore
-                            onClick={() => runRestore()}
-                            disabled={restoring}
-                            aria-label={i18n.t("session-overview:board.restoreAgentAria", { title: card.title })}
-                            title={t("session-overview:board.restoreAgent")}
-                        >
-                            <i className={makeIconClass(restoring ? "spinner" : "arrow-rotate-right", false)} />
-                        </button>
-                    ) : null}
                     {showSend ? (
                         <button
                             type="button"
@@ -478,27 +441,16 @@ function BoardCardImpl({
                     ) : null}
                 </span>
             </span>
-            {/* 恢复失败原地展示（R3）：⚠ code · msg + [重试]，不弹窗 */}
-            {restoreError != null ? (
-                <span
-                    className="session-overview-board-card-restore-error"
-                    data-board-restore-error
-                    role="alert"
-                    onClick={stopCardEvent}
-                    onMouseDown={stopCardEvent}
-                >
-                    <span className="session-overview-board-card-restore-error-text">
-                        {"⚠ "}
-                        {restoreError.code ? `${restoreError.code} · ` : ""}
-                        {restoreError.message}
-                    </span>
-                    <button
-                        type="button"
-                        className="session-overview-card-send-alert-button"
-                        onClick={() => runRestore()}
-                    >
-                        {t("session-overview:panel.cardSendRetry")}
-                    </button>
+            {/* 会话方块条（11-24 R1 卡列融合）：与列表行同一份实现（SessionMessageSquares）。
+                只对 agent 卡 + 有消息时渲染（无消息不留空行，卡高不跳）；点击打开该条消息。 */}
+            {card.isAgentLike && card.sessionId !== "" && card.recentMessages.length > 0 ? (
+                <span className="session-overview-board-card-squares" onClick={stopCardEvent} onMouseDown={stopCardEvent}>
+                    <SessionMessageSquares
+                        surface="board"
+                        items={card.recentMessages}
+                        overflow={card.messagesOverflow}
+                        onOpen={(seq) => onOpenMessage?.(card, seq)}
+                    />
                 </span>
             ) : null}
             <span className="session-overview-board-card-meta">
@@ -727,7 +679,7 @@ export function OverviewBoard({
     onDeleteSession,
     deletingSessionId,
     onAckStatus,
-    onResumeCard,
+    onOpenMessage,
     onAddAgent,
     onMoveCard,
     tabTargets,
@@ -1065,7 +1017,7 @@ export function OverviewBoard({
                                     onDeleteSession={onDeleteSession}
                                     deletingSessionId={deletingSessionId}
                                     onAckStatus={onAckStatus}
-                                    onResumeCard={onResumeCard}
+                                    onOpenMessage={onOpenMessage}
                                     onOpenSendPanel={openSendPanel}
                                     miniSegments={miniTimelines?.[card.blockId]}
                                     onDragStartCard={dragEnabled ? handleCardDragStart(card) : undefined}

@@ -1,0 +1,27 @@
+# 红证（HEAD 无实现，新测试必红）—— N-1124-overview-agent-fuse
+# 复现：git worktree add <dir> HEAD && cp 两个测试文件进去 && npx vitest run <两个测试>
+[32m- 1[39m
+[31m+ 0[39m
+
+ ❯ frontend/app/session-overview/overview-board-message-squares.test.tsx:143:36
+    141|             onOpenCard,
+    142|         });
+    143|         expect(squares(container)).toHaveLength(1);
+       |                                    ^
+    144|         act(() => {
+    145|             squares(container)[0].dispatchEvent(new MouseEvent("click"…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[7/7]⎯
+
+
+ Test Files  2 failed (2)
+      Tests  7 failed | 3 passed (10)
+   Start at  19:31:46
+   Duration  1.98s (transform 600ms, setup 25ms, collect 1.05s, tests 63ms, environment 525ms, prepare 139ms)
+
+JUNIT report written to /private/tmp/n1124-red-fuse/test-results.xml
+npm notice
+npm notice New major version of npm available! 11.16.0 -> 12.2.3
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.3
+npm notice To update run: npm install -g npm@12.2.3
+npm notice

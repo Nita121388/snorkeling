@@ -331,6 +331,8 @@ export function groupOverviewCards<T extends OverviewBoardCardRef>(
 // resolution rules are directly unit-testable.
 // ---------------------------------------------------------------------------
 
+import type { SessionMessageSquareItem } from "./session-message-squares";
+
 /** How a card renders the agent identity (persona chain → brand logo → generic icon). */
 export type OverviewBoardAvatar =
     | { kind: "emoji"; emoji: string }
@@ -365,6 +367,13 @@ export type OverviewBoardCard = {
     kindLabel: string;
     /** Last readable message, one line. Note lives on its own row. */
     preview: string;
+    /**
+     * 最近消息（方块条数据源，11-24 R1 卡列融合）：已裁剪到上限，不含全文。
+     * 由 `session-overview.tsx` 的 boardCards useMemo 生成（与列表同一份 readableMessages 管线）。
+     */
+    recentMessages: readonly SessionMessageSquareItem[];
+    /** `recentMessages` 之前被裁掉的消息数（渲染 `+n`）。 */
+    messagesOverflow: number;
     note: string;
     /** Recent-activity timestamp in ms; `0` hides the age label. */
     updatedAt: number;

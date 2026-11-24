@@ -68,6 +68,8 @@ function makeCard(overrides: Partial<OverviewBoardCard> = {}): OverviewBoardCard
         preview: "last message preview",
         note: "",
         updatedAt: 0,
+        recentMessages: [],
+        messagesOverflow: 0,
         ...overrides,
     };
 }

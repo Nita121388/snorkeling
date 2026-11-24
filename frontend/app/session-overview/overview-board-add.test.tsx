@@ -37,6 +37,8 @@ function makeCard(overrides: Partial<OverviewBoardCard> = {}): OverviewBoardCard
         note: "",
         updatedAt: 0,
         propRows: { visible: [], hiddenCount: 0 },
+        recentMessages: [],
+        messagesOverflow: 0,
         ...overrides,
     };
 }

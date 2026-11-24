@@ -25,11 +25,8 @@
         "projectFallback": "No project",
         "tagFallback": "No tags",
         "addAgentAria": "Create an agent in tab {{name}}",
-        "restoreAgent": "Restore",
-        "restoreAgentAria": "Restore agent session {{title}}",
         "sendMessage": "Send message",
         "sendMessageAria": "Send message to {{title}}",
-        "restoreFailed": "Restore failed",
         "sendFailed": "Send failed"
     },
     "timeline": {

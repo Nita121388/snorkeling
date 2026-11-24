@@ -25,11 +25,8 @@
         "projectFallback": "无项目",
         "tagFallback": "无标签",
         "addAgentAria": "在 Tab {{name}} 新建 agent",
-        "restoreAgent": "恢复",
-        "restoreAgentAria": "恢复 agent 会话 {{title}}",
         "sendMessage": "发消息",
         "sendMessageAria": "给 {{title}} 发消息",
-        "restoreFailed": "恢复失败",
         "sendFailed": "发送失败"
     },
     "timeline": {
