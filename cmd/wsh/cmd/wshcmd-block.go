@@ -64,7 +64,7 @@ var blockOpenCmd = &cobra.Command{
 func init() {
 	blockCmd.PersistentFlags().BoolVar(&blockJSON, "json", false, "output as JSON")
 	blockCmd.PersistentFlags().Int64Var(&blockTimeout, "timeout", 8000, "RPC timeout in milliseconds")
-	blockCmd.AddCommand(blockReadCmd, blockOpenCmd)
+	blockCmd.AddCommand(blockReadCmd, blockOpenCmd, blockRefreshCmd)
 
 	blockReadCmd.Flags().IntVar(&blockTail, "tail", 80, "lines to return for terminal blocks")
 	blockReadCmd.Flags().IntVar(&blockMaxBytes, "max-bytes", 65536, "content byte cap")

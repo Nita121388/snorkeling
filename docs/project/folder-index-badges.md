@@ -50,15 +50,25 @@ Files 树里每个文件可以按目录内的索引文档显示**状态徽标**�
 - **命令行**：`wsh setmeta -b <blockid> preview:idxbadges=on`。
 - 默认关闭（meta 缺省即关）。关闭时不读索引、不起 worker、树 DOM 零徽标。
 
-## Agent 定向刷新
+## Agent 入口（语义化命令 + 自描述发现面）
 
 Agent 改完索引/脚本后，让用户的树立刻生效：
 
 ```bash
-wsh setmeta -b <blockid> preview:idxrefresh=$(date +%s%3N)
+wsh block refresh          # 在自己的 block 里跑（this）
+wsh block refresh <blockid> --json
 ```
 
-block meta 变化 → 装饰缓存失效 → 重新读两个源 → 树重取（仅该 block；展开状态保留）。
+内部 = 写 meta `preview:idxrefresh=<ms>`（`--key/--value` 可改），block 监听变化重算装饰（仅该 block，展开状态保留）。
+
+**发现面**：`wsh agent guide` 的能力表已含 `block refresh` 条目（scope navigate），Notes 写明默认关与开关键。
+`wsh agent install-skill` 从同一张表生成 skill——外部 agent 更新一次 skill 即可拿到最新口径，无需手工同步。
+
+**底层等价命令**（不想用子命令时）：
+
+```bash
+wsh setmeta -b <blockid> preview:idxrefresh=$(date +%s%3N)
+```
 
 ## 实现锚点（改这块先读）
 
@@ -70,6 +80,8 @@ block meta 变化 → 装饰缓存失效 → 重新读两个源 → 树重取（
 | `frontend/app/view/preview/folder-index/folder-index-hook.ts` | 目录级 hook：读两源 + 缓存 + revision（对齐 `vcs-tree-status-hook.ts`） |
 | `frontend/app/view/preview/preview-explorer.tsx` | 接线：meta 开关、徽标注入 `TreeNodeData.badge`、右键菜单开关、`treeRefreshKey` 带 revision |
 | `frontend/app/treeview/treeview.tsx` | `TreeNodeBadge` 组件 + `TreeNodeData.badge` 字段（行内图标后） |
+| `cmd/wsh/cmd/wshcmd-block-refresh.go` | `wsh block refresh` 子命令（默认键 `preview:idxrefresh`，与前端 `folder-index-meta.ts` 一致） |
+| `pkg/agentguide/agentguide.go` | 能力表 `block refresh` 条目（guide 与 install-skill 同源） |
 
 ## 降级语义（不要"改进"成报错）
 

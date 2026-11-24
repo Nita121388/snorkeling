@@ -177,6 +177,17 @@ func Commands() []Command {
 			},
 		},
 		{
+			Cmd:     "block refresh",
+			Scope:   "navigate",
+			Summary: "Bump a block's refresh marker so it re-reads its source (Files tree: index.md + .index/badges.js).",
+			Flags:   []string{"[<block|this>]", "--key K", "--value V", "--json"},
+			Notes: []string{
+				"Use after rewriting a folder index document or badges script; the tree recomputes without user interaction.",
+				"Folder index badges are off by default: wsh setmeta -b this preview:idxbadges=on enables them (index.md status table + .index/badges.js).",
+				"Default marker is preview:idxrefresh. Writing meta only: no new RPC, no new event type.",
+			},
+		},
+		{
 			Cmd:     "tab create",
 			Scope:   "navigate",
 			Summary: "Create a tab (optionally activate it).",

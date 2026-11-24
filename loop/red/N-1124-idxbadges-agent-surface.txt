@@ -1,0 +1,15 @@
+# red proof: N-1124-idxbadges-agent-surface
+# date: 2026-11-24T03:27:08Z
+# 特性未实现：BlockRefreshDefaultKey / block refresh 子命令 / agent guide 条目均不存在 → 两个测试包编译失败（预期红）
+
+# github.com/wavetermdev/waveterm/cmd/wsh/cmd [github.com/wavetermdev/waveterm/cmd/wsh/cmd.test]
+cmd\wsh\cmd\wshcmd-block-refresh_test.go:40:5: undefined: BlockRefreshDefaultKey
+cmd\wsh\cmd\wshcmd-block-refresh_test.go:41:52: undefined: BlockRefreshDefaultKey
+FAIL	github.com/wavetermdev/waveterm/cmd/wsh/cmd [build failed]
+FAIL
+----
+--- FAIL: TestGuideHasBlockRefreshEntry (0.00s)
+    agentguide_block_refresh_test.go:23: agent guide 能力表缺 block refresh 条目
+FAIL
+FAIL	github.com/wavetermdev/waveterm/pkg/agentguide	4.742s
+FAIL
