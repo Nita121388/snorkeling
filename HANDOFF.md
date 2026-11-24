@@ -19,12 +19,11 @@
 
 
 
-## 2026-11-23：文件夹索引徽标（实验插件）— 原型+方案就绪，未开工
+## 2026-11-24：文件夹索引徽标（实验插件）— 已实现并 prove 4/4 全绿，G7 真机验收待 nita
 
-> 用户布置（2026-11-23）：Files 树按文件夹内索引显示状态徽标；要可插拔实验特性；要支持用户自定义脚本；
-> 要支持 agent 定向刷新某个 tab 的某个 Block。**三个功能点合成一个包**。
-> **前置**：D1-D5 未拍板 → 不要直接改代码。按 loop 规矩先建工作项
-> （`node loop/queue.mjs create` 或等价流程），它是新交互面，H 门需白天签。
+> 用户布置（2026-11-23）三个功能点合成一个包；2026-11-24 会话拍板 D1-D5（全按推荐 + D5 改采 setmeta 事件链），
+> G1 已签（nita「ok go」）、红证先行、当日实现完成。
+> **实现事实文档：`docs/project/folder-index-badges.md`**（怎么开 / index.md 与 badges.js 写法 / 刷新命令 / 降级语义 / 实现锚点）。
 
 | 项 | 内容 |
 |---|---|
@@ -39,7 +38,7 @@
 2. **用户自定义脚本**：`.index/badges.js` 导出 `decorate(entry)`，返回 `{ status }` 或 `{ emoji, label, color, title }`；合并策略 = 脚本 > 表格 > 无徽标。
 3. **Agent 定向刷新 Block**：`refreshBlock(tab, block)` 让装饰缓存失效重算，agent 改完索引后用户立刻看到效果；watch 自动刷新为可选增强。
 
-**待拍板（原型右侧可直接对比，定了才开工）**
+**D1-D5 拍板记录（2026-11-24，已按推荐项落地）****
 
 | 编号 | 决策 | 我的推荐 |
 |---|---|---|
@@ -47,16 +46,20 @@
 | D2 | 徽标画法：前缀 emoji / 角标叠加 / 只改颜色 | 前缀 emoji |
 | D3 | 「只读」徽标：🔒 / 📁 | 🔒（📁 与文件夹图标撞形） |
 | D4 | 脚本形态与执行：独立 `badges.js` + worker / index.md 内嵌 | 独立文件 + sandbox worker |
-| D5 | 刷新通道：新增 `refreshBlock` RPC / 复用 Resync | 新增语义化 RPC，内部委托既有命令 |
+| D5 | 刷新通道：新增 `refreshBlock` RPC / 复用 Resync / **复用 setmeta 事件链**（实际落地） | `preview:idxrefresh` meta + 既有 SetMetaCommand 链，零 Go 改动 |
 
-**判据（命令 → 期望输出，均为可机验数字；夜间开发照此验收）**
+**已交付（2026-11-24）**
 
-1. 总开关关：Files 树 DOM 与现状 **0 差异**，`data-badge` 节点数 = **0**。
-2. 开 + 示例索引 6 条：`data-badge` 节点数 = **6**。
-3. 索引缺失/坏表格：报错 **0**，徽标 **0**，树照常渲染。
-4. 脚本源：草案 2 项 🔄、陈旧 3 项 ⏳；单条抛错时其余徽标数**不减**。
-5. Agent 改索引后 `refreshBlock`：**2s 内**徽标数与新索引一致（rev+1，toast 一次）。
-6. 单元测试：`parseIndexDoc` / `runUserScript` / 合并策略 ≥ **25 断言**全绿（用例蓝本在原型 README）。
+- 包 `N-1124-folder-index-badges-3`（前两包因判据 bash 语法在 cmd.exe 必红丢弃重建，教训已登记）：G1-G5 清，prove **4/4 绿**
+  （folder-index 15 断言 / refresh 6 断言 / treeview-badge 3 断言 / eslint 0 error）；tsc 58 = 基线不变、新文件 0 错。
+- 纯前端实现，零 Go 改动；改动 = `frontend/app/view/preview/folder-index/`（5 新文件）+ `preview-explorer.tsx` + `treeview.tsx`。
+
+**G7 真机验收步骤（nita 手动，约 2 分钟）**
+
+1. 起一个 Files block（某目录），右键树空白处 → 「开启索引徽标（实验）」→ 树暂无变化（目录没索引，正常）。
+2. 目录里放 `index.md`（表格见 docs/project/folder-index-badges.md）→ 右键空白 → 树刷新或点开关两下 → 应见 🔄🧊🔒🗄 徽标。
+3. 关掉开关 → 徽标全消失（零变化）。
+4. （可选）`wsh setmeta -b <blockid> preview:idxrefresh=<ms>` → 不动树也应重算出新徽标。
 
 **隔离四道**：开关默认关（关时零 IO）/ 任一数据源失败返回空 Map（无徽标不报错）/ 纯前端读文件（不改 `FileInfo` 与后端 RPC）/ 脚本 worker 限时执行（单条失败只跳过该条）。
 

@@ -32,6 +32,8 @@ export interface TreeNodeData {
     mimeType?: string;
     icon?: string;
     iconColor?: string;
+    /** 文件夹索引徽标（实验插件）：图标后的前缀 emoji 徽标；不传 = 零变化 */
+    badge?: TreeNodeBadgeData;
     isReadonly?: boolean;
     notfound?: boolean;
     staterror?: string;
@@ -112,6 +114,35 @@ export interface TreeViewProps {
     getLabelTitle?: (row: TreeViewRowInfo) => string | undefined;
     /** 可选：在行名 span 之后渲染行尾内容（如 VCS 行尾标记）。不传时行为零变化。 */
     renderRowSuffix?: (row: TreeViewRowInfo) => React.ReactNode;
+}
+
+/** 图标后缀徽标的数据形状（文件夹索引徽标插件：folder-index） */
+export interface TreeNodeBadgeData {
+    emoji: string;
+    title?: string;
+    color?: string;
+}
+
+/** 图标徽标渲染件：node.badge 缺省/空 emoji 时返回 null（树零变化）。 */
+export function TreeNodeBadge({ node }: { node: TreeNodeData }): React.ReactNode {
+    const badge = node?.badge;
+    if (badge == null || !badge.emoji) {
+        return null;
+    }
+    return (
+        <span
+            className="st-badge shrink-0"
+            title={badge.title}
+            style={{
+                marginRight: 4,
+                fontSize: 11,
+                lineHeight: 1,
+                color: badge.color,
+            }}
+        >
+            {badge.emoji}
+        </span>
+    );
 }
 
 export interface TreeViewExpandAllResult {
@@ -1243,6 +1274,7 @@ export const TreeView = forwardRef<TreeViewRef, TreeViewProps>((props, ref) => {
                                                         : (row.node.iconColor ?? "inherit"),
                                             }}
                                         />
+                                        <TreeNodeBadge node={row.node} />
                                         {editingNodeId === row.id ? (
                                             <InlineRenameInput
                                                 className="ml-1 h-full min-w-0 flex-1 rounded-[3px] border border-[var(--accent-color)] bg-[var(--overlay-bg-color)] px-1 text-sm outline-none"

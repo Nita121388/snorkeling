@@ -1,0 +1,71 @@
+# red proof: N-1124-folder-index-badges-2
+# date: 2026-11-24T01:12:53Z
+# 特性未实现：folder-index-model / folder-index-meta / TreeNodeBadge 均不存在 → 三个判据测试全红（模块解析失败即预期红）
+
+
+[1m[46m RUN [49m[22m [36mv3.2.4 [39m[90mE:/code/snorkeling[39m
+
+
+[31m⎯⎯⎯⎯⎯⎯[39m[1m[41m Failed Suites 3 [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯[39m
+
+[41m[1m FAIL [22m[49m frontend/app/treeview/treeview-badge.test.tsx[2m [ frontend/app/treeview/treeview-badge.test.tsx ][22m
+[31m[1mError[22m: Failed to resolve import "@testing-library/react" from "frontend/app/treeview/treeview-badge.test.tsx". Does the file exist?[39m
+  Plugin: [35mvite:import-analysis[39m
+  File: [36mE:/code/snorkeling/frontend/app/treeview/treeview-badge.test.tsx[39m:8:23
+[33m  5  |  // 文件夹索引徽标（N-1124-folder-index-badges-2）— 红证先行：
+  6  |  // 树行徽标渲染（前缀 emoji）与「无 badge = 树零变化」的单测。
+  7  |  import { render } from "@testing-library/react";
+     |                          ^
+  8  |  import { describe, expect, it } from "vitest";
+  9  |  import { TreeNodeBadge } from "@/app/treeview/treeview";[39m
+[90m [2m❯[22m TransformPluginContext._formatLog node_modules/vite/dist/node/chunks/dep-Dq2t6Dq0.js:[2m42553:41[22m[39m
+[90m [2m❯[22m TransformPluginContext.error node_modules/vite/dist/node/chunks/dep-Dq2t6Dq0.js:[2m42550:16[22m[39m
+[90m [2m❯[22m normalizeUrl node_modules/vite/dist/node/chunks/dep-Dq2t6Dq0.js:[2m40529:23[22m[39m
+[90m [2m❯[22m node_modules/vite/dist/node/chunks/dep-Dq2t6Dq0.js:[2m40648:37[22m[39m
+[90m [2m❯[22m TransformPluginContext.transform node_modules/vite/dist/node/chunks/dep-Dq2t6Dq0.js:[2m40575:7[22m[39m
+[90m [2m❯[22m EnvironmentPluginContainer.transform node_modules/vite/dist/node/chunks/dep-Dq2t6Dq0.js:[2m42348:18[22m[39m
+[90m [2m❯[22m loadAndTransform node_modules/vite/dist/node/chunks/dep-Dq2t6Dq0.js:[2m35740:27[22m[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/3]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m frontend/app/view/preview/folder-index/folder-index.test.ts[2m [ frontend/app/view/preview/folder-index/folder-index.test.ts ][22m
+[31m[1mError[22m: Cannot find package '@/app/view/preview/folder-index/folder-index-model' imported from 'E:/code/snorkeling/frontend/app/view/preview/folder-index/folder-index.test.ts'[39m
+[36m [2m❯[22m frontend/app/view/preview/folder-index/folder-index.test.ts:[2m9:1[22m[39m
+    [90m  7| [39m
+    [90m  8| [39m[35mimport[39m { describe[33m,[39m expect[33m,[39m it } [35mfrom[39m [32m"vitest"[39m[33m;[39m
+    [90m  9| [39m[35mimport[39m {
+    [90m   | [39m[31m^[39m
+    [90m 10| [39m    [33mSTATUS_DEF[39m[33m,[39m
+    [90m 11| [39m    type [33mBadgeDeco[39m[33m,[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[22m[39m
+[31m[1mSerialized Error:[22m[39m [90m{ code: 'ERR_MODULE_NOT_FOUND' }[39m
+[31m[1mCaused by: Error[22m: Failed to load url @/app/view/preview/folder-index/folder-index-model (resolved id: @/app/view/preview/folder-index/folder-index-model) in E:/code/snorkeling/frontend/app/view/preview/folder-index/folder-index.test.ts. Does the file exist?[39m
+[90m [2m❯[22m loadAndTransform node_modules/vite/dist/node/chunks/dep-Dq2t6Dq0.js:[2m35730:17[22m[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/3]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m frontend/app/view/preview/folder-index/refresh.test.ts[2m [ frontend/app/view/preview/folder-index/refresh.test.ts ][22m
+[31m[1mError[22m: Cannot find package '@/app/view/preview/folder-index/folder-index-meta' imported from 'E:/code/snorkeling/frontend/app/view/preview/folder-index/refresh.test.ts'[39m
+[36m [2m❯[22m frontend/app/view/preview/folder-index/refresh.test.ts:[2m11:1[22m[39m
+    [90m  9| [39m
+    [90m 10| [39m[35mimport[39m { describe[33m,[39m expect[33m,[39m it } [35mfrom[39m [32m"vitest"[39m[33m;[39m
+    [90m 11| [39m[35mimport[39m {
+    [90m   | [39m[31m^[39m
+    [90m 12| [39m    [33mIDX_BADGES_META_KEY[39m[33m,[39m
+    [90m 13| [39m    [33mIDX_REFRESH_META_KEY[39m[33m,[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[22m[39m
+[31m[1mSerialized Error:[22m[39m [90m{ code: 'ERR_MODULE_NOT_FOUND' }[39m
+[31m[1mCaused by: Error[22m: Failed to load url @/app/view/preview/folder-index/folder-index-meta (resolved id: @/app/view/preview/folder-index/folder-index-meta) in E:/code/snorkeling/frontend/app/view/preview/folder-index/refresh.test.ts. Does the file exist?[39m
+[90m [2m❯[22m loadAndTransform node_modules/vite/dist/node/chunks/dep-Dq2t6Dq0.js:[2m35730:17[22m[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/3]⎯[22m[39m
+
+
+[2m Test Files [22m [1m[31m3 failed[39m[22m[90m (3)[39m
+[2m      Tests [22m [2mno tests[22m
+[2m   Start at [22m 09:13:24
+[2m   Duration [22m 18.42s[2m (transform 397ms, setup 162ms, collect 0ms, tests 0ms, environment 8.80s, prepare 2.21s)[22m
+
+JUNIT report written to E:/code/snorkeling/test-results.xml

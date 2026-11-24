@@ -44,6 +44,10 @@ import { getPreviewDisplayPath, isWindowsDrivesPath } from "./preview-windows-dr
 import type { PreviewEnv } from "./previewenv";
 import { FILES_VCS_TREE_STATUS_ENABLED, normalizeVcsPath } from "./vcs-tree-status";
 import { VcsFileMarkTitleKey, useDirectoryVcsTreeStatus } from "./vcs-tree-status-hook";
+import { useFolderIndexBadges } from "./folder-index/folder-index-hook";
+import { idxBadgesMetaValue, isIdxBadgesEnabled } from "./folder-index/folder-index-meta";
+import { lookupDecoration, toRelPath } from "./folder-index/folder-index-model";
+import * as WOS from "@/app/store/wos";
 
 const TreeFetchLimit = 1024;
 const TreeMaxEntries = 500;
@@ -190,6 +194,10 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
     // VCS 状态（与目录表格视图共用 hook：一次 RPC + 两套索引，渲染期 O(1) 查表）。
     // 树的根是 explorerRootPath —— 子目录行用 dirCount 前缀聚合，文件行用 fileMark。
     const vcsStatus = useDirectoryVcsTreeStatus(model, env.rpc, rootPath, connection, refreshVersion);
+    // 文件夹索引徽标（实验插件）：meta preview:idxbadges 开才读 index.md / badges.js（关 = 零额外 IO）；
+    // agent `wsh setmeta -b <blockid> preview:idxrefresh=<ms>` → revision+1 → 树重取并重算。
+    const blockMeta = (blockData?.meta ?? {}) as Record<string, unknown>;
+    const folderIndex = useFolderIndexBadges({ model, rpc: env.rpc, rootPath, conn: connection, blockMeta });
     const getVcsLabelClassName = useCallback(
         (row: TreeViewRowInfo) => {
             if (vcsStatus == null || row.isDirectory) {
@@ -537,13 +545,29 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
                 }
             }
             const visibleEntries = showHiddenFiles ? entries : entries.filter((entry) => !isHiddenEntry(entry));
+            // 索引徽标注入：徽标是渲染层概念，只写进 TreeNodeData.badge，不碰 FileInfo。
+            // 相对路径优先（评审记录/2024-年报.md），文件名兜底（与索引表两种写法兼容）。
+            const nodes = visibleEntries.slice(0, limit).map((entry) => {
+                const node = toTreeNode(entry, id, directoryIconColor);
+                if (!entry.isdir) {
+                    const deco = lookupDecoration(folderIndex.decorations, toRelPath(rootPath, entry.path), entry.name);
+                    if (deco != null) {
+                        node.badge = {
+                            emoji: deco.emoji,
+                            title: [deco.title, deco.note].filter(Boolean).join(" — ") || undefined,
+                            color: deco.color,
+                        };
+                    }
+                }
+                return node;
+            });
             return {
-                nodes: visibleEntries.slice(0, limit).map((entry) => toTreeNode(entry, id, directoryIconColor)),
+                nodes,
                 capped: visibleEntries.length > limit,
                 totalKnown: visibleEntries.length,
             };
         },
-        [directoryIconColor, env.rpc, model, showHiddenFiles]
+        [directoryIconColor, env.rpc, folderIndex.decorations, model, rootPath, showHiddenFiles]
     );
 
     const openCreateFile = useCallback(
@@ -732,6 +756,22 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
                 newFile: () => openCreateFile(rootPath),
                 newDirectory: () => openCreateDirectory(rootPath),
             });
+            // 实验插件开关：per-block meta，关 = 不读索引零影响；同一路径 agent 也能 wsh setmeta
+            const idxBadgesEnabled = isIdxBadgesEnabled(blockMeta);
+            menu.push(
+                { type: "separator" },
+                {
+                    label: idxBadgesEnabled ? "关闭索引徽标（实验）" : "开启索引徽标（实验）",
+                    click: () => {
+                        fireAndForget(() =>
+                            env.rpc.SetMetaCommand(TabRpcClient, {
+                                oref: WOS.makeORef("block", model.blockId),
+                                meta: idxBadgesMetaValue(!idxBadgesEnabled),
+                            })
+                        );
+                    },
+                }
+            );
             ContextMenuModel.getInstance().showContextMenu(appendBlockMoveMenuItems(menu, blockMoveMenuItems), event);
         },
         [
@@ -1006,7 +1046,8 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
     ]);
 
     const treeKey = `${rootPath}:${connection ?? ""}`;
-    const treeRefreshKey = `${refreshVersion}:${showHiddenFiles ? "show" : "hide"}`;
+    // 索引徽标 revision 进 refreshKey：徽标表变化（含 agent 定向刷新）→ 树重取时带上新徽标
+    const treeRefreshKey = `${refreshVersion}:${showHiddenFiles ? "show" : "hide"}:${folderIndex.revision}`;
 
     const collapseTree = useCallback(() => {
         treeRef.current?.collapseAll();

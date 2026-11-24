@@ -1,0 +1,17 @@
+{
+  "g1": {
+    "at": "2026-11-24T02:16:37Z",
+    "by": "nita",
+    "verdict": "confirmed",
+    "prdHash": "4bbbfa01a2af"
+  },
+  "g2": {
+    "redProof": "loop/red/N-1124-folder-index-badges-2.txt",
+    "at": "2026-11-24T02:16:38Z"
+  },
+  "g5": {
+    "ok": true,
+    "executedAt": "2026-11-24T02:16:39Z",
+    "by": "compliance"
+  }
+}
