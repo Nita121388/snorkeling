@@ -273,4 +273,36 @@ describe("ScheduledTaskManagerModal", () => {
         expect(document.querySelector("[data-schedtask-empty]")).not.toBeNull();
         expect(document.querySelector("[data-schedtask-new]")).not.toBeNull();
     });
+
+    // ── 版式对齐 CommonText（任务 11-24-schedtask-entry-fix）──
+    // 锁的回归点：昨天弹窗无显式尺寸 → 内容撑开成窄框；标题走 14px 结构化 header + 实现语副标题。
+    // 对齐后：尺寸与 commontext-compose-modal.tsx:1885 同值，标题 16px，无副标题，动作行在内容底部。
+
+    it("弹窗尺寸对齐 CommonText（85vw×78vh 上限，500×350 下限）", async () => {
+        await mount();
+        const shell = document.querySelector<HTMLElement>(".schedtask-manager-modal");
+        expect(shell).not.toBeNull();
+        expect(shell!.style.width).toBe("min(85vw, 900px)");
+        expect(shell!.style.height).toBe("min(78vh, 620px)");
+        expect(shell!.style.minWidth).toBe("500px");
+        expect(shell!.style.minHeight).toBe("350px");
+        expect(shell!.style.maxWidth).toBe("96vw");
+        expect(shell!.style.maxHeight).toBe("92vh");
+    });
+
+    it("标题为 16px 语义，且不再有实现语副标题", async () => {
+        await mount();
+        const title = document.querySelector(".modal-header__title");
+        expect(title).not.toBeNull();
+        expect(title!.querySelector(".text-base")).not.toBeNull();
+        expect(document.querySelector(".modal-header__subtitle")).toBeNull();
+    });
+
+    it("计数与「新建任务」在内容底部同一行动作区", async () => {
+        await mount();
+        const actions = document.querySelector("[data-schedtask-actions]");
+        expect(actions).not.toBeNull();
+        expect(actions!.querySelector("[data-schedtask-new]")).not.toBeNull();
+        expect(document.querySelectorAll("[data-schedtask-new]")).toHaveLength(1);
+    });
 });
