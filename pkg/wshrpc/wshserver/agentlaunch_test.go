@@ -7,6 +7,8 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -90,9 +92,11 @@ func TestModelCandidateHintCap(t *testing.T) {
 }
 
 func TestBuildAgentBlockMeta(t *testing.T) {
+	// Cmd 用不存在的命令名：本机解析失败 → 保留裸 cmd（与 GUI 裸 PATH 行为解耦，测试环境无关）。
+	// 真正的「解析成绝对路径」行为由 TestResolveAgentCmdForLaunch 用受控 PATH 验证。
 	profile := agentcatalog.ProfileInfo{
 		Name:      "pi",
-		Cmd:       "pi",
+		Cmd:       "wavetest-nonexistent-agent",
 		ModelFlag: "--model",
 		Args:      []string{"--extra"},
 		Env:       map[string]string{"FOO": "bar"},
@@ -106,7 +110,7 @@ func TestBuildAgentBlockMeta(t *testing.T) {
 	if meta.GetString("controller", "") != "cmd" {
 		t.Fatalf("controller: %v", meta["controller"])
 	}
-	if meta.GetString("cmd", "") != "pi" {
+	if meta.GetString("cmd", "") != "wavetest-nonexistent-agent" {
 		t.Fatalf("cmd: %v", meta["cmd"])
 	}
 	if meta.GetBool("cmd:shell", true) {
@@ -121,7 +125,7 @@ func TestBuildAgentBlockMeta(t *testing.T) {
 	if !meta.GetBool("agent:autoresume", false) {
 		t.Fatal("agent:autoresume must be true")
 	}
-	if meta.GetString("agent:provider", "") != "pi" {
+	if meta.GetString("agent:provider", "") != "wavetest-nonexistent-agent" {
 		t.Fatalf("agent:provider: %v", meta["agent:provider"])
 	}
 	if meta.GetString("agent:isolationmode", "") != AgentIsolationModeSystem {
@@ -175,6 +179,57 @@ func TestAgentProviderNameFromCommandPath(t *testing.T) {
 			t.Fatalf("agentProviderName(cmd=%q) = %q, want %q", cmd, got, want)
 		}
 	}
+}
+
+func TestResolveAgentCmdForLaunch(t *testing.T) {
+	t.Run("keeps empty and already-qualified commands", func(t *testing.T) {
+		if got := resolveAgentCmdForLaunch(""); got != "" {
+			t.Fatalf("empty: %q", got)
+		}
+		if got := resolveAgentCmdForLaunch("  "); got != "" {
+			t.Fatalf("whitespace: %q", got)
+		}
+		for _, qualified := range []string{"/usr/local/bin/agent", "./agent", `C:\Tools\agent.exe`} {
+			if got := resolveAgentCmdForLaunch(qualified); got != qualified {
+				t.Fatalf("qualified %q → %q", qualified, got)
+			}
+		}
+	})
+
+	t.Run("keeps an unresolvable bare command", func(t *testing.T) {
+		t.Setenv("PATH", t.TempDir())
+		if got := resolveAgentCmdForLaunch("wavetest-absent-agent"); got != "wavetest-absent-agent" {
+			t.Fatalf("got %q", got)
+		}
+	})
+
+	t.Run("resolves a bare command on PATH to an absolute path", func(t *testing.T) {
+		dir := t.TempDir()
+		bin := filepath.Join(dir, "wavetest-agent")
+		if err := os.WriteFile(bin, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+			t.Fatalf("write fake agent: %v", err)
+		}
+		t.Setenv("PATH", dir)
+		got := resolveAgentCmdForLaunch("wavetest-agent")
+		if got != bin {
+			t.Fatalf("got %q, want %q", got, bin)
+		}
+	})
+
+	t.Run("keeps the bare cmd when the resolved path contains spaces", func(t *testing.T) {
+		dir := filepath.Join(t.TempDir(), "My Tools")
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatalf("mkdir: %v", err)
+		}
+		bin := filepath.Join(dir, "wavetest-spaced-agent")
+		if err := os.WriteFile(bin, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+			t.Fatalf("write fake agent: %v", err)
+		}
+		t.Setenv("PATH", dir)
+		if got := resolveAgentCmdForLaunch("wavetest-spaced-agent"); got != "wavetest-spaced-agent" {
+			t.Fatalf("got %q", got)
+		}
+	})
 }
 
 func TestValidateLaunchConnection(t *testing.T) {

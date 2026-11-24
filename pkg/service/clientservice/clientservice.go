@@ -102,6 +102,28 @@ func (cs *ClientService) FindCommand(ctx context.Context, command string) (strin
 	return "", nil
 }
 
+// ResolveLocalCommand resolves a bare command name to an absolute path using the same
+// fallback scan as FindCommand (well-known bin dirs + login-shell PATH). It returns ""
+// when the command cannot be found on the GUI process's PATH.
+//
+// It exists for launch surfaces that build block meta inside the wsh server process
+// (e.g. scheduled-task agent blocks): those blocks run via `shell -c <cmd>` inheriting the
+// bare launchd PATH, so a bare command name that only exists in ~/.zshrc-added dirs
+// (notably ~/.opencode/bin) would fail with "command not found" even though the agent
+// was detected fine. Callers must apply the same guards as the frontend
+// shouldUseLocalResolvedCmd: skip empty results, paths containing spaces, and Windows
+// .cmd/.bat/.ps1 shims (see resolveAgentCmdForLaunch in wshserver/agentlaunch.go).
+func ResolveLocalCommand(command string) string {
+	command = strings.TrimSpace(command)
+	if command == "" {
+		return ""
+	}
+	if path, err := exec.LookPath(command); err == nil && path != "" {
+		return path
+	}
+	return resolveCommandWithFallback(command)
+}
+
 // resolveCommandWithFallback finds an executable by scanning candidate directories.
 // Cheap deterministic dirs are probed first; the login-shell PATH (which spawns a shell)
 // is only consulted afterwards, and is needed for users who add custom PATH entries in

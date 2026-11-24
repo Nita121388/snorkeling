@@ -13,6 +13,7 @@ import (
 	"github.com/wavetermdev/waveterm/pkg/agentcatalog"
 	"github.com/wavetermdev/waveterm/pkg/blockcontroller"
 	"github.com/wavetermdev/waveterm/pkg/scheduler"
+	"github.com/wavetermdev/waveterm/pkg/service/clientservice"
 	"github.com/wavetermdev/waveterm/pkg/waveobj"
 	"github.com/wavetermdev/waveterm/pkg/wconfig"
 	"github.com/wavetermdev/waveterm/pkg/wcore"
@@ -283,14 +284,53 @@ func modelCandidateHint(models []agentcatalog.ModelInfo) string {
 	return strings.Join(out, ", ")
 }
 
+// resolveAgentCmdForLaunch mirrors the frontend shouldUseLocalResolvedCmd guards
+// (frontend/app/workspace/agent-launch.ts). The two must stay in sync:
+//   - empty result or result == the bare cmd: keep the bare cmd (no change, no blocker)
+//   - paths containing spaces: keep the bare cmd (blockcontroller rejects spaces
+//     in cmd when cmd:shell is false)
+//   - Windows .cmd/.bat/.ps1 shims: keep the bare cmd (a shim cannot be exec'd
+//     directly by the shell and the Windows GUI PATH usually resolves it)
+//   - otherwise: use the absolute path, so the block survives the bare launchd PATH
+//     of a GUI-launched app (e.g. opencode in ~/.opencode/bin, only in ~/.zshrc)
+func resolveAgentCmdForLaunch(cmd string) string {
+	cmd = strings.TrimSpace(cmd)
+	if cmd == "" || strings.ContainsAny(cmd, `\/`) {
+		return cmd
+	}
+	resolved := clientservice.ResolveLocalCommand(cmd)
+	if resolved == "" || resolved == cmd {
+		return cmd
+	}
+	if strings.Contains(resolved, " ") {
+		return cmd
+	}
+	lower := strings.ToLower(resolved)
+	for _, suffix := range []string{".cmd", ".bat", ".ps1"} {
+		if strings.HasSuffix(lower, suffix) {
+			return cmd
+		}
+	}
+	return resolved
+}
+
 // buildAgentBlockMeta mirrors the frontend createAgentBlockDef meta contract
 // (design §5). Keep the two in sync: a divergence here is a block that looks
 // different depending on who created it.
 func buildAgentBlockMeta(profile agentcatalog.ProfileInfo, resolvedModel string, data wshrpc.AgentLaunchRequest) waveobj.MetaMapType {
+	cmdKey := profile.Cmd
+	connName := strings.TrimSpace(data.Connection)
+	isLocalConn := connName == "" || connName == "local" || strings.HasPrefix(connName, "local:")
+	if isLocalConn {
+		// Local agent blocks get the resolved absolute path (see resolveAgentCmdForLaunch).
+		// Remote blocks keep the bare profile cmd: resolution happens on the target
+		// machine through the remote FindCommandForConnection script at launch time.
+		cmdKey = resolveAgentCmdForLaunch(profile.Cmd)
+	}
 	meta := waveobj.MetaMapType{
 		waveobj.MetaKey_View:                    "term",
 		waveobj.MetaKey_Controller:              "cmd",
-		waveobj.MetaKey_Cmd:                     profile.Cmd,
+		waveobj.MetaKey_Cmd:                     cmdKey,
 		waveobj.MetaKey_CmdShell:                false,
 		waveobj.MetaKey_CmdRunOnStart:           true,
 		waveobj.MetaKey_CmdJwt:                  true,
