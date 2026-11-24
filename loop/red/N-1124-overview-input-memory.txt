@@ -1,0 +1,12 @@
+# 红证（HEAD 无实现，新测试必红）—— N-1124-overview-input-memory
+# 复现：git worktree add <dir> HEAD && cp 两个新测试进去 && npx vitest run <两个测试>
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  2 failed (2)
+      Tests  no tests
+   Start at  20:44:27
+   Duration  1.35s (transform 60ms, setup 35ms, collect 0ms, tests 0ms, environment 875ms, prepare 289ms)
+
+JUNIT report written to /private/tmp/n1124-red-mem/test-results.xml

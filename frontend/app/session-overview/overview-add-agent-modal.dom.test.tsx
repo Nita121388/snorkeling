@@ -107,6 +107,8 @@ let mainDiv: HTMLDivElement | null = null;
 beforeEach(async () => {
     // 文案断言需要真翻译（未 init 的 i18next 返回空串）：与 blockframe-header.menu.test 同款
     await initI18n("en");
+    // 11-24 R3 起弹窗记忆走 localStorage：用例间必须清，否则「记住上次 agent」会串台。
+    window.localStorage.clear();
     // Modal 通过 createPortal 挂到 #main
     mainDiv = document.createElement("div");
     mainDiv.id = "main";

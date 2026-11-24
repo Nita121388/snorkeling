@@ -131,8 +131,11 @@
         "cardSendNoWait": "Send without waiting",
         "cardSendContinueWait": "Keep waiting",
         "cardSendCancelWait": "Cancel",
-        "cardSendRetryRead": "Re-read reply"
-    },
+        "cardSendRetryRead": "Re-read reply",
+        "cardSendSaveCommonText": "Save to Common Text",
+        "cardSaveCommonText_saved": "Saved to Common Text",
+        "cardSaveCommonText_duplicate": "Already exists, not saved again",
+        "cardSaveCommonText_failed": "Save failed"    },
     "dialog": {
         "badgeNotification": "Notification",
         "openOverview": "Open Overview",

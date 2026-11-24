@@ -18,6 +18,7 @@
 // roundtrip 语义见 `.trellis/spec/snorkeling-docs/backend/agent-roundtrip-contract.md`
 // （超时不是错误）。
 
+import { upsertCommonTextItem } from "@/app/commontext/commontext-model";
 import { RpcApi } from "@/app/store/wshclientapi";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
 import { i18n } from "@/i18n/config";
@@ -29,6 +30,12 @@ import {
     getSessionOverviewCacheSnapshot,
     subscribeSessionOverviewCache,
 } from "./session-overview-session-cache";
+import {
+    clearSendDraft,
+    getSafeLocalStorage,
+    readAllSendDrafts,
+    writeSendDraft,
+} from "./overview-input-memory";
 import {
     buildCardSendRequest,
     cardSendRpcTimeoutMs,
@@ -93,6 +100,9 @@ export type CardSendState = {
 
 export const CardSendContext = React.createContext<CardSendState | null>(null);
 
+/** 草稿落盘防抖（design §3.2：400ms；逐键写 storage 会卡主线程）。 */
+export const SendDraftDebounceMs = 400;
+
 function removeRecordKey<T>(record: Record<string, T>, key: string): Record<string, T> {
     if (!(key in record)) return record;
     const next = { ...record };
@@ -102,7 +112,11 @@ function removeRecordKey<T>(record: Record<string, T>, key: string): Record<stri
 
 export function useCardSendState(reload: () => void): CardSendState {
     const [expandedBlockId, setExpandedBlockId] = useState<string | null>(null);
-    const [draftByBlock, setDraftByBlock] = useState<Record<string, string>>({});
+    // 草稿初值来自 localStorage（11-24 R4）：重开面板 / 切视图 / 重启应用都还在。
+    const [draftByBlock, setDraftByBlock] = useState<Record<string, string>>(() => {
+        const storage = getSafeLocalStorage();
+        return storage == null ? {} : readAllSendDrafts(storage);
+    });
     const [sendByBlock, setSendByBlock] = useState<Record<string, CardSendEntry>>({});
     const [sendingStartedAt, setSendingStartedAt] = useState<Record<string, number>>({});
     const [waitReply, setWaitReply] = useState(true);
@@ -114,6 +128,30 @@ export function useCardSendState(reload: () => void): CardSendState {
     draftRef.current = draftByBlock;
     // 每次发送一个序号：只认最后一次结果（用户可能失败后立即「改为不等待」重发）。
     const sendSeqRef = useRef<Record<string, number>>({});
+
+    // 草稿防抖写盘 / 清除（storage 是外部系统，读写都走 overview-input-memory 纯函数）。
+    const draftTimersRef = useRef<Record<string, number>>({});
+    const clearDraft = React.useCallback((blockId: string) => {
+        setDraftByBlock((current) => removeRecordKey(current, blockId));
+        const storage = getSafeLocalStorage();
+        if (storage != null) clearSendDraft(storage, blockId);
+        const timer = draftTimersRef.current[blockId];
+        if (timer != null) {
+            window.clearTimeout(timer);
+            delete draftTimersRef.current[blockId];
+        }
+    }, []);
+    const setDraft = React.useCallback((blockId: string, text: string) => {
+        setDraftByBlock((current) => ({ ...current, [blockId]: text }));
+        const storage = getSafeLocalStorage();
+        if (storage == null) return;
+        const prev = draftTimersRef.current[blockId];
+        if (prev != null) window.clearTimeout(prev);
+        draftTimersRef.current[blockId] = window.setTimeout(() => {
+            delete draftTimersRef.current[blockId];
+            writeSendDraft(storage, blockId, text);
+        }, SendDraftDebounceMs);
+    }, []);
 
     const applyOutcome = React.useCallback((blockId: string, outcome: CardSendResult) => {
         setSendByBlock((current) => ({ ...current, [blockId]: outcome }));
@@ -146,7 +184,7 @@ export function useCardSendState(reload: () => void): CardSendState {
                     applyOutcome(blockId, outcome);
                     // 只有真发出去才清稿：失败保留给 [重试]；unknown 保留给用户核实后再处置（防重复投递）。
                     if (outcome.phase !== "failed" && outcome.phase !== "unknown") {
-                        setDraftByBlock((current) => removeRecordKey(current, blockId));
+                        clearDraft(blockId);
                     }
                     if (outcome.phase === "replied" || outcome.phase === "timeout") {
                         reload();
@@ -164,7 +202,7 @@ export function useCardSendState(reload: () => void): CardSendState {
                     applyOutcome(blockId, outcome);
                 });
         },
-        [applyOutcome, reload]
+        [applyOutcome, clearDraft, reload]
     );
 
     const retry = React.useCallback(
@@ -233,7 +271,7 @@ export function useCardSendState(reload: () => void): CardSendState {
                             const base = prev != null && prev !== "sending" ? prev : outcomeFromSend(null);
                             return { ...current, [blockId]: { ...base, phase: "submitted", warnings: [] } };
                         });
-                        setDraftByBlock((current) => removeRecordKey(current, blockId));
+                        clearDraft(blockId);
                         reload();
                         return;
                     }
@@ -272,13 +310,13 @@ export function useCardSendState(reload: () => void): CardSendState {
                             const base = prev != null && prev !== "sending" ? prev : outcomeFromSend(null);
                             return { ...current, [blockId]: { ...base, phase: "submitted", warnings: [] } };
                         });
-                        setDraftByBlock((current) => removeRecordKey(current, blockId));
+                        clearDraft(blockId);
                     }
                 });
                 window.setTimeout(() => unsubscribe(), 15_000);
             })();
         },
-        [reload]
+        [clearDraft, reload]
     );
 
     const cancelWait = React.useCallback((target: CardSendTarget) => {
@@ -342,7 +380,7 @@ export function useCardSendState(reload: () => void): CardSendState {
                     const base = prev != null && prev !== "sending" ? prev : outcomeFromSend(null);
                     return { ...current, [blockId]: { ...base, phase: "submitted", warnings: [] } };
                 });
-                setDraftByBlock((current) => removeRecordKey(current, blockId));
+                clearDraft(blockId);
                 return;
             }
             if (state === "failed") {
@@ -356,7 +394,7 @@ export function useCardSendState(reload: () => void): CardSendState {
                 });
             }
         },
-        [markDispatchReceipt]
+        [clearDraft, markDispatchReceipt]
     );
 
     const toggleExpanded = React.useCallback((blockId: string) => {
@@ -375,7 +413,7 @@ export function useCardSendState(reload: () => void): CardSendState {
             setWaitReply,
             toggleExpanded,
             collapse: () => setExpandedBlockId(null),
-            setDraft: (blockId, text) => setDraftByBlock((current) => ({ ...current, [blockId]: text })),
+            setDraft,
             submit: (target, text, overrides) => runSend(target, text, overrides),
             retry,
             continueWait,
@@ -478,6 +516,25 @@ export function CardSendPanel({
         if (cardSend == null || draftEmpty) return;
         cardSend.submit(target, draft, { waitReply });
     };
+    // ── 存到 CommonText（11-24 R5）：不发送、不清草稿、不弹窗；重复内联提示 ──
+    const [saveFeedback, setSaveFeedback] = useState<string | null>(null);
+    useEffect(() => {
+        if (saveFeedback == null) return;
+        const timer = window.setTimeout(() => setSaveFeedback(null), 3000);
+        return () => window.clearTimeout(timer);
+    }, [saveFeedback]);
+    const saveToCommonText = () => {
+        if (draftEmpty) return;
+        void upsertCommonTextItem({ title: "", text: draft })
+            .then(() => setSaveFeedback("saved"))
+            .catch((error: unknown) => {
+                const message = error instanceof Error ? error.message : String(error);
+                setSaveFeedback(message.includes("Common text already exists") ? "duplicate" : "failed");
+                if (!message.includes("Common text already exists")) {
+                    console.warn("[overview-card-send] 存 CommonText 失败", { blockId, error });
+                }
+            });
+    };
     // 展开即聚焦输入框，但不切激活块/不切 Tab：只 focus，不碰 layout/focus API。
     useEffect(() => {
         if (!autoFocus) return;
@@ -547,6 +604,39 @@ export function CardSendPanel({
                         ) : null}
                     </span>
                 ) : null}
+                {saveFeedback != null ? (
+                    <span
+                        className={cn(
+                            "session-overview-card-send-badge",
+                            saveFeedback === "saved" && "is-ok",
+                            saveFeedback === "duplicate" && "is-warn",
+                            saveFeedback === "failed" && "is-danger"
+                        )}
+                        data-overview-card-send-save-feedback={saveFeedback}
+                    >
+                        <span>
+                            {saveFeedback === "saved"
+                                ? i18n.t("session-overview:panel.cardSaveCommonText_saved")
+                                : saveFeedback === "duplicate"
+                                  ? i18n.t("session-overview:panel.cardSaveCommonText_duplicate")
+                                  : i18n.t("session-overview:panel.cardSaveCommonText_failed")}
+                        </span>
+                    </span>
+                ) : null}
+                <button
+                    type="button"
+                    className="session-overview-card-send-save-commontext"
+                    data-overview-card-send-save-commontext={blockId}
+                    disabled={draftEmpty}
+                    title={t("session-overview:panel.cardSendSaveCommonText")}
+                    aria-label={t("session-overview:panel.cardSendSaveCommonText")}
+                    onClick={(event) => {
+                        event.stopPropagation();
+                        saveToCommonText();
+                    }}
+                >
+                    <i className={makeIconClass("bookmark", false)} />
+                </button>
                 <button
                     type="button"
                     className="session-overview-card-send-submit"

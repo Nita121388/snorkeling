@@ -36,9 +36,10 @@ import { useDetectedAgentProfileOptions } from "@/app/workspace/use-agent-profil
 import { i18n } from "@/i18n/config";
 import { cn } from "@/util/util";
 import * as jotai from "jotai";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { collectAddAgentPathRows, normalizeAddAgentMessage } from "./overview-add-agent";
+import { getSafeLocalStorage, readAddAgentPrefs, writeAddAgentPrefs } from "./overview-input-memory";
 
 /** 「创建」时回传给调用方的一次性请求；调用方据此建块 + 发送。 */
 export type AddAgentSubmitRequest = {
@@ -82,11 +83,19 @@ export function OverviewAddAgentModal({
     const settings = jotai.useAtomValue(atoms.settingsAtom);
     // FindCommand 真实探测：没装的 agent 不出现在 chip 行（收口于 use-agent-profile-options）。
     const profileOptions = useDetectedAgentProfileOptions(settings);
-    const [profileName, setProfileName] = useState<string | null>(null);
+    const [profileName, setProfileName] = useState<string | null>(() => {
+        // 11-24 R3：记住上次选中的 agent 类型（默认选中它，本次没探测到则渲染层回落第一项）。
+        const storage = getSafeLocalStorage();
+        return storage == null ? null : readAddAgentPrefs(storage).profile;
+    });
     const [selectedPath, setSelectedPath] = useState<string | null>(null);
     const [submitting, setSubmitting] = useState(false);
     // v2：发送内容 + 模型选择 + 建块失败内联错误（失败可重试：块没有建成功）
-    const [message, setMessage] = useState("");
+    // 11-24 R3：发送内容草稿持久化（关掉弹窗再开还在；建块成功后清）。
+    const [message, setMessage] = useState(() => {
+        const storage = getSafeLocalStorage();
+        return storage == null ? "" : readAddAgentPrefs(storage).message;
+    });
     const [modelPick, setModelPick] = useState<string | null>(null);
     const [submitError, setSubmitError] = useState<string | null>(null);
 
@@ -117,8 +126,34 @@ export function OverviewAddAgentModal({
         return hit ?? pathRows.find((row) => row.isDefault) ?? pathRows[0] ?? null;
     }, [pathRows, selectedPath]);
     const isRemotePath = effectivePath != null && effectivePath.isLocal === false;
-    const selectedProfile =
-        profileName != null ? profileOptions.find((p) => p.name === profileName) : profileOptions[0];
+    // 上次选中的 agent 本次没探测到（卸载了/换机器了）→ 回落第一项，不报错、不留死选中。
+    const rememberedProfileValid =
+        profileName != null && profileOptions.some((p) => p.name === profileName);
+    const selectedProfile = rememberedProfileValid
+        ? profileOptions.find((p) => p.name === profileName)
+        : profileOptions[0];
+
+    // ── 弹窗记忆持久化（11-24 R3，决策 D1：只记 agent 类型 + 未提交草稿；路径仍随 Tab）──
+    const messageRef = useRef(message);
+    messageRef.current = message;
+    // profile 选择变化即写（低频）；顺带带上当前草稿，防「换 agent 丢草稿」。
+    useEffect(() => {
+        const storage = getSafeLocalStorage();
+        if (storage == null) return;
+        writeAddAgentPrefs(storage, {
+            profile: rememberedProfileValid ? profileName : null,
+            message: messageRef.current,
+        });
+    }, [profileName, rememberedProfileValid]);
+    // message 逐键防抖 400ms 写（与 composer 草稿同一节奏）。
+    useEffect(() => {
+        const storage = getSafeLocalStorage();
+        if (storage == null) return;
+        const timer = window.setTimeout(() => {
+            writeAddAgentPrefs(storage, { profile: profileName, message });
+        }, 400);
+        return () => window.clearTimeout(timer);
+    }, [message, profileName]);
 
     // 该 agent 在模型目录里的条目（探测到的 profile 不一定在目录里：用户自定义 profile 无模型配置）
     const catalogProfile = useMemo(
@@ -151,7 +186,10 @@ export function OverviewAddAgentModal({
                 message: normalizedMessage,
                 modelOverride,
             });
-            // 成功由调用方收尾（关弹窗）；失败走 catch
+            // 建块成功：清「发送内容」记忆（草稿已投递，下次开弹窗应该是干净的）。
+            const storage = getSafeLocalStorage();
+            if (storage != null) writeAddAgentPrefs(storage, { profile: profileName, message: "" });
+            // 成功由调用方收尾（关弹窗）；失败走 catch（prefs 保留，草稿可改后重提）
         } catch (error) {
             setSubmitError((error as Error)?.message ?? "create-failed");
         } finally {
