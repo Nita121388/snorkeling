@@ -5,8 +5,10 @@
     1. 文案：Bug → 修改点（修改点 = loop 工作项 items/*.md）
     2. 页内新建的落点：功能/模块/版本 → loop/map/{features,modules,releases}/，
        修改点 → loop/items/<id>.md（loop 工作项格式，不是 pmap 的 bug md）
-    3. 地图形状（时间线/导图/卡片/键盘）与上游一致，占位符由 lib/map.mjs 注入
-  升级上游模板时：整份替换后按上面三条重打补丁，别逐行手工合并。
+    3. 页内编辑：http 服务模式 POST /api/new 给引擎写 md；file:// 仍保留直写分支
+    4. 时间线：布局纯函数由 lib/map-layout.mjs 注入；默认窗口围绕真实活动日，空日期不再污染成 NaN
+   5. 标签：按实际文字宽度决定是否翻到节点左侧，不再用固定 170px 阈值
+  升级上游模板时：整份替换后按上面五条重打补丁，别逐行手工合并。
 -->
 <html lang="zh-CN">
 <head>
@@ -326,7 +328,7 @@ g.hit:hover .bug-dot{stroke:var(--hover-label);stroke-width:1.5}
 </head>
 <body>
 
-<div class="proto-flag">loop map · build 2026-11-25T03:14:28Z · 6 模块 · 22 功能点 · 86 修改点</div>
+<div class="proto-flag">loop map · build 2026-11-25T04:41:11Z · 7 模块 · 23 功能点 · 86 修改点</div>
 
 <header>
   <div class="brand"><span class="mark"></span><b>Snorkeling</b><span>项目地图</span></div>
@@ -368,12 +370,53 @@ g.hit:hover .bug-dot{stroke:var(--hover-label);stroke-width:1.5}
 <div id="draftbar" class="hidden"></div>
 
 <script>
-/* loop map · build 2026-11-25T03:14:28Z
-   loop map · build 2026-11-25T03:14:28Z · 6 模块 · 22 功能点 · 86 修改点
+/* loop map · build 2026-11-25T04:41:11Z
+   loop map · build 2026-11-25T04:41:11Z · 7 模块 · 23 功能点 · 86 修改点
    功能层来自 loop/map/**（人写）；修改点来自 loop/items/*.md（工作项）
    改完重跑 queue map build */
-var PROJECT = {"name":"Snorkeling","since":"2024-05-09","today":null};
-var TODAY = "";
+var TODAY = "2026-11-25";
+var PROJECT = {"name":"Snorkeling","since":"2024-05-09","today":"2026-11-25"};
+var MAP_LAYOUT = (() => { const DAY = 86400000; const parseDay = function parseDay(s) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(s ?? ''))) return null;
+    const t = Date.parse(s + 'T00:00:00Z');
+    return Number.isFinite(t) && new Date(t).toISOString().slice(0, 10) === s ? t : null;
+}; return {featureDate: function featureDate(f, today, since) {
+    return [f?.introduced, f?.target, today, since].find((s) => parseDay(s) !== null) ?? null;
+},
+timelineSpan: function timelineSpan({ releases = [], features = [], bugs = [], today, since } = {}) {
+    const dates = [
+        ...releases.map((r) => r.date),
+        ...features.flatMap((f) => [f.introduced, f.target, f.deprecated]),
+        ...bugs.flatMap((b) => [b.reported, b.fixed]),
+        today,
+    ].map(parseDay).filter((t) => t !== null);
+    if (!dates.length && since) {
+        const s = parseDay(since);
+        if (s !== null) dates.push(s);
+    }
+    if (!dates.length) return null;
+    const lo = Math.min(...dates);
+    const hi = Math.max(...dates);
+    // 两侧至少留 12 天；活动跨度过短时对称补到至少 22 天（单日数据也不会偏在一侧）。
+    const pad = Math.max(12, Math.ceil((22 - (hi - lo) / DAY) / 2));
+    return {
+        t0: new Date(lo - pad * DAY),
+        t1: new Date(hi + pad * DAY),
+    };
+},
+moduleDrift: function moduleDrift(dates) {
+    const valid = dates.map(parseDay).filter((t) => t !== null);
+    if (valid.length < 2) return { min: null, max: null, span: 0 };
+    const min = Math.min(...valid);
+    const max = Math.max(...valid);
+    return { min, max, span: max - min };
+},
+driftRatio: function driftRatio(date, range) {
+    const t = parseDay(date);
+    if (t === null || !range?.span) return 0;
+    return (t - range.min) / range.span;
+}}; })();
+var featureDate = MAP_LAYOUT.featureDate, timelineSpan = MAP_LAYOUT.timelineSpan, moduleDrift = MAP_LAYOUT.moduleDrift, driftRatio = MAP_LAYOUT.driftRatio;
 var LOOP_TYPES = ["bug","fix-small","docs","chore","question","feature","redesign","new-surface","arch"];
 var LOOP_SEVERITIES = ["S0","S1","S2","S3"];
 var LOOP_PRIORITIES = ["P0","P1","P2","P3"];
@@ -383,7 +426,8 @@ var MODULES = [
   {"id":"frontend","title":"前台界面","order":1},
   {"id":"hero","title":"据点 Hero","order":5},
   {"id":"infra","title":"基建与工作流","order":6},
-  {"id":"persona","title":"人设体系","order":2}
+  {"id":"persona","title":"人设体系","order":2},
+  {"id":"_orphan","title":"未挂功能","order":9999}
 ];
 var RELEASES = [
 
@@ -410,7 +454,8 @@ var FEATURES = [
   {"id":"properties","title":"属性体系","module":"frontend","parent":null,"status":"building","introduced":"2026-11-11","target":null,"deprecated":null,"releases":[],"note":"范围三选一 / status→select 迁移 / 新值自动追加候选。"},
   {"id":"sched-task","title":"定时任务","module":"agent","parent":null,"status":"building","introduced":"2026-11-19","target":null,"deprecated":null,"releases":[],"note":"agent 化创建 + Hero 定时执行（后端+前端）+ 管理弹窗化。"},
   {"id":"session-details","title":"会话详情与定位","module":"frontend","parent":null,"status":"building","introduced":"2026-11-18","target":null,"deprecated":null,"releases":[],"note":"详情块绑定 / Header 缓存维度 / id 前缀匹配。"},
-  {"id":"tab-system","title":"Tab 栏","module":"frontend","parent":null,"status":"building","introduced":"2026-11-05","target":null,"deprecated":null,"releases":[],"note":"拖拽换位 / 收起激活 / 重启恢复 / 收起到「更多」。"}
+  {"id":"tab-system","title":"Tab 栏","module":"frontend","parent":null,"status":"building","introduced":"2026-11-05","target":null,"deprecated":null,"releases":[],"note":"拖拽换位 / 收起激活 / 重启恢复 / 收起到「更多」。"},
+  {"id":"_orphan","title":"未归类修改点","module":"_orphan","parent":null,"status":"building","introduced":null,"target":null,"deprecated":null,"releases":[],"note":"工作项里没写 feature:，先挂这里；写了 feature: <功能 id> 就归位。"}
 ];
 var BUGS = [
   {"id":"F-1123-agentsend-submit-budget","title":"提交确认按时间预算退避（45s 次数上限绕过 180s/600s 预算）+ 派发回执不许掩盖未确认","feature":"agentsend","severity":"high","reported":"2026-11-23","fixed":null,"fixedIn":null,"note":"_（待补）_"},
@@ -419,14 +464,14 @@ var BUGS = [
   {"id":"N-1109-agent-chip-conditional-hook","title":"Agent 状态 chip 条件调用 hook 导致整窗白屏（React #310）","feature":"agent-card","severity":"normal","reported":"2026-11-09","fixed":null,"fixedIn":null,"note":"`0.0.123` / `0.0.124` 上出现\"整窗突然白屏、切 tab 无效、只能重启\"。"},
   {"id":"N-1124-agentsend-false-fail","title":"Overview 发送已成功却显示发送失败（客户端超时预算 + 超时误映射 + 重复投递）","feature":"agentsend","severity":"high","reported":"2026-11-24","fixed":null,"fixedIn":null,"note":"用户 2026-11-24 反馈：发送成功了但显示发送失败。根因已定位：客户端 RPC 超时 80s < 服务端最坏 270s（30s 安静等待 + 180s 提交确认 + 60s 等回复）；客户端超时错误 EC-TIME 被 outcomeFromSend 无条件判 failed，且草稿保留 → 用户点重试 = 重复投递。修法：超时预算覆盖服务端全预算 + 新增 unknown 行程态（禁止重试）+ 真失败仍可重试。"},
   {"id":"N-1118-detail-scope-threading","title":"会话详情弹窗/详情块丢失 connection 与 origin，Detail 回落本机 manager","feature":"session-details","severity":"normal","reported":"2026-11-18","fixed":"2026-11-25","fixedIn":null,"note":"session-overview 的 openSessionDetail(row.sessionId)、agentcardmodal 的 pushModal 只传裸 id；openAISessionDetailFromList 不传 origin。三者都会让 Detail 走 managerForIdentifier → newLocalManager()。"},
-  {"id":"N-1118-header-note-origin","title":"标题缓存缺 origin 维度：外部 dump 会话的 Header 退化为 Session Details，写操作落错库","feature":"session-details","severity":"normal","reported":"2026-11-18","fixed":null,"fixedIn":null,"note":"session-note-cache 以 connection+id 为键，Summary 不带 origin；后端 Detail/Summary 响应也不回填 origin 标签，导致 dump 会话标题取不到、写 note/title 落到本机 meta 库。"},
-  {"id":"N-1118-resolve-exact-id","title":"会话定位的 id 前缀匹配：唯一命中时静默返回另一个会话","feature":"session-details","severity":"normal","reported":"2026-11-18","fixed":null,"fixedIn":null,"note":"strings.HasPrefix(summary.ID, identifier) 在唯一命中时不报歧义、直接返回，截断的 id 会打开别的会话。收成精确 key/id 匹配。"},
+  {"id":"N-1118-header-note-origin","title":"标题缓存缺 origin 维度：外部 dump 会话的 Header 退化为 Session Details，写操作落错库","feature":"session-details","severity":"normal","reported":"2026-11-18","fixed":"2026-11-25","fixedIn":null,"note":"session-note-cache 以 connection+id 为键，Summary 不带 origin；后端 Detail/Summary 响应也不回填 origin 标签，导致 dump 会话标题取不到、写 note/title 落到本机 meta 库。"},
+  {"id":"N-1118-resolve-exact-id","title":"会话定位的 id 前缀匹配：唯一命中时静默返回另一个会话","feature":"session-details","severity":"normal","reported":"2026-11-18","fixed":"2026-11-25","fixedIn":null,"note":"strings.HasPrefix(summary.ID, identifier) 在唯一命中时不报歧义、直接返回，截断的 id 会打开别的会话。收成精确 key/id 匹配。"},
   {"id":"N-1120-aisessions-detail-binding-mismatch","title":"AI 会话详情块绑定错位：打开的详情常常不是列表里点的那一行","feature":"session-details","severity":"normal","reported":"2026-11-20","fixed":null,"fixedIn":null,"note":"详情块（带 `aisessions:sessionid` 的 aisessions 块）挂载后，`loadSessions` 的收尾"},
   {"id":"N-1120-fsmonitor-no-daemon","title":"内部 git 调用禁用 fsmonitor 常驻 daemon（三处收口）","feature":"loop-workflow","severity":"normal","reported":"2026-11-20","fixed":null,"fixedIn":null,"note":"本机系统级 `core.fsmonitor=true` 让每次刷索引的 git 命令在对应仓库拉起一个 40–80MB、无空闲超时、永不退出的 `fsmonitor--daemon`。Snorkeling 的 VCS 扫描（`vcs.go` 对 basePath 下 depth 3 逐仓 `git status`）、同步传输、hero 同步三条内部路径都会触发它，累积到几十个后吃满整机 commit（11-19 `errno=1455` OOM 闪退）。内部 git 命令构造点审计为 3 处，统一加 `-c core.fsmonitor=false`。不改系统 gitconfig、不影响用户终端里的 git。"},
   {"id":"N-1120-wsh-session-emoji-unwired","title":"wsh CLI 接线 bug：session emoji 命令组不可达（init() 漏 AddCommand）","feature":"emoji-pref","severity":"normal","reported":"2026-11-20","fixed":null,"fixedIn":null,"note":"commit 2c94b2c6e 新增 session emoji 功能（后端字段/推荐注入/MCP 六工具），但 wshcmd-session.go 的 init() 注册 sessionCmd 子命令时漏了 sessionEmojiCmd，其 5 个子命令只挂在自身身上，导致整组 CLI 不可达。修法：把它加进 sessionCmd.AddCommand 列表，另补顶层回归测试锁住 sessionCmd 子命令集合。"},
   {"id":"N-1124-agent-cmd-resolve2","title":"Agent 块本机启动命令解析：GUI 裸 PATH 下 opencode 找不到命令（11-24-agent-local-cmd-resolve）","feature":"agent-block","severity":"normal","reported":"2026-11-24","fixed":null,"fixedIn":null,"note":"_（待补）_"},
   {"id":"N-1124-hero-restore-header","title":"恢复的 hero 会话块 header 走通用显示逻辑：恢复时补盖章 hero 身份 meta","feature":"hero-identity","severity":"normal","reported":"2026-11-24","fixed":null,"fixedIn":null,"note":"Hero 身份只在登场时写 block meta（`buildHeroLaunchBlockDef`：`hero` / `hero:name` / `display:name` / `agent:emoji`）；从 AISessions 恢复走的是另一条 meta 构造路径 —— GUI `restoreMetaForSession`（`frontend/app/view/aisessions/utils.ts` L743，调用点 aisessions.tsx / aisessiondetailmodal.tsx / agent.tsx）与 CLI/MCP `BuildResumeBlockMeta`（`pkg/agentcontrol/restore.go` L194，golden parity test 锁两端），**两条都不写 hero 键**。显示端只认 block meta（`block.tsx` L317 `heroHeaderName`、`agent-logo.tsx` `getAgentIcon`、`term-model.ts` L377），于是恢复块回退通用逻辑：provider logo + `basename(cmd:cwd)`（hero 会话就是 `hero-<hash8>`）。"},
-  {"id":"N-1125-commontext-paste-default-writer","title":"CommonText 图片粘贴默认 writer 未生效","feature":"commontext-editor","severity":"normal","reported":"2026-11-25","fixed":null,"fixedIn":null,"note":"_（待补）_"},
+  {"id":"N-1125-commontext-paste-default-writer-v2","title":"CommonText 图片粘贴默认 writer 未生效","feature":"_orphan","severity":"normal","reported":"2026-11-25","fixed":null,"fixedIn":null,"note":"_（待补）_"},
   {"id":"N-1120-property-status-to-select","title":"属性 status 类型彻底退役（数据迁移 status→select + 改类型浮层修复）","feature":"properties","severity":"normal","reported":"2026-11-20","fixed":null,"fixedIn":null,"note":"status 类型只做过前端读时归一（44046ab9f），后端白名单/校验/jsonschema、存量 sqlite prop_type 与"},
   {"id":"N-1105-harness-redproof","title":"既有 4 个 harness 登记 red_proof","feature":"loop-workflow","severity":"low","reported":"2026-11-05","fixed":null,"fixedIn":null,"note":"现有四个 harness 只有“能跑绿”，没有“能对已知坏样本变红”的凭据。"},
   {"id":"N-1106-overview-card-actions","title":"Overview 看板卡片动作：关闭 / 删除（含彻底删除）+ 内联 Tab 组不被误删","feature":"overview-board","severity":"low","reported":"2026-11-06","fixed":"2026-11-11","fixedIn":null,"note":"看板卡片目前只能打开会话详情，没有关闭/删除入口；关闭路径对 inline tab 组会连带删掉同组兄弟 block；删除只有移到 deleted 的软删，没有彻底删除。"},
@@ -475,7 +520,7 @@ var BUGS = [
   {"id":"N-1124-schedtask-entry-fix","title":"定时任务入口回归右侧 widget + 弹窗版式对齐 CommonText（11-24-schedtask-entry-fix）","feature":"sched-task","severity":"normal","reported":"2026-11-24","fixed":null,"fixedIn":null,"note":"需求：点右侧定时任务 widget 打开 CommonText 同款弹窗，不建块。commit 8939d11f5 做成 Overview 工具栏按钮，且弹窗无尺寸/14px 标题/实现语副标题，与 CommonText 版式差距大。"},
   {"id":"N-1105-queue-failopen","title":"queue.json 解析失败不再静默清空（回退 last-good 快照）","feature":"loop-workflow","severity":"normal","reported":"2026-11-05","fixed":"2026-11-05","fixedIn":null,"note":"queue.json 解析失败返回空队列，等于夜间队列被静默清空。"},
   {"id":"N-1106-agent-tag-catalog","title":"Agent 卡片标签候选：全局清单 + 计数","feature":"agent-card","severity":"low","reported":"2026-11-06","fixed":"2026-11-14","fixedIn":null,"note":"tags 编辑器已是共享 Wolai 浮层（element/property-editor/tag-editor.tsx），但候选项只含 def.options（= summary.tags）+ 本会话已选值，看不到别的会话用过的标签。全局清单与 count 后端已提供（Tags RPC → SessionTagSummary{tag,count}），前端只喂 aisessions 筛选面板。本次把清单上提到共享 store，编辑器加计数通道，候选三源合并。"},
-  {"id":"F-1118-hero-header-display","title":"Hero Block Header 显示 Hero 名而非据点哈希路径","feature":"hero-identity","severity":"low","reported":"2026-11-18","fixed":null,"fixedIn":null,"note":"Hero 登场块的 Agent Block Header 三处显示据点目录（basename(cmd:cwd) = hero-<hash8>）：block.tsx defaultTitle、term-model buildCmdCwdHeaderElem、block.tsx fullPath tooltip。磁盘不变量（ValidateID 目录名==id）不动，只改显示层：启动时写 meta hero:name / display:name，Header 优先显示 emoji+name，完整路径退到 tooltip 与点击复制。"},
+  {"id":"F-1118-hero-header-display","title":"Hero Block Header 显示 Hero 名而非据点哈希路径","feature":"hero-identity","severity":"low","reported":"2026-11-18","fixed":"2026-11-25","fixedIn":null,"note":"Hero 登场块的 Agent Block Header 三处显示据点目录（basename(cmd:cwd) = hero-<hash8>）：block.tsx defaultTitle、term-model buildCmdCwdHeaderElem、block.tsx fullPath tooltip。磁盘不变量（ValidateID 目录名==id）不动，只改显示层：启动时写 meta hero:name / display:name，Header 优先显示 emoji+name，完整路径退到 tooltip 与点击复制。"},
   {"id":"F-1118-tab-collapse-active","title":"Tab 收起激活 Tab：收起并切走","feature":"tab-system","severity":"low","reported":"2026-11-18","fixed":null,"fixedIn":null,"note":"「收起激活 Tab」的真实诉求是「这个 Tab 暂时不用了，收起来去看别的」——激活恰恰是最常被收起的那一个。"},
   {"id":"F-1122-overview-new-tab","title":"Overview 新建 Tab：工具栏 + 组尾入口 + 三选一弹窗","feature":"overview-board","severity":"low","reported":"2026-11-22","fixed":null,"fixedIn":null,"note":"_（待补）_"},
   {"id":"N-1109-overview-board-chip-polish","title":"Overview 看板 chip 美化（A：去描边胶囊化）","feature":"overview-board","severity":"low","reported":"2026-11-09","fixed":null,"fixedIn":null,"note":"纯 CSS 微调：.session-overview-board-chip 去描边、999px 胶囊、10px 字号、文字提亮、内距 2px 8px；is-tag/tag-more 与状态 chip 语义不动。交付 before/after 可切换原型（G3），nita 自验观感（G7）。"},
@@ -486,7 +531,7 @@ var BUGS = [
   {"id":"N-1114-commontext-tags-property","title":"CommonText 详情标签移入属性区（Notion/Obsidian 式选择）","feature":"commontext-tags","severity":"normal","reported":"2026-11-14","fixed":null,"fixedIn":null,"note":"详情区底部「All tags」面板独占一块纵向空间、且与属性网格割裂。改法：标签成为属性网格第一行 Tags，值区点击唤起共享 `PropertyTagEditor` 浮层（md 预览/ AISessions 同款 Wolai 式：chips+输入同行、输入过滤、全库候选带计数、无匹配「创建」、Backspace 删尾、Esc 关闭）；写回仍走正文 `#tag` 字面最小 diff + 既有 800ms 自动保存；底部面板整块删除。折叠摘要行首加 `#` 数量项。"},
   {"id":"N-1114-commontext-tags-summary-chips","title":"CommonText 折叠摘要标签样式与展开态统一（chip）","feature":"commontext-tags","severity":"normal","reported":"2026-11-14","fixed":null,"fixedIn":null,"note":"折叠摘要 tags 项现为标签名 join 纯文本，与展开态 chip 视觉不统一。改法：tags 项特判渲染 `SessionTagChips`（与展开态/列表行同组件），空态仍 `0` 占位；容器允许收缩 + flex-wrap。"},
   {"id":"N-1117-tab-collapse-to-more","title":"Tab 右键菜单「收起到更多」+ 激活/未读 Tab 置灰","feature":"tab-system","severity":"low","reported":"2026-11-17","fixed":null,"fixedIn":null,"note":"「更多」下拉是溢出 Tab 的收纳器，`collapseTabIds` 是驱动它的单一状态；此前没有\"主动把某个 Tab 收进去\"的入口。"},
-  {"id":"N-1119-hero-header-dup-emoji","title":"Hero Block Header 去重：保留左上 emoji，胶囊 Hero 名去掉 emoji","feature":"hero-identity","severity":"low","reported":"2026-11-19","fixed":null,"fixedIn":null,"note":"Hero 登场时同一个 emoji 写进 agent:emoji 与 hero:name，导致 Block header 出现两次。新块只写纯名字；老块读取时剥离与 agent:emoji 相同的前缀。"},
+  {"id":"N-1119-hero-header-dup-emoji","title":"Hero Block Header 去重：保留左上 emoji，胶囊 Hero 名去掉 emoji","feature":"hero-identity","severity":"low","reported":"2026-11-19","fixed":"2026-11-25","fixedIn":null,"note":"Hero 登场时同一个 emoji 写进 agent:emoji 与 hero:name，导致 Block header 出现两次。新块只写纯名字；老块读取时剥离与 agent:emoji 相同的前缀。"},
   {"id":"N-1123-hero-group-emoji","title":"AISessions Hero 折叠组头只留 emoji（不画 fa-folder/folder-open）","feature":"hero-identity","severity":"low","reported":"2026-11-23","fixed":null,"fixedIn":null,"note":"锚点 frontend/app/view/aisessions/session-group.tsx:93-103（组头固定画 fa-folder/fa-folder-open/fa-inbox）；group.heroId 字段已有（utils.ts:356 heroIdOfSession）。hero 组头：hero 自身 emoji（roster），回落 🎭；普通项目组与未归类组（fa-inbox）不变。"},
   {"id":"N-1123-schedtask-modal","title":"定时任务管理面弹窗化（CommonText 同款 chrome，入口改工具栏按钮，不再建块）","feature":"sched-task","severity":"low","reported":"2026-11-23","fixed":null,"fixedIn":null,"note":"把 frontend/app/view/scheduledtasks/* 的列表+新建+编辑整体搬进 CommonText 式弹窗；开关走 modalregistry.tsx 已注册机制 + atoms.modalOpen（modal-open-registry 来源登记）；与 CommonText compose 同款 Modal chrome（标题/关闭/快捷键）。前置=N-1123-hero-sched-ui（编辑弹窗 hero 字段先落，避免同文件两次 merge）。"},
   {"id":"N-1124-agentsend-status-dispatch","title":"Agent 卡常驻发送状态 + 异步派发回执可见（292/aaaa 事故根因）","feature":"agentsend","severity":"low","reported":"2026-11-24","fixed":null,"fixedIn":null,"note":"用户 2026-11-24 反馈概览看板发送了它没发过的内容（292/aaaa）。取证：该文本是 pi 会话 7df5a37d 的 seq=2 user 消息，时间 07:10:35.447，比用户长消息早 414ms；来源是新建 agent 首发消息走 async 后台派发（session-overview.tsx:3079），整个投递过程 UI 不可见。方案：CardSendContext 新增 dispatchByBlock/markDispatching/markDispatchReceipt；SendStatusChip 常驻看板卡与列表行（data-board-send-status / data-row-send-status）；派发中懒拉 AgentDispatchGetCommand，3s 重查上限 40 次。已知限制：pkg/agentdispatch 纯内存，重启即丢（v1 不落盘），重启后无记录不得显示未发送。"},
@@ -508,7 +553,7 @@ function bugsOf(fid){ return BUGS.filter(function(b){ return b.feature === fid; 
 function openOf(fid){ return bugsOf(fid).filter(function(b){ return !b.fixed; }); }
 function featById(fid){ return FEATURES.find(function(f){ return f.id === fid; }); }
 function modById(mid){ return MODULES.find(function(m){ return m.id === mid; }); }
-function fdate(f){ return f.introduced || f.target || TODAY; }
+function fdate(f){ return featureDate(f, TODAY, PROJECT.since); }
 var HAS_PLAN = false;
 var STATUS_LABEL = {shipped:'已发布', building:'开发中', planned:'计划中', deprecated:'已废弃'};
 /* 展开向外 / 折叠向内 的双向箭头图标 */
@@ -803,14 +848,17 @@ var cardEl = document.getElementById('card');
 var cardPos = {x:0, y:0};
 var hintEl = document.getElementById('hint');
 var PAD = {l:34, r:24, top:46, bottom:44};
-var DATES = [], FULL = null;
+var FULL = null;
 function refreshSpan(){
-  DATES = [];
-  RELEASES.forEach(function(r){ DATES.push(r.date); });
-  FEATURES.forEach(function(f){ DATES.push(f.introduced, f.deprecated, f.target); });
-  DATES.push(PROJECT.since, TODAY);
-  DATES = DATES.filter(Boolean).sort();
-  FULL = { t0: new Date(+parseD(DATES[0]) - 12 * 864e5), t1: new Date(+parseD(DATES[DATES.length - 1]) + 12 * 864e5) };
+  // 真实活动日 + 今天；项目 since 只作元信息，不再把默认窗口硬拉到项目起源。
+  // 没有有效日期时兜底到今天（数据层总会给 TODAY，这里防手改模板）。
+  var span = timelineSpan({ releases:RELEASES, features:FEATURES, bugs:BUGS, today:TODAY, since:PROJECT.since });
+  if (!span){
+    var t = Date.parse(TODAY + 'T00:00:00Z');
+    if (!Number.isFinite(t)) t = Date.now();
+    span = { t0:new Date(t - 11 * 864e5), t1:new Date(t + 11 * 864e5) };
+  }
+  FULL = span;
 }
 function refreshAll(){
   refreshStats(); refreshTree(); refreshSpan();
@@ -874,22 +922,18 @@ function renderChart(W, H, rows, rowH, out, plotW, plotBottom, rightEdge, today)
 
   // ---- 顺序布局 x（缩进 + 轻微先后错开）----
   var mods = TREE.children;
-  var msList = mods.map(function(m){ return +parseD(m.introduced || TODAY); });
-  var minD = Math.min.apply(null, msList);
-  var maxD = Math.max.apply(null, msList);
+  var modRange = moduleDrift(mods.map(function(m){ return m.introduced || TODAY; }));
   var driftMax = Math.min(150, Math.max(70, plotW * 0.16));
   function modDrift(mid){
     var m = mods.find(function(x){ return x.id === mid; });
-    if (!m || maxD === minD) return 0;
-    return (+parseD(m.introduced || TODAY) - minD) / (maxD - minD) * driftMax;
+    if (!m) return 0;
+    return driftRatio(m.introduced || TODAY, modRange) * driftMax;
   }
   function featDrift(f){
     var sibs = FEATURES.filter(function(x){ return x.module === f.module && !x.parent; });
     if (sibs.length < 2) return 0;
-    var ds = sibs.map(function(x){ return +parseD(fdate(x)); });
-    var lo = Math.min.apply(null, ds), hi = Math.max.apply(null, ds);
-    if (hi === lo) return 0;
-    return (+parseD(fdate(f)) - lo) / (hi - lo) * Math.min(80, driftMax * 0.55);
+    var range = moduleDrift(sibs.map(fdate));
+    return driftRatio(fdate(f), range) * Math.min(80, driftMax * 0.55);
   }
   var xo = {}, xt = {};
   rows.forEach(function(r){
@@ -1006,12 +1050,13 @@ function renderChart(W, H, rows, rowH, out, plotW, plotBottom, rightEdge, today)
     var y = r.y;
     var isModule = n.kind === 'module';
     var x = r.x;
-    var flip = x > W - PAD.r - 170;
-    var anchor = flip ? 'end' : 'start';
 
     if (isModule){
       var modFold = n.children.length > 0;
       var mFoc = focusId === n.id;
+      var mFlip = x + 10 + approxTextW(n.title, 12.5) > rightEdge;
+      var mAnchor = mFlip ? 'end' : 'start';
+      var mLabelX = mFlip ? x - 10 : x + 10;
       NODE_GEOM[n.id] = { x: x, y: y };
       out.push('<g class="hit' + (mFoc ? ' focused' : '') + '" data-kind="module" data-id="' + n.m.id + '">' +
         '<circle class="mod-dot" cx="' + x + '" cy="' + y + '" r="4.5"' +
@@ -1020,7 +1065,7 @@ function renderChart(W, H, rows, rowH, out, plotW, plotBottom, rightEdge, today)
           ? '<circle class="dot-ring" cx="' + x + '" cy="' + y + '" r="8" style="stroke:var(--mod-dot)"/>'
           : '') +
         (mFoc ? '<circle class="focus-ring" cx="' + x + '" cy="' + y + '" r="9.5"/>' : '') +
-        '<text class="mod-label" x="' + (x + 10) + '" y="' + (y + 4) + '">' + esc(n.title) + '</text>' +
+        '<text class="mod-label" x="' + mLabelX + '" y="' + (y + 4) + '" text-anchor="' + mAnchor + '">' + esc(n.title) + '</text>' +
         '<title>' + esc(n.title) + ' · ' + n.children.length + ' 个功能' + (modFold ? '（点圆点折叠）' : '') + '</title></g>');
       return;
     }
@@ -1029,6 +1074,8 @@ function renderChart(W, H, rows, rowH, out, plotW, plotBottom, rightEdge, today)
     var laneY = y + 12;
     var endX = Math.min(xOf(f.deprecated ? parseD(f.deprecated) : today), W - PAD.r);
     var hasKids = n.children.length > 0;
+    var flip = x + 8 + approxTextW(f.title, f.parent ? 11.5 : 12) + (hasKids ? 34 : 0) > rightEdge;
+    var anchor = flip ? 'end' : 'start';
     var labelX = flip ? x - 8 : x + 8;
     var fFoc = focusId === n.id;
     NODE_GEOM[n.id] = { x: x, y: y };
@@ -1790,6 +1837,29 @@ function copyMd(text){
 async function writeDraft(i){
   var d = DRAFTS[i];
   if (!d) return;
+  // serve 模式（queue map serve 起的 http://127.0.0.1）：直接 POST 给引擎写 md + 重建，
+  // 不依赖 File System Access（file:// 下它不可靠，人就没法在界面编辑了）。
+  // 写完页面刷新，节点从真实 md 里回来（草稿自动退场）。
+  if (location.protocol === 'http:' || location.protocol === 'https:'){
+    try {
+      var kind = d.kind === 'bug' ? 'item' : d.kind;
+      var data = d.kind === 'bug'
+        ? { id:d.data.id, title:d.data.title, type:d.data.loopType, priority:d.data.loopPriority,
+            severity:d.data.loopSeverity, feature:d.data.feature, note:d.data.note }
+        : d.data;
+      var r = await fetch('/api/new', { method:'POST', headers:{'content-type':'application/json'},
+        body: JSON.stringify({ kind: kind, data: data }) });
+      var j = await r.json();
+      if (!r.ok) throw new Error((j.errors || [j.error || '写入失败']).join('；'));
+      d.savedPath = j.path;
+      saveDrafts(); renderDraftBar();
+      hintEl.textContent = '已写入 ' + j.path + '（引擎写盘，页面即将刷新）';
+      setTimeout(function(){ location.reload(); }, 500);
+    } catch (err) {
+      alert('写盘失败：' + ((err && err.message) || err));
+    }
+    return;
+  }
   try {
     if (!window.showDirectoryPicker) throw new Error('这个浏览器不支持目录写入，请用 Chrome / Edge，或用「复制」');
     if (!dirHandle) dirHandle = await window.showDirectoryPicker({ id: 'loop-map', mode: 'readwrite' });
