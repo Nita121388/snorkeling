@@ -79,7 +79,13 @@ import {
 } from "./overview-board-model";
 import { CardSendContext, CardSendPanel, useCardSendState } from "./overview-card-send-panel";
 import { SendStatusChip } from "./send-status-chip";
+import {
+    buildRecentMessageSquares,
+    messagePreview,
+    readableMessages,
+} from "./session-message-items";
 import { SessionMessageSquares } from "./session-message-squares";
+import { normalizeTimeMs } from "./session-time";
 import { OverviewTimeline } from "./overview-timeline";
 import { buildTabGroups, type OverviewTabGroup } from "./overview-tab-groups";
 import {
@@ -179,30 +185,8 @@ function agentStatusDebugKey(status: AgentStatus): string {
     ].join("|");
 }
 
-function normalizeTimeMs(timestamp: number | null | undefined): number {
-    if (!timestamp) return 0;
-    return timestamp < 1_000_000_000_000 ? timestamp * 1000 : timestamp;
-}
-
 function formatUnreadDuration(startMs: number, nowMs: number): string {
     return formatCompactDuration(startMs, nowMs);
-}
-
-function messagePreview(message: Message | null): string {
-    const text = message?.text?.replace(/\s+/g, " ").trim() ?? "";
-    if (!text) return "(empty)";
-    if (text.length <= 140) return text;
-    return `${text.slice(0, 140)}...`;
-}
-
-/** 看板卡方块条上限（11-24 R1）：卡高不随消息数跳动，超出渲染 `+n`。 */
-const BoardMessageSquareLimit = 10;
-
-function readableMessages(detail: SessionDetail | null): Message[] {
-    return (detail?.messages ?? []).filter((message) => {
-        const text = message.text?.trim() ?? "";
-        return text !== "" && message.role !== "tool" && !/^\[Tool:\s*[^\]]+\]$/.test(text);
-    });
 }
 
 function blockTitle(block: Block, view: string): string {
@@ -1182,15 +1166,12 @@ function MessageDialog({
     onClose,
     onJump,
     onEditSessionNote,
-    onDeleteBlock,
 }: {
     message: Message | null;
     block: OverviewBlock | null;
     onClose: () => void;
     onJump: () => void;
     onEditSessionNote: (block: OverviewBlock) => void;
-    /** 从消息弹窗直接删块（与列表行/卡片同一个删除落地）。 */
-    onDeleteBlock: (block: OverviewBlock) => void;
 }) {
     const { t } = useTranslation("session-overview");
     if (message == null || block == null) return null;
@@ -1229,24 +1210,6 @@ function MessageDialog({
                             <i className={makeIconClass("tag", false)} />
                         </button>
                     ) : null}
-                    <Tooltip
-                        content={t("session-overview:dialog.deleteBlock")}
-                        placement="top"
-                        hideOnClick
-                        divClassName="inline-flex"
-                    >
-                        <button
-                            type="button"
-                            className="session-overview-block-x-button"
-                            onClick={(event) => {
-                                event.stopPropagation();
-                                onDeleteBlock(block);
-                            }}
-                            aria-label={i18n.t("session-overview:dialog.deleteBlockAria", { title: block.title })}
-                        >
-                            <i className={makeIconClass("xmark", false)} />
-                        </button>
-                    </Tooltip>
                 </div>
                 <div className="session-overview-message-actions">
                     <button type="button" onClick={onJump}>
@@ -2925,14 +2888,11 @@ function SessionOverviewPanel({ blockId, model }: ViewComponentProps<SessionOver
                     messages.length > 0 ? messagePreview(messages[messages.length - 1]) : "",
                     160
                 );
-                // 方块条数据（11-24 R1）：与列表同一份 readableMessages / messagePreview 管线，
-                // 只裁到上限，点击回传 seq 由面板层复用消息弹窗链路打开。
-                const recentMessages = messages.slice(-BoardMessageSquareLimit).map((message) => ({
-                    seq: message.seq,
-                    role: message.role,
-                    preview: messagePreview(message),
-                    label: i18n.t("session-overview:dialog.messageSeq", { role: message.role, seq: message.seq }),
-                }));
+                // 方块条数据（11-24 R1，11-25 R3 收口到共享管线）：与列表行/整卡放大弹窗
+                // 同一份 readableMessages / messagePreview 实现，只裁到上限；点击回传 seq
+                // 由面板层复用消息弹窗链路打开。
+                const recentSquares = buildRecentMessageSquares(details[nextBlock.sessionId]?.detail ?? null);
+                const recentMessages = recentSquares.items;
                 const sessionTitle = (summary?.title ?? detailSummary?.title ?? "").trim();
                 return {
                     blockId: nextBlock.blockId,
@@ -2963,7 +2923,7 @@ function SessionOverviewPanel({ blockId, model }: ViewComponentProps<SessionOver
                     kindLabel: nextBlock.isAgentLike ? "" : blockViewToName(nextBlock.view),
                     preview,
                     recentMessages,
-                    messagesOverflow: Math.max(0, messages.length - recentMessages.length),
+                    messagesOverflow: Math.max(0, recentSquares.overflow),
                     note,
                     updatedAt: normalizeTimeMs(summary?.updatedAt ?? detailSummary?.updatedAt),
                     // 度量轨（session-metrics）：全部来自已存在的 SessionSummary，不新增 RPC。
@@ -3536,21 +3496,6 @@ function SessionOverviewPanel({ blockId, model }: ViewComponentProps<SessionOver
                 onEditSessionNote={(nextBlock) => {
                     openSessionNoteInline(nextBlock);
                     setSelected(null);
-                }}
-                onDeleteBlock={(nextBlock) => {
-                    setSessionAction((current) => ({ ...current, error: "" }));
-                    closeOverviewBlock(nextBlock)
-                        .then(() => {
-                            setSelectedBlockId((current) => (current === nextBlock.blockId ? null : current));
-                            setSelected((current) => (current?.block.blockId === nextBlock.blockId ? null : current));
-                            model.refresh();
-                        })
-                        .catch((error) => {
-                            setSessionAction((current) => ({
-                                ...current,
-                                error: error instanceof Error ? error.message : String(error),
-                            }));
-                        });
                 }}
             />
             {addAgentTab != null && addAgentData != null ? (

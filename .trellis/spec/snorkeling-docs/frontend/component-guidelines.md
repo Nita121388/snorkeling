@@ -497,3 +497,30 @@ run --expect=fixed → 读 report.json 的 failing[].id + detail → 只改一�
 
 **验证方式**（不依赖手看）：`sass` 编译该 scss → Edge headless 渲染复刻 DOM →
 PIL 扫描每行墨迹右缘与 label 中心 y。判定：四行 `value_right` 同一 x、行距恒定。
+
+## 轻量读弹窗不放不可逆删除入口（2026-11-25, task 11-25-overview-card-polish）
+
+**症状**：Overview 看板的「消息详情弹窗」（`MessageDialog`，点会话方块打开）底部备注行放了一个
+`session-overview-block-x-button` —— 行为是 `onDeleteBlock`（把块从 overview 移除），图标和右上角
+「关闭」一样是 `xmark`。用户点方块看内容 → 顺手点下方 ✕ 关弹窗 → 整张卡从看板消失（真机误删）。
+
+**硬规则**：
+
+1. **只读弹窗不承载破坏性操作**。看一条消息的弹窗只能有：关闭 / 跳转 / 编辑备注。删除入口留在
+   持有该对象的列表行、卡片动作区或管理面板里 —— 那些位置用户带着删除意图进来。
+2. **同一弹窗内禁止两个同形图标指向不同语义**。关闭用 `xmark` 时，删除不得再用 `xmark`；必须换
+   图标（`trash`）+ 危险色 + 确认，或缺席。
+3. 破坏性按钮若必须留在弹窗，必须有 `danger` 视觉与二次确认，且不能是「一行小图标」形态。
+
+**验证方式**：源码契约测试（`message-dialog-no-delete.test.ts` 同款）—— 截取弹窗组件源码段，断言
+删除按钮锚点（`block-x-button` / `onDeleteBlock`）为 0、`xmark` 恰好 1 处；同时反向断言列表行删除
+入口仍存在，防止「一刀切删过头」。
+
+## 看板卡属性行：字号下限与行间呼吸（2026-11-25, task 11-25-overview-card-polish）
+
+- 属性行（`.session-overview-board-card-props`）曾漏 `margin-bottom`，直接与内容预览贴死；
+  卡内每一行（meta 9px / 正文 6px）都要显式给纵向间距，别靠「谁先谁后刚好」。
+- `.property-chip` 曾 9px，低于 `project-docs/design-system.md` §5 的 micro status 下限 10px；
+  看板卡内任何文本节点不得 <10px（11px 是属性值档、10px 是 chip 档）。
+- 真机断言可机器判定：`props` 的 `margin-bottom === 8px`、chip 计算字号 ≥10px、
+  `squares.offsetTop > preview.offsetTop`（DOM 顺序类需求一律用几何坐标断言，不要数 HTML 字符串顺序）。

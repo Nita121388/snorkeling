@@ -6,7 +6,8 @@
 //   · 超出上限 → `+n`（.session-overview-more），卡高不随消息数无限增长；
 //   · 点击方块 → onOpenMessage(card, seq)（复用列表消息弹窗链路），且不冒泡成整卡弹窗；
 //   · 无消息 / 非 agent 卡 → 不渲染方块行（不留空行）；
-//   · 恢复按钮已移除（11-24 R2）：[data-board-restore] 必须为 0。
+//   · 恢复按钮已移除（11-24 R2）：[data-board-restore] 必须为 0；
+//   · 方块条在内容预览之后（11-25 R1）：card-squares 的 DOM 索引 > card-preview。
 
 // @vitest-environment jsdom
 
@@ -170,5 +171,22 @@ describe("BoardCard message squares (11-24 R1)", () => {
         });
         expect(container.querySelectorAll("[data-board-restore]")).toHaveLength(0);
         expect(container.querySelectorAll("[data-board-restore-error]")).toHaveLength(0);
+    });
+
+    it("方块条渲染在内容预览之后（11-25 R1）：preview 索引 < squares 索引", () => {
+        const container = mountCard({
+            card: makeCard({
+                preview: "最近一条消息预览",
+                recentMessages: [square(1, "user"), square(2, "assistant")],
+                messagesOverflow: 0,
+            }),
+        });
+        const cardRoot = container.querySelector(".session-overview-board-card")!;
+        const preview = cardRoot.querySelector(".session-overview-board-card-preview")!;
+        const squares = cardRoot.querySelector(".session-overview-board-card-squares")!;
+        // 卡内直接子元素的顺序：preview 必须先于 squares（结构条不压在内容之上）。
+        const children = Array.from(cardRoot.children);
+        expect(children.indexOf(preview)).toBeGreaterThanOrEqual(0);
+        expect(children.indexOf(squares)).toBeGreaterThan(children.indexOf(preview));
     });
 });

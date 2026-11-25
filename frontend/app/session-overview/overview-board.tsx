@@ -448,18 +448,6 @@ function BoardCardImpl({
                     ) : null}
                 </span>
             </span>
-            {/* 会话方块条（11-24 R1 卡列融合）：与列表行同一份实现（SessionMessageSquares）。
-                只对 agent 卡 + 有消息时渲染（无消息不留空行，卡高不跳）；点击打开该条消息。 */}
-            {card.isAgentLike && card.sessionId !== "" && card.recentMessages.length > 0 ? (
-                <span className="session-overview-board-card-squares" onClick={stopCardEvent} onMouseDown={stopCardEvent}>
-                    <SessionMessageSquares
-                        surface="board"
-                        items={card.recentMessages}
-                        overflow={card.messagesOverflow}
-                        onOpen={(seq) => onOpenMessage?.(card, seq)}
-                    />
-                </span>
-            ) : null}
             <span className="session-overview-board-card-meta">
                 {hasStatusChip ? (
                     <AgentStatusChip
@@ -593,6 +581,20 @@ function BoardCardImpl({
                 </span>
             ) : null}
             {card.preview ? <span className="session-overview-board-card-preview">{card.preview}</span> : null}
+            {/* 会话方块条（11-25 R1 下移；11-24 R1 卡列融合）：与列表行同一份实现
+                （SessionMessageSquares）。渲染在内容预览之后、备注/度量之前 —— 方块条是
+                会话的「结构」，正文预览才是「内容」，结构条压在内容之上会被先读到。
+                只对 agent 卡 + 有消息时渲染（无消息不留空行，卡高不跳）；点击打开该条消息。 */}
+            {card.isAgentLike && card.sessionId !== "" && card.recentMessages.length > 0 ? (
+                <span className="session-overview-board-card-squares" onClick={stopCardEvent} onMouseDown={stopCardEvent}>
+                    <SessionMessageSquares
+                        surface="board"
+                        items={card.recentMessages}
+                        overflow={card.messagesOverflow}
+                        onOpen={(seq) => onOpenMessage?.(card, seq)}
+                    />
+                </span>
+            ) : null}
             {card.note ? (
                 <span className="session-overview-board-card-note">
                     <span className="session-overview-board-card-note-mark" aria-hidden="true">

@@ -22,12 +22,22 @@ import { ackAgentStatus } from "@/app/agent-status/agent-status-ack";
 import { resolveBlockSessionId } from "@/app/block/block-info-card-meta";
 import { EditableTitle } from "@/app/element/info-card/editable-title";
 import { Modal } from "@/app/modals/modal";
+import { buildRecentMessageSquares } from "@/app/session-overview/session-message-items";
+import { SessionMessageSquares } from "@/app/session-overview/session-message-squares";
+import { SessionMetrics } from "@/app/session-overview/session-metrics";
+import { normalizeTimeMs } from "@/app/session-overview/session-time";
 import { jumpToOverviewBlock } from "@/app/session-overview/session-overview-model";
+import {
+    getCachedSessionDetail,
+    loadCachedSessionDetail,
+} from "@/app/session-overview/session-overview-session-cache";
 import { modalsModel } from "@/app/store/modalmodel";
+import { AISessionsServiceType } from "@/app/store/services";
 import { useAgentStatusForCard, useSessionNoteState } from "@/app/store/session-note-hook";
 import { AgentHoverCard } from "@/app/view/term/agent-hover-card";
 import * as React from "react";
 import { useTranslation } from "react-i18next";
+import "@/app/session-overview/session-overview.scss";
 
 type AgentCardModalProps = {
     blockId: string;
@@ -36,6 +46,46 @@ type AgentCardModalProps = {
      *  不传（如 term 头部悬浮卡放大）就不渲染「定位到块」—— 块本来就在眼前。 */
     tabId?: string;
 };
+
+/**
+ * 该会话的最近消息方块（11-25 R3）：与看板卡同一份缓存与裁断管线。
+ *
+ * 数据源纪律（design §R3）：先用 `getCachedSessionDetail` 的同步缓存初值（看板已拉过的
+ * 会话直接命中，零请求），缺失时用 `loadCachedSessionDetail(service, sessionId, {tail:100})`
+ * 拉取（与看板 detail 同一个 TTL / 并发队列 / single-flight）。失败保持空态 —— 不渲染空行、
+ * 不弹错误行（弹窗是「放大看板卡」，不是全功能会话页）。
+ *
+ * 返回 `items + overflow` 供共用组件 `SessionMessageSquares` 直接消费。
+ */
+function useSessionRecentMessages(sessionId: string): {
+    items: ReturnType<typeof buildRecentMessageSquares>["items"];
+    overflow: number;
+} {
+    const service = React.useMemo(() => new AISessionsServiceType(), []);
+    const [detail, setDetail] = React.useState<SessionDetail | null>(() =>
+        sessionId !== "" ? getCachedSessionDetail(sessionId) : null
+    );
+    React.useEffect(() => {
+        if (sessionId === "") {
+            setDetail(null);
+            return;
+        }
+        let cancelled = false;
+        // 同步缓存初值：避免每次打开弹窗都闪一下空态。
+        setDetail(getCachedSessionDetail(sessionId));
+        loadCachedSessionDetail(service, sessionId, { tail: 100 })
+            .then((loaded) => {
+                if (!cancelled) setDetail(loaded);
+            })
+            .catch(() => {
+                // 会话不存在 / 加载失败：保留缓存值（可能为 null）→ 空态不渲染。
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, [sessionId, service]);
+    return React.useMemo(() => buildRecentMessageSquares(detail), [detail]);
+}
 
 function AgentCardModal({ blockId, blockData, tabId }: AgentCardModalProps) {
     const { t } = useTranslation("modals");
@@ -50,10 +100,26 @@ function AgentCardModal({ blockId, blockData, tabId }: AgentCardModalProps) {
     // 与卡片共用同一份 note/tags 订阅源；header 与卡内标题因此同源同帧。
     const noteState = useSessionNoteState(sessionId, connection);
     const agentStatus = useAgentStatusForCard(blockId);
+    // 最近消息方块（11-25 R3）：与看板卡同一份管线；sessionId 为空时 hook 直接给空。
+    const recentSquares = useSessionRecentMessages(sessionId);
+    const summary = noteState.summary;
+    // 度量轨的 `now` 只用于「多久」类文案；弹窗生命周期短，每帧取当前时间即可。
+    const metricsNow = Date.now();
 
     const closeModal = React.useCallback(() => {
         modalsModel.popModal();
     }, []);
+
+    // 打开会话详情（footer 按钮与方块点击共用同一条链路）：叠在整卡之上，
+    // modal 栈天然支持逐层退（详情 ✕ 先退，再退整卡）。
+    // connection 必须带：远端 agent 会话的裸 id 不带连接会落到本机 manager。
+    const openSessionDetail = React.useCallback(() => {
+        if (sessionId === "") return;
+        modalsModel.pushModal("AISessionDetailModal", {
+            sessionId,
+            connection: connection !== "" ? connection : undefined,
+        });
+    }, [connection, sessionId]);
 
     // 定位到块：关掉弹窗再切 tab + 高亮块（与 Overview 列表/看板的 jumpToBlock 同一手感）。
     const handleJumpToBlock = React.useCallback(() => {
@@ -124,13 +190,8 @@ function AgentCardModal({ blockId, blockData, tabId }: AgentCardModalProps) {
                         aria-label={t("modals:agentCard.openSessionDetail")}
                         onClick={(event) => {
                             event.stopPropagation();
-                            if (sessionId === "") return;
                             // 叠在整卡之上：modal 栈天然支持逐层退（详情 ✕ 先退，再退整卡）。
-                            // connection 必须带：远端 agent 会话的裸 id 不带连接会落到本机 manager。
-                            modalsModel.pushModal("AISessionDetailModal", {
-                                sessionId,
-                                connection: connection !== "" ? connection : undefined,
-                            });
+                            openSessionDetail();
                         }}
                     >
                         <i className="fa-sharp fa-solid fa-arrow-up-right-from-square mr-1" />
@@ -141,6 +202,36 @@ function AgentCardModal({ blockId, blockData, tabId }: AgentCardModalProps) {
             }
         >
             <AgentHoverCard blockId={blockId} blockData={blockData} mode="gui" embedded frameless />
+            {/* 11-25 R3：放大不降级 —— 把看板卡上的会话方块条 + 度量轨补进弹窗。
+                两区块都是共用组件（SessionMessageSquares / SessionMetrics），不复制 JSX。
+                空态纪律：无 sessionId 整块不渲染；方块条无消息不渲染；度量轨自身数据全空时返回 null。 */}
+            {sessionId !== "" && (recentSquares.items.length > 0 || summary != null) ? (
+                <div className="agent-card-modal-sections">
+                    {recentSquares.items.length > 0 ? (
+                        <div className="agent-card-modal-squares" data-agent-card-squares="true">
+                            <SessionMessageSquares
+                                surface="modal"
+                                items={recentSquares.items}
+                                overflow={recentSquares.overflow}
+                                onOpen={() => openSessionDetail()}
+                            />
+                        </div>
+                    ) : null}
+                    {summary != null ? (
+                        <div className="agent-card-modal-metrics">
+                            <SessionMetrics
+                                surface="modal"
+                                messageCount={summary?.messageCount}
+                                size={summary?.size}
+                                createdAt={normalizeTimeMs(summary?.createdAt)}
+                                updatedAt={normalizeTimeMs(summary?.updatedAt)}
+                                live={summary?.live === true}
+                                now={metricsNow}
+                            />
+                        </div>
+                    ) : null}
+                </div>
+            ) : null}
         </Modal>
     );
 }

@@ -518,6 +518,42 @@ async function main() {
           skip("card-tag-mini-chip", "agent 卡不在看板上");
           skip("card-prop-hide-name", "agent 卡不在看板上");
         }
+        // ── 11-25 R4：属性行与预览之间的 8px 间距 + 属性行字号 ≥ 10px
+        //   （design-system §5：micro 状态徽章下限 10px、密集元数据不低于 10px）。
+        //   探针扫全部看板卡（播种卡不一定带自定义属性）。
+        const propSpacing = await client.evaluate(`(() => {
+            const cards = [...document.querySelectorAll(".session-overview-board-card")];
+            const propsEl = cards.map((c) => c.querySelector(".session-overview-board-card-props")).find(Boolean) ?? null;
+            if (propsEl == null) return { hasProps: false };
+            const chip = propsEl.querySelector(".property-chip");
+            const prop = propsEl.querySelector(".session-overview-board-card-prop");
+            const more = propsEl.querySelector(".session-overview-board-card-prop-more");
+            return {
+                hasProps: true,
+                gap: getComputedStyle(propsEl).marginBottom,
+                propFont: prop == null ? "" : getComputedStyle(prop).fontSize,
+                chipFont: chip == null ? "" : getComputedStyle(chip).fontSize,
+                chipHeight: chip == null ? "" : getComputedStyle(chip).height,
+                moreFont: more == null ? "" : getComputedStyle(more).fontSize,
+            };
+        })()`);
+        if (propSpacing?.hasProps === true) {
+          check(
+            "board-card-prop-preview-gap",
+            propSpacing.gap === "8px",
+            `margin-bottom=${propSpacing.gap}（属性行与下方预览之间，11-25 R4）`
+          );
+          check(
+            "board-card-prop-chip-size",
+            parseFloat(propSpacing.propFont) >= 10 &&
+              parseFloat(propSpacing.chipFont) >= 10 &&
+              parseFloat(propSpacing.moreFont) >= 10,
+            `prop=${propSpacing.propFont} chip=${propSpacing.chipFont}/${propSpacing.chipHeight} more=${propSpacing.moreFont}（micro 下限 10px）`
+          );
+        } else {
+          skip("board-card-prop-preview-gap", "看板上没有带自定义属性的卡");
+          skip("board-card-prop-chip-size", "看板上没有带自定义属性的卡");
+        }
         // 让卡片真的进画面：面板撑宽 + 把卡片所在列横向滚到中间。
         await client
           .evaluate(
@@ -1167,6 +1203,97 @@ async function main() {
         seededSquares.cardFound === true && seededSquares.squares > 0 && seededSquares.stripOnCard === true,
         `cardFound=${seededSquares.cardFound} squares=${seededSquares.squares} stripOnCard=${seededSquares.stripOnCard}（真实会话卡的方块条）`
       );
+      // ── 11-25 R1：方块条在内容预览之下（squares 的 top 必须在 preview 的 top 之下）。
+      //    先滚列到中间 + 等 snap 落定再量（2026-11-22 踩坑：滚动中量的坐标不可信）。
+      const squaresOrder = await client
+        .evaluate(
+            `(async () => {
+                const blockId = ${JSON.stringify(metricSeed.blockId)};
+                const card = [...document.querySelectorAll(".session-overview-board-card")].find(
+                    (c) => c.getAttribute("data-board-block-id") === blockId
+                );
+                if (card == null) return { found: false };
+                card.scrollIntoView({ block: "nearest", inline: "center" });
+                await new Promise((r) => setTimeout(r, 300));
+                const preview = card.querySelector(".session-overview-board-card-preview");
+                const squares = card.querySelector(".session-overview-board-card-squares");
+                return {
+                    found: true,
+                    hasPreview: preview != null,
+                    hasSquares: squares != null,
+                    previewTop: preview == null ? null : Math.round(preview.getBoundingClientRect().top),
+                    squaresTop: squares == null ? null : Math.round(squares.getBoundingClientRect().top),
+                };
+            })()`
+        )
+        .catch(() => null);
+      if (squaresOrder?.found === true && squaresOrder.hasPreview === true && squaresOrder.hasSquares === true) {
+        check(
+          "board-card-squares-below-preview",
+          squaresOrder.squaresTop > squaresOrder.previewTop,
+          `previewTop=${squaresOrder.previewTop} squaresTop=${squaresOrder.squaresTop}（方块条在内容预览之后，11-25 R1）`
+        );
+      } else {
+        skip("board-card-squares-below-preview", `播种卡缺 preview 或 squares: ${JSON.stringify(squaresOrder)}`);
+      }
+      // ── 11-25 R2：消息详情弹窗内不得再有「删除块」按钮（与右上角关闭同为 xmark，
+      //    误触即不可逆删除；删除入口在看板卡动作区/列表行本就有）。
+      //    用真实指针点开一条消息（方块）→ 断言弹窗 → 关闭。
+      const squareCenter = await client
+        .evaluate(
+            `(() => {
+                const blockId = ${JSON.stringify(metricSeed.blockId)};
+                const card = [...document.querySelectorAll(".session-overview-board-card")].find(
+                    (c) => c.getAttribute("data-board-block-id") === blockId
+                );
+                const square = card?.querySelector("[data-board-message-square]");
+                if (square == null) return null;
+                const r = square.getBoundingClientRect();
+                if (r.width < 4 || r.height < 4) return null;
+                return { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) };
+            })()`
+        )
+        .catch(() => null);
+      if (squareCenter != null) {
+        await client.click(squareCenter.x, squareCenter.y);
+        await new Promise((r) => setTimeout(r, 500));
+        const dialogProbe = await client
+          .evaluate(
+            `(() => {
+                const dialog = document.querySelector(".session-overview-message-dialog");
+                if (dialog == null) return { open: false };
+                return {
+                    open: true,
+                    deleteButtons: dialog.querySelectorAll(".session-overview-block-x-button").length,
+                    closeButtons: dialog.querySelectorAll(".session-overview-icon-button").length,
+                    hasBody: dialog.querySelector(".session-overview-message-body") != null,
+                };
+            })()`
+          )
+          .catch(() => null);
+        check(
+          "message-dialog-no-delete",
+          dialogProbe?.open === true && dialogProbe.deleteButtons === 0,
+          `open=${dialogProbe?.open} delete=${dialogProbe?.deleteButtons} close=${dialogProbe?.closeButtons}（弹窗内删除块按钮必须为 0，11-25 R2）`
+        );
+        // 收尾：点右上角关闭，把弹窗退掉（不留遮罩影响后续断言）。
+        const closeCenter = await client
+          .evaluate(
+            `(() => {
+                const btn = document.querySelector(".session-overview-message-dialog .session-overview-icon-button");
+                if (btn == null) return null;
+                const r = btn.getBoundingClientRect();
+                return { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) };
+            })()`
+          )
+          .catch(() => null);
+        if (closeCenter != null) {
+          await client.click(closeCenter.x, closeCenter.y);
+          await new Promise((r) => setTimeout(r, 300));
+        }
+      } else {
+        skip("message-dialog-no-delete", "播种卡没有可点的消息方块");
+      }
       // summary 走 RPC + 缓存，等它落到卡片上（轮询而不是固定 sleep）。
       const metrics = await (async () => {
         const deadline = Date.now() + 25000;

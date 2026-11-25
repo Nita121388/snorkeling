@@ -15,7 +15,7 @@
 import type { SessionMetricsView } from "./session-metrics-view";
 import { buildSessionMetrics } from "./session-metrics-view";
 
-export type SessionMetricsSurface = "board" | "row";
+export type SessionMetricsSurface = "board" | "row" | "modal";
 
 export type SessionMetricsProps = {
     surface: SessionMetricsSurface;

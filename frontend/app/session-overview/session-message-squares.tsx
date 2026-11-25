@@ -31,7 +31,7 @@ export type SessionMessageSquareItem = {
 };
 
 export type SessionMessageSquaresProps = {
-    surface: "row" | "board";
+    surface: "row" | "board" | "modal";
     items: readonly SessionMessageSquareItem[];
     /** 已裁掉的条数（渲染 `+n`）。 */
     overflow: number;
