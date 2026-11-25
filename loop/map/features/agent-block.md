@@ -1,10 +1,14 @@
 ---
 id: agent-block
-title: Agent Block 创建与发送
-module: agent
-status: building
-introduced: 2026-11-09
+title: 独立 Agent Block
+module: agents
+parent: agent-workflow
+status: shipped
+introduced: 2026-08-31
 releases: []
 ---
 
-wsh agent launch/send + MCP 工具 + OSC8 路径链接 + 本机命令解析。
+专用块类型与 Agent 会话承载。
+
+证据：
+- commit: 4a9215b50

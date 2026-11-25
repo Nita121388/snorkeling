@@ -1,10 +1,16 @@
 ---
 id: loop-workflow
 title: loop 台账与夜班
-module: infra
-status: building
+module: engineering
+parent: dev-workflow
+status: shipped
 introduced: 2026-11-05
 releases: []
 ---
 
-台账骨架 + 夜班真派发 + fail-open 兜底 + harness 红证 + 清账。
+工作项、门凭据、事件流、取件契约与交接。
+
+证据：
+- commit: N-1105-loop-ledger
+- commit: N-1105-night-runner
+- doc: docs/answers/loop-daynight-design-20261105-1417.md

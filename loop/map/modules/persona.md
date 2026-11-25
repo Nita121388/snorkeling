@@ -1,5 +1,7 @@
 ---
 id: persona
-title: 人设体系
-order: 2
+title: Persona / Hero
+order: 10
 ---
+
+功能域：Persona / Hero。

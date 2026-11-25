@@ -1,10 +1,14 @@
 ---
 id: conn-picker
 title: 连接下拉
-module: agent
+module: agents
+parent: agent-workflow
 status: building
 introduced: 2026-11-17
 releases: []
 ---
 
-图标居右 / 一键复制 / 使用次数排序 / 加载骨架。
+loop 工作项细分功能点（保留原 id，items/*.md 的 feature: 引用不变）。
+
+证据：
+- doc: loop/map/features/conn-picker.md（原细分节点）

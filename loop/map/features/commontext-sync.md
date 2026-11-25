@@ -1,10 +1,14 @@
 ---
 id: commontext-sync
-title: 条目级同步
+title: CommonText 实时推送
 module: commontext
-status: building
-introduced: 2026-11-06
+parent: commontext-suite
+status: shipped
+introduced: 2026-11-16
 releases: []
 ---
 
-同步元数据（createdBy/origin/rev/墓碑）+ 条目级水位 + WebSocket 实时推送。
+WebSocket rev 通知、保存即触发、timer 兜底。
+
+证据：
+- commit: feat(sync): CommonText 实时推送（WebSocket rev 通知 + 保存即触发 + timer 兜底）（2026-11-16）

@@ -1,10 +1,14 @@
 ---
 id: agentsend
 title: 派发与回执
-module: agent
+module: agents
+parent: agent-workflow
 status: building
 introduced: 2026-11-23
 releases: []
 ---
 
-提交确认退避 + 派发回执可见 + 图片粘贴 + 超时误映射。
+loop 工作项细分功能点（保留原 id，items/*.md 的 feature: 引用不变）。
+
+证据：
+- doc: loop/map/features/agentsend.md（原细分节点）
