@@ -13,6 +13,7 @@ rollback: "三次独立 commit 逐个 revert；chip-view / runtime / second-tick
 budget: {minutes: 180, retries: 2}
 releaseCandidate: false
 createdAt: "2026-11-06T06:00:27Z"
+feature: agent-card
 ---
 
 # Agent 卡片统一：状态 chip 收口 + 运行时长 + 标题编辑

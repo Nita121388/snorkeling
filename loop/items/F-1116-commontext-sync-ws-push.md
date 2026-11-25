@@ -25,6 +25,7 @@ rollback: revert 单 commit；老服务器无 WS 端点时客户端自动退避�
 budget: {minutes: 90, retries: 2}
 releaseCandidate: false
 createdAt: "2026-11-16T06:45:44Z"
+feature: commontext-sync
 ---
 
 # CommonText 同步实时推送：WebSocket rev 通知 + 保存即触发 + timer 兜底

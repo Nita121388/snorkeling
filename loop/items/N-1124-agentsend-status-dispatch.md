@@ -13,6 +13,7 @@ rollback: null
 budget: {minutes: 150, retries: 2}
 releaseCandidate: false
 createdAt: "2026-11-24T08:46:17Z"
+feature: agentsend
 ---
 
 # Agent 卡常驻发送状态 + 异步派发回执可见（292/aaaa 事故根因）

@@ -14,6 +14,7 @@ budget: {minutes: 240, retries: 2}
 releaseCandidate: false
 score: {value: 4, by: nita, at: "2026-11-12T12:27:11Z", note: "用户 2026-11-12 会话明确授权代理验收。实现与判据一致；扣1分：block meta persona:<id> 重写与 data scope 强制点留 A3/A2.5 闭环。"}
 createdAt: "2026-11-12T11:35:10Z"
+feature: persona-core
 ---
 
 # A1 persona 核心：目录布局 + scaffold + wsh persona CLI

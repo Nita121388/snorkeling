@@ -13,6 +13,7 @@ rollback: null
 budget: {minutes: 60, retries: 1}
 releaseCandidate: false
 createdAt: "2026-11-13T14:47:11Z"
+feature: commontext-editor
 ---
 
 # CommonText 弹窗：Editor 快捷收起 + 属性列表默认折叠

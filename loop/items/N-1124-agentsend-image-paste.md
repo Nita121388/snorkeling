@@ -13,6 +13,7 @@ rollback: null
 budget: {minutes: 120, retries: 2}
 releaseCandidate: false
 createdAt: "2026-11-24T08:46:24Z"
+feature: agentsend
 ---
 
 # Overview composer 支持粘贴图片（落盘 + markdown 引用）

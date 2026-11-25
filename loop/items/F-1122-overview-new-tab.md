@@ -13,6 +13,7 @@ rollback: null
 budget: {minutes: 300, retries: 2}
 releaseCandidate: false
 createdAt: "2026-11-22T10:32:26Z"
+feature: overview-board
 ---
 
 # Overview 新建 Tab：工具栏 + 组尾入口 + 三选一弹窗

@@ -13,6 +13,7 @@ rollback: null
 budget: {minutes: 240, retries: 2}
 releaseCandidate: false
 createdAt: "2026-11-11T01:11:32Z"
+feature: properties
 ---
 
 # Agent 卡片属性：范围三选一 + 表单美化 + 外部操作支持

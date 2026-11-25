@@ -14,6 +14,7 @@ rollback: null
 budget: {minutes: 120, retries: 2}
 releaseCandidate: false
 createdAt: "2026-11-24T05:03:13Z"
+feature: sched-task
 ---
 
 # 定时任务入口回归右侧 widget + 弹窗版式对齐 CommonText（11-24-schedtask-entry-fix）

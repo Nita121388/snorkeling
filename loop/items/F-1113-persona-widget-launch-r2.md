@@ -14,6 +14,7 @@ budget: {minutes: 300, retries: 2}
 releaseCandidate: false
 score: {value: 4, by: nita, at: "2026-11-13T03:20:26Z", note: "用户 2026-11-13 会话原话授权代理验收：「按照你推荐的来 自主开发 直到完成」（推荐项=A3）。8/8 判据机器采数全绿（第二跑；首跑 aisessions vitest OOM 属 flaky，重试即绿）；commit 91cdb4e4。5 处偏离均披露于 prd/design；真机 Electron 活体验证留白天补跑。"}
 createdAt: "2026-11-13T02:23:34Z"
+feature: persona-block
 ---
 
 # A3 widget 🎭 图标 + hover 登场弹窗 + 注入开关 + props.persona 派生补带

@@ -14,6 +14,7 @@ rollback: null
 budget: {minutes: 45, retries: 1}
 releaseCandidate: false
 createdAt: "2026-11-17T07:40:54Z"
+feature: conn-picker
 ---
 
 # 连接下拉：右栏图标居右对齐 + hover 一键复制 + 使用次数排序 + 打开时加载骨架

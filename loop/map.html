@@ -1,0 +1,1870 @@
+<!doctype html>
+<!--
+  loop map 模板 —— 派生自 project-map v0.1.0 的 src/template.html（同作者的 pmap 交互原型）。
+  改动（与上游的差异就这些，改模板前先看这里）：
+    1. 文案：Bug → 修改点（修改点 = loop 工作项 items/*.md）
+    2. 页内新建的落点：功能/模块/版本 → loop/map/{features,modules,releases}/，
+       修改点 → loop/items/<id>.md（loop 工作项格式，不是 pmap 的 bug md）
+    3. 地图形状（时间线/导图/卡片/键盘）与上游一致，占位符由 lib/map.mjs 注入
+  升级上游模板时：整份替换后按上面三条重打补丁，别逐行手工合并。
+-->
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark light">
+<title>Snorkeling · 项目地图</title>
+<style>
+:root{
+  color-scheme:dark;
+  /* HeroUI 默认暗色主题色板 + zinc 表面阶 */
+  --bg:#000000; --bg2:#0a0a0c; --panel:#18181b; --panel2:#27272a; --panel3:#3f3f46;
+  --line:rgba(255,255,255,.08); --line2:rgba(255,255,255,.14);
+  --txt:#ececee; --mut:#a1a1aa; --dim:#71717a;
+  --acc:#006fee; --ok:#17c964; --warn:#f5a524; --err:#f31260;
+  --acc-soft:rgba(0,111,238,.14); --acc-line:rgba(0,111,238,.5);
+  --ring:0 0 0 3px rgba(0,111,238,.28);
+  --hd-bg:rgba(0,0,0,.6);
+  --mono:ui-monospace,"Cascadia Code",Consolas,monospace;
+  --sans:"Inter","SF Pro Text",system-ui,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+  --link:#2b3441; --spine:#2f3a47; --grid:#16181d; --band:rgba(255,255,255,.02);
+  --sep:#1c2027; --pill-bg:#1d2026; --rel-line:#232a35; --tag:#9ec5ff;
+  --mod-dot:#6b7280; --mod-label:#ececee; --feat-label:#d4d4d8; --child-label:#a1a1aa;
+  --node-stroke:#000000; --hover:rgba(255,255,255,.045); --hover-label:#ffffff;
+  --card-bg:rgba(24,24,27,.92); --card-line:rgba(255,255,255,.12);
+  --card-shadow:0 24px 56px -16px rgba(0,0,0,.78),0 2px 10px rgba(0,0,0,.45);
+  --today:rgba(0,111,238,.55); --life-opacity:.5;
+}
+[data-theme="light"]{
+  color-scheme:light;
+  --bg:#ffffff; --bg2:#fafafa; --panel:#f4f4f5; --panel2:#e9e9eb; --panel3:#d4d4d8;
+  --line:rgba(17,24,28,.09); --line2:rgba(17,24,28,.16);
+  --txt:#11181c; --mut:#5c6370; --dim:#8a8f98;
+  --acc:#006fee; --ok:#12a150; --warn:#d97706; --err:#f31260;
+  --acc-soft:rgba(0,111,238,.09); --acc-line:rgba(0,111,238,.42);
+  --ring:0 0 0 3px rgba(0,111,238,.18);
+  --hd-bg:rgba(255,255,255,.72);
+  --link:#ccd4de; --spine:#c8d0da; --grid:#eef0f4; --band:rgba(0,0,0,.02);
+  --sep:#e9ecf1; --pill-bg:#f2f4f7; --rel-line:#dbe1e9; --tag:#2f5fa8;
+  --mod-dot:#8b93a0; --mod-label:#11181c; --feat-label:#3f3f46; --child-label:#6b7280;
+  --node-stroke:#ffffff; --hover:rgba(0,111,238,.06); --hover-label:#006fee;
+  --card-bg:rgba(255,255,255,.94); --card-line:rgba(17,24,28,.1);
+  --card-shadow:0 24px 48px -18px rgba(24,24,27,.24),0 2px 8px rgba(24,24,27,.06);
+  --today:rgba(0,111,238,.5); --life-opacity:.75;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--txt);font:13px/1.55 var(--sans);overflow:hidden;
+  height:100vh;display:flex;flex-direction:column;-webkit-font-smoothing:antialiased;
+  transition:background .25s ease,color .25s ease}
+button{font:inherit;color:inherit;background:none;border:none;cursor:pointer}
+.mono{font-family:var(--mono)}
+.dim{color:var(--dim)}
+::selection{background:rgba(0,111,238,.32)}
+:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+
+.proto-flag{position:fixed;top:10px;right:12px;z-index:99;font-family:var(--mono);font-size:10px;
+  color:var(--warn);background:color-mix(in oklab,var(--warn) 12%,transparent);
+  border:1px solid color-mix(in oklab,var(--warn) 32%,transparent);
+  padding:3px 9px;border-radius:999px;pointer-events:none;backdrop-filter:blur(8px)}
+
+header{display:flex;align-items:center;gap:10px;padding:8px 16px;padding-right:300px;
+  flex-wrap:wrap;border-bottom:1px solid var(--line);
+  background:var(--hd-bg);backdrop-filter:blur(18px) saturate(1.6);
+  -webkit-backdrop-filter:blur(18px) saturate(1.6);flex:none;z-index:20}
+.sec-line{flex:1 1 100%;display:flex;align-items:center;gap:14px;flex-wrap:wrap;min-width:0}
+.brand{display:flex;align-items:center;gap:9px;white-space:nowrap}
+.brand .mark{width:22px;height:22px;border-radius:7px;flex:none;
+  background:linear-gradient(135deg,#00c2ff,#006fee 48%,#7b61ff);
+  box-shadow:0 2px 10px rgba(0,111,238,.45),inset 0 1px 0 rgba(255,255,255,.35)}
+.brand b{font-size:14.5px;font-weight:700;letter-spacing:.2px}
+.brand span{color:var(--mut);font-size:11.5px}
+.seg{display:flex;border:1px solid var(--line2);border-radius:999px;overflow:hidden;background:var(--panel);padding:2px}
+.layout-ctl{display:flex;align-items:center;gap:9px;font-size:11px;color:var(--mut);
+  padding:3px 12px;border:1px solid var(--line);border-radius:999px;background:var(--panel)}
+.layout-ctl input[type=range]{-webkit-appearance:none;appearance:none;width:150px;height:4px;
+  border-radius:999px;cursor:pointer;outline:none;
+  background:linear-gradient(90deg,var(--acc) var(--fill,100%),var(--line2) var(--fill,100%))}
+.layout-ctl input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;
+  border-radius:50%;background:#fff;border:none;cursor:grab;
+  box-shadow:0 0 0 1px var(--line2),0 2px 6px rgba(0,0,0,.45);
+  transition:transform .15s ease,box-shadow .15s ease}
+.layout-ctl input[type=range]:active::-webkit-slider-thumb{cursor:grabbing;transform:scale(1.1)}
+.layout-ctl input[type=range]:hover::-webkit-slider-thumb{transform:scale(1.15);
+  box-shadow:0 0 0 1px var(--acc),0 0 0 5px var(--acc-soft)}
+.layout-ctl input[type=range]::-moz-range-thumb{width:14px;height:14px;border:none;border-radius:50%;
+  background:#fff;box-shadow:0 0 0 1px var(--line2)}
+.seg button{padding:3px 12px;font-size:12px;color:var(--mut);border-radius:999px;transition:.16s}
+.seg button.on{background:var(--acc);color:#fff}
+.seg button+button{border-left:none}
+.filters{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.chip{display:inline-flex;align-items:center;gap:6px;padding:4px 12px;border-radius:999px;
+  border:1px solid var(--line2);background:var(--panel);color:var(--mut);font-size:12px;
+  font-weight:500;user-select:none;
+  transition:background .18s ease,color .18s ease,border-color .18s ease,transform .18s ease,box-shadow .18s ease}
+.chip:hover{color:var(--txt);background:var(--panel2);transform:translateY(-1px)}
+.chip:active{transform:scale(.96)}
+.chip.on{color:#fff;border-color:var(--acc);background:var(--acc);
+  box-shadow:0 4px 14px -4px rgba(0,111,238,.6)}
+.chip.on:hover{background:var(--acc);filter:brightness(1.08)}
+.ico{stroke:currentColor;fill:none;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.chip .ico{width:13px;height:13px;stroke-width:1.7}
+.chip.icon-only{padding:4px 9px}
+.hide{display:none!important}
+.legend{display:flex;gap:11px;flex-wrap:wrap;align-items:center;font-size:11.5px;color:var(--mut)}
+.legend i{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px;vertical-align:1px}
+.legend i.c-ok{background:var(--ok)}
+.legend i.c-warn{background:var(--warn)}
+.legend i.c-planned{border:1.5px dashed var(--dim);background:transparent}
+.legend i.c-err{background:var(--err)}
+.legend i.c-acc{background:var(--acc)}
+.hint{color:var(--dim);font-size:11px;margin-left:auto;letter-spacing:.2px}
+
+main{flex:1;display:flex;min-height:0}
+.canvas-wrap{position:relative;flex:1;min-width:0;min-height:0}
+#map{position:absolute;inset:0;width:100%;height:100%;display:block;user-select:none;cursor:default}
+#map.pannable{cursor:grab;touch-action:none}
+#map.dragging{cursor:grabbing}
+aside{display:none}
+
+/* SVG 通用 */
+.link{fill:none;stroke:var(--link);stroke-width:1.2}
+.branch{stroke:var(--link);stroke-width:1.2;fill:none}
+.spine{stroke:var(--spine);stroke-width:1.6;pointer-events:none}
+.rel-line{stroke:var(--rel-line);stroke-width:1;stroke-dasharray:3 5}
+.rel-tag{font:10.5px var(--mono);fill:var(--tag)}
+.axis-line{stroke:var(--line2);stroke-width:1}
+.grid-line{stroke:var(--grid);stroke-width:1}
+.axis-text{font:10.5px var(--mono);fill:var(--dim);letter-spacing:.3px}
+.axis-text.today{fill:var(--acc);font-weight:600}
+.today-line{stroke:var(--today);stroke-width:1.2;stroke-dasharray:3 4}
+.band{fill:var(--band)}
+.sep{stroke:var(--sep);stroke-width:1}
+.band,.sep,.rel-line,.grid-line,.axis-line,.today-line,.link,.branch,.spine{pointer-events:none}
+.root-dot{fill:var(--acc)}
+.root-label{font:600 13px var(--sans);fill:var(--acc)}
+.mod-dot{fill:var(--mod-dot)}
+.mod-label{font:600 12.5px var(--sans);fill:var(--mod-label)}
+.feat-dot.plan{fill:none}
+.feat-label{font:12px var(--sans);fill:var(--feat-label)}
+.feat-label.child{font-size:11.5px;fill:var(--child-label)}
+.life{stroke-width:1.5;stroke-opacity:var(--life-opacity)}
+.life.dep{stroke-dasharray:2 3}
+.life.plan{stroke-dasharray:3 4}
+.plan-band{fill:var(--acc);opacity:.035;pointer-events:none}
+.bug-dot.fixed{fill:var(--acc)}
+.bug-dot.open{fill:var(--err)}
+.bug-dot{stroke:var(--node-stroke);stroke-width:1}
+.feat-dot,.mod-dot,.bug-dot{transition:r .16s ease}
+g.hit:hover .feat-dot{r:5.6px}
+g.hit:hover .mod-dot{r:6px}
+g.hit:hover .bug-dot{r:4.6px}
+.dot-ring{fill:none;stroke-width:1.2;opacity:.6;pointer-events:none}
+svg [data-toggle]{cursor:pointer}
+svg [data-toggle]:hover{stroke:var(--txt);stroke-width:1.8}
+.tree-label{font:12.5px var(--sans);fill:var(--feat-label)}
+.tree-label.module{font-weight:600;fill:var(--txt)}
+.tree-label.child{font-size:12px;fill:var(--child-label)}
+.tree-label.root{font-size:14px;font-weight:600;fill:var(--txt)}
+.tree-meta{font:11px var(--mono);fill:var(--dim)}
+.rowbg{fill:transparent}
+.rowactive{fill:var(--acc-soft)}
+g.hit.focused .feat-label,g.hit.focused .mod-label{fill:var(--acc);font-weight:600}
+.focus-ring{fill:none;stroke:var(--acc);stroke-width:1.6;pointer-events:none}
+/* ===== 导图模式 ===== */
+.layout-ctl.off{opacity:.38;pointer-events:none}
+.mnode rect{stroke-width:1;transition:stroke .15s ease}
+.mnode .mfeat-box{fill:var(--panel);stroke:var(--line2)}
+.mnode .mmod-box{fill:var(--panel2);stroke:var(--line2)}
+.mnode .mroot-box{fill:var(--acc-soft);stroke:var(--acc-line);stroke-width:1.2}
+g.mnode:hover rect{stroke:var(--acc)}
+g.hit.focused .mfeat-box,g.hit.focused .mmod-box,g.hit.focused .mroot-box{stroke:var(--acc);stroke-width:1.8}
+.mlink{fill:none;stroke:var(--link);stroke-width:1.4;pointer-events:none}
+.mdate{font:9.5px var(--mono);fill:var(--dim);letter-spacing:.3px}
+.guide{stroke:var(--grid);stroke-width:1}
+g.hit{cursor:pointer}
+g.hit:hover .rowbg{fill:var(--hover)}
+g.hit:hover .feat-label{fill:var(--hover-label)}
+g.hit:hover .tree-label{fill:var(--hover-label)}
+g.hit:hover .mod-label{fill:var(--txt)}
+g.dim{opacity:.16;transition:opacity .15s}
+.rel-pill{fill:var(--pill-bg);stroke:var(--line2)}
+.root-box{fill:var(--acc-soft);stroke:var(--acc-line)}
+g.hit:hover .bug-dot{stroke:var(--hover-label);stroke-width:1.5}
+.rel-hit:hover .rel-pill{stroke:var(--acc)}
+
+/* ===== 就地卡片 ===== */
+#card{--card-acc:var(--acc);position:fixed;z-index:300;width:336px;max-height:min(74vh,600px);overflow:auto;display:none;
+  background:linear-gradient(180deg,color-mix(in oklab,var(--card-acc) 8%,var(--card-bg)),var(--card-bg) 92px);
+  border:1px solid var(--card-line);border-radius:16px;padding:0 16px 14px;
+  box-shadow:var(--card-shadow);backdrop-filter:blur(20px) saturate(1.5);
+  -webkit-backdrop-filter:blur(20px) saturate(1.5);
+  scrollbar-width:thin;scrollbar-color:var(--line2) transparent}
+#card.open{display:block;animation:pop .16s cubic-bezier(.16,1,.3,1)}
+@keyframes pop{from{opacity:0;transform:translateY(5px) scale(.97)}to{opacity:1;transform:none}}
+.card-head{display:flex;align-items:center;gap:9px;margin:0 -16px 12px;padding:13px 16px 11px;
+  position:sticky;top:0;z-index:2;
+  background:linear-gradient(180deg,color-mix(in oklab,var(--card-acc) 8%,var(--card-bg)),var(--card-bg) 74%,transparent);
+  border-bottom:1px solid var(--line)}
+.card-head::before{content:"";width:7px;height:7px;border-radius:50%;flex:none;
+  background:var(--card-acc);box-shadow:0 0 0 3.5px color-mix(in oklab,var(--card-acc) 22%,transparent)}
+.card-head h3{margin:0;font-size:14.5px;font-weight:600;flex:1;min-width:0;line-height:1.35;letter-spacing:.1px}
+.card-x{flex:none;width:26px;height:26px;display:grid;place-items:center;
+  color:var(--dim);font-size:14px;line-height:1;border-radius:999px;transition:.16s}
+.card-x:hover{color:var(--txt);background:var(--panel2)}
+.card-actions{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap}
+.card-btn{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:500;padding:5px 12px;border:1px solid var(--line2);border-radius:10px;
+  color:var(--txt);background:var(--panel2);cursor:pointer;
+  transition:background .18s ease,color .18s ease,border-color .18s ease,transform .18s ease}
+.card-btn:hover{color:var(--acc);border-color:var(--acc-soft);background:var(--acc-soft);transform:translateY(-1px)}
+.card-btn:active{transform:scale(.97)}
+.card-btn .ico{width:11px;height:11px;stroke-width:1.8}
+.card-btn:last-child{color:var(--acc);border-color:color-mix(in oklab,var(--acc) 35%,transparent);
+  background:color-mix(in oklab,var(--acc) 12%,transparent)}
+.card-btn:last-child:hover{color:#fff;background:var(--acc);border-color:var(--acc)}
+.bugrow.hit{cursor:pointer;transition:background .16s ease,border-color .16s ease,transform .16s ease}
+.bugrow.hit:hover{background:color-mix(in oklab,var(--acc) 10%,var(--panel2));
+  border-color:color-mix(in oklab,var(--acc) 32%,transparent);transform:translateX(2px)}
+#card .sub{display:flex;flex-wrap:wrap;gap:5px;margin:0 0 12px;font-size:11.5px}
+.tagchip{display:inline-flex;align-items:center;gap:5px;padding:2px 9px;border-radius:999px;
+  border:1px solid var(--line);background:var(--panel2);color:var(--mut);font-size:11px}
+.tagchip.mono{font-family:var(--mono);font-size:10.5px}
+.tagchip.draft{color:var(--warn);border-color:color-mix(in oklab,var(--warn) 32%,transparent);
+  background:color-mix(in oklab,var(--warn) 12%,transparent)}
+#card .note{margin:0 0 12px;color:var(--mut);font-size:12px;line-height:1.6;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+#card .empty{padding:8px 0}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:0 14px;margin:0 0 14px;font-size:12px}
+.kv dt{color:var(--dim);white-space:nowrap;padding:6.5px 0;border-bottom:1px solid var(--line)}
+.kv dd{margin:0;padding:6.5px 0;border-bottom:1px solid var(--line);text-align:right;
+  font-variant-numeric:tabular-nums;color:var(--txt)}
+.kv dt:last-of-type,.kv dd:last-of-type{border-bottom-color:transparent}
+.sec-title{display:flex;align-items:center;gap:10px;font-size:10.5px;color:var(--dim);
+  letter-spacing:1.2px;margin:16px 0 8px;font-family:var(--mono)}
+.sec-title::after{content:"";flex:1;height:1px;background:var(--line)}
+.pill{display:inline-flex;align-items:center;gap:5px;font-size:10.5px;font-weight:600;padding:2px 9px;
+  border-radius:999px;border:1px solid transparent;letter-spacing:.2px;white-space:nowrap}
+.pill::before{content:"";width:5px;height:5px;border-radius:50%;background:currentColor;flex:none}
+.pill-shipped{color:var(--ok);background:color-mix(in oklab,var(--ok) 14%,transparent);border-color:color-mix(in oklab,var(--ok) 30%,transparent)}
+.pill-building{color:var(--warn);background:color-mix(in oklab,var(--warn) 15%,transparent);border-color:color-mix(in oklab,var(--warn) 32%,transparent)}
+.pill-planned{color:var(--mut);border-color:var(--line2);background:var(--panel2)}
+.pill-deprecated{color:var(--err);background:color-mix(in oklab,var(--err) 14%,transparent);border-color:color-mix(in oklab,var(--err) 30%,transparent)}
+.pill-open{color:var(--err);background:color-mix(in oklab,var(--err) 14%,transparent);border-color:color-mix(in oklab,var(--err) 30%,transparent)}
+.bugrow{display:flex;gap:9px;align-items:flex-start;padding:9px 10px;border:1px solid transparent;
+  border-radius:12px;background:var(--panel2);margin-bottom:6px}
+.dotsev{width:7px;height:7px;border-radius:50%;margin-top:5px;flex:none}
+.bugtitle{font-size:12.5px}
+.bugmeta{color:var(--mut);font-size:10.5px;font-family:var(--mono)}
+.empty{color:var(--dim);font-size:12px;padding:8px 0}
+.tip{margin:0;padding-left:16px;color:var(--mut);font-size:12px}
+.tip li{margin:4px 0}
+
+/* 新建节点表单 */
+#newform{position:fixed;z-index:60;left:50%;top:50%;translate:-50% -50%;width:340px;max-height:80vh;overflow:auto;
+  background:var(--card-bg);border:1px solid var(--card-line);border-radius:16px;box-shadow:var(--card-shadow);
+  backdrop-filter:blur(20px) saturate(1.5);-webkit-backdrop-filter:blur(20px) saturate(1.5);
+  padding:16px 18px;animation:modalPop .18s cubic-bezier(.16,1,.3,1);
+  scrollbar-width:thin;scrollbar-color:var(--line2) transparent}
+@keyframes modalPop{from{opacity:0;scale:.96}to{opacity:1;scale:1}}
+#newform.hidden,#draftbar.hidden{display:none}
+#newform .nf-head{display:flex;align-items:center;gap:8px;margin-bottom:10px}
+#newform .nf-head b{font-size:14px;font-weight:600;flex:1}
+#newform .nf-head select{width:auto;background:var(--panel2);border:1px solid var(--line2);border-radius:999px;
+  color:var(--txt);padding:4px 10px;font:12px var(--sans);outline:none;cursor:pointer;transition:border-color .16s}
+#newform .nf-head select:hover{border-color:var(--acc)}
+#newform .nf-x{width:24px;height:24px;display:grid;place-items:center;color:var(--dim);font-size:15px;line-height:1;
+  border-radius:8px;transition:.16s}
+#newform .nf-x:hover{color:var(--txt);background:var(--panel2)}
+.nf-row{margin:9px 0}
+.nf-row>label{display:block;color:var(--mut);font-size:11px;font-weight:500;letter-spacing:.2px;margin-bottom:5px}
+.nf-row input,.nf-row select,#newform textarea{width:100%;background:var(--panel2);border:1.5px solid transparent;
+  color:var(--txt);border-radius:10px;padding:6px 10px;font:12.5px var(--sans);outline:none;
+  transition:border-color .16s ease,box-shadow .16s ease,background .16s ease}
+.nf-row input:hover,.nf-row select:hover,#newform textarea:hover{border-color:var(--line2)}
+.nf-row input:focus,.nf-row select:focus,#newform textarea:focus{border-color:var(--acc);box-shadow:var(--ring);background:var(--panel)}
+.nf-row input::placeholder{color:var(--dim)}
+#newform textarea{resize:vertical;min-height:58px;line-height:1.5;font-family:var(--sans)}
+.nf-foot{display:flex;align-items:center;gap:10px;margin-top:14px}
+.nf-err{color:var(--err);font-size:11px;flex:1;line-height:1.4}
+.nf-btn{padding:6px 16px;border:1px solid var(--line2);border-radius:999px;color:var(--txt);background:var(--panel);
+  font-size:12px;font-weight:500;transition:.18s}
+.nf-btn.pri{border-color:transparent;color:#fff;background:var(--acc);box-shadow:0 6px 18px -6px rgba(0,111,238,.65)}
+.nf-btn.pri:hover{background:var(--acc);filter:brightness(1.1)}
+.nf-btn:hover{background:var(--panel2);transform:translateY(-1px)}
+.nf-btn:active{transform:scale(.97)}
+
+/* 草稿条 */
+#draftbar{position:fixed;z-index:55;left:16px;bottom:16px;width:300px;max-height:50vh;overflow:auto;
+  background:var(--card-bg);border:1px solid var(--card-line);border-radius:16px;box-shadow:var(--card-shadow);
+  backdrop-filter:blur(20px) saturate(1.5);-webkit-backdrop-filter:blur(20px) saturate(1.5);
+  padding:12px 14px;font-size:12px;animation:pop .18s cubic-bezier(.16,1,.3,1);
+  scrollbar-width:thin;scrollbar-color:var(--line2) transparent}
+.db-head{display:flex;align-items:center;gap:7px;color:var(--warn);font-size:11.5px;font-weight:600;margin-bottom:8px}
+.db-head::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--warn);flex:none;
+  box-shadow:0 0 0 3px color-mix(in oklab,var(--warn) 20%,transparent)}
+.db-row{display:flex;gap:8px;align-items:flex-start;padding:8px 0;border-top:1px solid var(--line)}
+.db-t{flex:1;min-width:0}
+.db-t b{font-weight:600;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.db-k{color:var(--dim);font-size:11px;font-family:var(--mono)}
+.db-s{color:var(--mut);font-size:11px;margin-top:2px}
+.db-a{display:flex;gap:5px;flex:none}
+.db-a button{font-size:11px;padding:3px 9px;border:1px solid var(--line2);border-radius:999px;color:var(--mut);
+  background:var(--panel);transition:.16s}
+.db-a button:hover{color:var(--txt);border-color:var(--acc);background:var(--acc-soft)}
+.db-foot{display:flex;gap:8px;margin-top:10px}
+.draft-tag{fill:var(--warn);font:10px var(--mono)}
+.fold-badge{fill:var(--dim);font-weight:600}
+.ins-row{display:flex;justify-content:space-between;gap:10px;padding:7px 0;
+  border-bottom:1px solid var(--line);font-size:12px}
+.ins-row b{font-family:var(--mono);color:var(--txt)}
+/* 滚动条 */
+#card::-webkit-scrollbar,#newform::-webkit-scrollbar,#draftbar::-webkit-scrollbar{width:10px}
+#card::-webkit-scrollbar-thumb,#newform::-webkit-scrollbar-thumb,#draftbar::-webkit-scrollbar-thumb{
+  background:var(--line2);border-radius:999px;border:3px solid transparent;background-clip:content-box}
+#card::-webkit-scrollbar-thumb:hover,#newform::-webkit-scrollbar-thumb:hover,#draftbar::-webkit-scrollbar-thumb:hover{
+  background:var(--panel3);border:3px solid transparent;background-clip:content-box}
+</style>
+</head>
+<body>
+
+<div class="proto-flag">loop map · build 2026-11-25T03:14:28Z · 6 模块 · 22 功能点 · 86 修改点</div>
+
+<header>
+  <div class="brand"><span class="mark"></span><b>Snorkeling</b><span>项目地图</span></div>
+  <div class="layout-ctl">
+    <span>顺序</span>
+    <input type="range" id="mix" min="0" max="100" value="100">
+    <span>时间线</span>
+  </div>
+  <div class="filters">
+    <button class="chip icon-only" id="expandAll" title="展开全部" aria-label="展开全部"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6.2l4-4 4 4"/><path d="M4 9.8l4 4 4-4"/></svg></button>
+    <button class="chip icon-only" id="collapseAll" title="折叠全部" aria-label="折叠全部"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 2.2l4 4 4-4"/><path d="M4 13.8l4-4 4 4"/></svg></button>
+    <button class="chip" id="mindBtn" title="XMind 式导图（M）">导图</button>
+    <button class="chip" id="newNode">＋ 新建</button>
+  </div>
+  <div class="filters" id="presets">
+    <button class="chip on" data-preset="all">全部</button>
+    <button class="chip" data-preset="90">近 90 天</button>
+    <button class="chip" data-preset="30">近 30 天</button>
+  </div>
+  <button class="chip" id="theme" title="切换主题">浅色</button>
+  <div class="sec-line">
+    <div class="legend">
+      <span><i class="c-ok"></i>已发布</span>
+      <span><i class="c-warn"></i>开发中</span>
+      <span><i class="c-planned"></i>计划中</span>
+      <span><i class="c-err"></i>已废弃</span>
+      <span class="bug-legend"><i class="c-acc"></i>修改点 已修</span>
+      <span class="bug-legend"><i class="c-err"></i>修改点 未修</span>
+    </div>
+    <div class="hint" id="hint"></div>
+  </div>
+</header>
+
+<main>
+  <div class="canvas-wrap"><svg id="map" xmlns="http://www.w3.org/2000/svg"></svg></div>
+</main>
+<div id="card"></div>
+<div id="newform" class="hidden"></div>
+<div id="draftbar" class="hidden"></div>
+
+<script>
+/* loop map · build 2026-11-25T03:14:28Z
+   loop map · build 2026-11-25T03:14:28Z · 6 模块 · 22 功能点 · 86 修改点
+   功能层来自 loop/map/**（人写）；修改点来自 loop/items/*.md（工作项）
+   改完重跑 queue map build */
+var PROJECT = {"name":"Snorkeling","since":"2024-05-09","today":null};
+var TODAY = "";
+var LOOP_TYPES = ["bug","fix-small","docs","chore","question","feature","redesign","new-surface","arch"];
+var LOOP_SEVERITIES = ["S0","S1","S2","S3"];
+var LOOP_PRIORITIES = ["P0","P1","P2","P3"];
+var MODULES = [
+  {"id":"agent","title":"Agent 会话与派发","order":4},
+  {"id":"commontext","title":"CommonText","order":3},
+  {"id":"frontend","title":"前台界面","order":1},
+  {"id":"hero","title":"据点 Hero","order":5},
+  {"id":"infra","title":"基建与工作流","order":6},
+  {"id":"persona","title":"人设体系","order":2}
+];
+var RELEASES = [
+
+];
+var FEATURES = [
+  {"id":"acs","title":"ACS 会话控制","module":"agent","parent":null,"status":"building","introduced":"2026-11-21","target":null,"deprecated":null,"releases":[],"note":"resume（按会话恢复）+ roundtrip（send --wait-reply）。"},
+  {"id":"agent-block","title":"Agent Block 创建与发送","module":"agent","parent":null,"status":"building","introduced":"2026-11-09","target":null,"deprecated":null,"releases":[],"note":"wsh agent launch/send + MCP 工具 + OSC8 路径链接 + 本机命令解析。"},
+  {"id":"agent-card","title":"Agent 卡与状态 chip","module":"frontend","parent":null,"status":"building","introduced":"2026-11-06","target":null,"deprecated":null,"releases":[],"note":"状态 chip 收口 / 运行时长 / 标签候选 / 模型新鲜度。"},
+  {"id":"agentsend","title":"派发与回执","module":"agent","parent":null,"status":"building","introduced":"2026-11-23","target":null,"deprecated":null,"releases":[],"note":"提交确认退避 + 派发回执可见 + 图片粘贴 + 超时误映射。"},
+  {"id":"commontext-editor","title":"编辑器体验","module":"commontext","parent":null,"status":"building","introduced":"2026-11-13","target":null,"deprecated":null,"releases":[],"note":"快捷收起 + 属性默认折叠 + 文本草稿自动保存。"},
+  {"id":"commontext-send","title":"发送到 Agent","module":"commontext","parent":null,"status":"building","introduced":"2026-11-23","target":null,"deprecated":null,"releases":[],"note":"create 路径走后端 agentsend + 模型与路径选择。"},
+  {"id":"commontext-sync","title":"条目级同步","module":"commontext","parent":null,"status":"building","introduced":"2026-11-06","target":null,"deprecated":null,"releases":[],"note":"同步元数据（createdBy/origin/rev/墓碑）+ 条目级水位 + WebSocket 实时推送。"},
+  {"id":"commontext-tags","title":"标签结构化","module":"commontext","parent":null,"status":"building","introduced":"2026-11-14","target":null,"deprecated":null,"releases":[],"note":"tags 结构化权威 + 读路径惰性迁移 + 详情入属性区。"},
+  {"id":"conn-picker","title":"连接下拉","module":"agent","parent":null,"status":"building","introduced":"2026-11-17","target":null,"deprecated":null,"releases":[],"note":"图标居右 / 一键复制 / 使用次数排序 / 加载骨架。"},
+  {"id":"emoji-pref","title":"Emoji 偏好","module":"frontend","parent":null,"status":"building","introduced":"2026-11-19","target":null,"deprecated":null,"releases":[],"note":"后端地基（两表 + UPSERT + 推荐器）+ CLI 接线。"},
+  {"id":"hero-identity","title":"Hero 登场身份","module":"hero","parent":null,"status":"building","introduced":"2026-11-16","target":null,"deprecated":null,"releases":[],"note":"AGENTS.md CHARTER 摘要注入 + Header 显示 Hero 名 + 恢复补盖章。"},
+  {"id":"idx-badges","title":"目录索引徽标 · 装饰协议","module":"frontend","parent":null,"status":"building","introduced":"2026-11-24","target":null,"deprecated":null,"releases":[],"note":"index.md 状态表 + 词表泛化（icon/labelColor/order）+ agent 发现面。"},
+  {"id":"loop-workflow","title":"loop 台账与夜班","module":"infra","parent":null,"status":"building","introduced":"2026-11-05","target":null,"deprecated":null,"releases":[],"note":"台账骨架 + 夜班真派发 + fail-open 兜底 + harness 红证 + 清账。"},
+  {"id":"overview-board","title":"Overview 看板","module":"frontend","parent":null,"status":"building","introduced":"2026-11-06","target":null,"deprecated":null,"releases":[],"note":"卡片动作 / 跨列动画 / 拖拽 / Tab 分组 / 新建入口 / composer 发送。"},
+  {"id":"persona-block","title":"名册 Block 与登场","module":"persona","parent":null,"status":"shipped","introduced":"2026-11-12","target":null,"deprecated":null,"releases":[],"note":"persona:// 名册 + 🎭 widget 图标 + hover 登场弹窗 + AISessions 分组。"},
+  {"id":"persona-core","title":"persona 核心与创建","module":"persona","parent":null,"status":"shipped","introduced":"2026-11-12","target":null,"deprecated":null,"releases":[],"note":"目录布局 + scaffold + wsh CLI + 自创建（propose 闸门 + 配额）+ 两步向导。"},
+  {"id":"persona-journal","title":"journal 记忆","module":"persona","parent":null,"status":"shipped","introduced":"2026-11-13","target":null,"deprecated":null,"releases":[],"note":"写入器 + 提议制记忆 + 蒸馏（含回滚）。"},
+  {"id":"persona-sync","title":"跨机同步","module":"persona","parent":null,"status":"shipped","introduced":"2026-11-13","target":null,"deprecated":null,"releases":[],"note":"rootdir 单仓 + relocate + journal 轮转 + 冲突合并。"},
+  {"id":"properties","title":"属性体系","module":"frontend","parent":null,"status":"building","introduced":"2026-11-11","target":null,"deprecated":null,"releases":[],"note":"范围三选一 / status→select 迁移 / 新值自动追加候选。"},
+  {"id":"sched-task","title":"定时任务","module":"agent","parent":null,"status":"building","introduced":"2026-11-19","target":null,"deprecated":null,"releases":[],"note":"agent 化创建 + Hero 定时执行（后端+前端）+ 管理弹窗化。"},
+  {"id":"session-details","title":"会话详情与定位","module":"frontend","parent":null,"status":"building","introduced":"2026-11-18","target":null,"deprecated":null,"releases":[],"note":"详情块绑定 / Header 缓存维度 / id 前缀匹配。"},
+  {"id":"tab-system","title":"Tab 栏","module":"frontend","parent":null,"status":"building","introduced":"2026-11-05","target":null,"deprecated":null,"releases":[],"note":"拖拽换位 / 收起激活 / 重启恢复 / 收起到「更多」。"}
+];
+var BUGS = [
+  {"id":"F-1123-agentsend-submit-budget","title":"提交确认按时间预算退避（45s 次数上限绕过 180s/600s 预算）+ 派发回执不许掩盖未确认","feature":"agentsend","severity":"high","reported":"2026-11-23","fixed":null,"fixedIn":null,"note":"_（待补）_"},
+  {"id":"F-1123-commontext-create-send","title":"CommonText 新建 agent 发送丢失：create 路径改走后端 agentsend（提交确认+补回车）","feature":"commontext-send","severity":"high","reported":"2026-11-23","fixed":null,"fixedIn":null,"note":"_（待补）_"},
+  {"id":"N-1105-loop-ledger","title":"loop 台账骨架 + 门引擎","feature":"loop-workflow","severity":"low","reported":"2026-11-05","fixed":"2026-11-11","fixedIn":null,"note":"没有台账就没法回答“哪个班跑到哪、算不算过”，这是整套昼夜流程的地基。"},
+  {"id":"N-1109-agent-chip-conditional-hook","title":"Agent 状态 chip 条件调用 hook 导致整窗白屏（React #310）","feature":"agent-card","severity":"normal","reported":"2026-11-09","fixed":null,"fixedIn":null,"note":"`0.0.123` / `0.0.124` 上出现\"整窗突然白屏、切 tab 无效、只能重启\"。"},
+  {"id":"N-1124-agentsend-false-fail","title":"Overview 发送已成功却显示发送失败（客户端超时预算 + 超时误映射 + 重复投递）","feature":"agentsend","severity":"high","reported":"2026-11-24","fixed":null,"fixedIn":null,"note":"用户 2026-11-24 反馈：发送成功了但显示发送失败。根因已定位：客户端 RPC 超时 80s < 服务端最坏 270s（30s 安静等待 + 180s 提交确认 + 60s 等回复）；客户端超时错误 EC-TIME 被 outcomeFromSend 无条件判 failed，且草稿保留 → 用户点重试 = 重复投递。修法：超时预算覆盖服务端全预算 + 新增 unknown 行程态（禁止重试）+ 真失败仍可重试。"},
+  {"id":"N-1118-detail-scope-threading","title":"会话详情弹窗/详情块丢失 connection 与 origin，Detail 回落本机 manager","feature":"session-details","severity":"normal","reported":"2026-11-18","fixed":"2026-11-25","fixedIn":null,"note":"session-overview 的 openSessionDetail(row.sessionId)、agentcardmodal 的 pushModal 只传裸 id；openAISessionDetailFromList 不传 origin。三者都会让 Detail 走 managerForIdentifier → newLocalManager()。"},
+  {"id":"N-1118-header-note-origin","title":"标题缓存缺 origin 维度：外部 dump 会话的 Header 退化为 Session Details，写操作落错库","feature":"session-details","severity":"normal","reported":"2026-11-18","fixed":null,"fixedIn":null,"note":"session-note-cache 以 connection+id 为键，Summary 不带 origin；后端 Detail/Summary 响应也不回填 origin 标签，导致 dump 会话标题取不到、写 note/title 落到本机 meta 库。"},
+  {"id":"N-1118-resolve-exact-id","title":"会话定位的 id 前缀匹配：唯一命中时静默返回另一个会话","feature":"session-details","severity":"normal","reported":"2026-11-18","fixed":null,"fixedIn":null,"note":"strings.HasPrefix(summary.ID, identifier) 在唯一命中时不报歧义、直接返回，截断的 id 会打开别的会话。收成精确 key/id 匹配。"},
+  {"id":"N-1120-aisessions-detail-binding-mismatch","title":"AI 会话详情块绑定错位：打开的详情常常不是列表里点的那一行","feature":"session-details","severity":"normal","reported":"2026-11-20","fixed":null,"fixedIn":null,"note":"详情块（带 `aisessions:sessionid` 的 aisessions 块）挂载后，`loadSessions` 的收尾"},
+  {"id":"N-1120-fsmonitor-no-daemon","title":"内部 git 调用禁用 fsmonitor 常驻 daemon（三处收口）","feature":"loop-workflow","severity":"normal","reported":"2026-11-20","fixed":null,"fixedIn":null,"note":"本机系统级 `core.fsmonitor=true` 让每次刷索引的 git 命令在对应仓库拉起一个 40–80MB、无空闲超时、永不退出的 `fsmonitor--daemon`。Snorkeling 的 VCS 扫描（`vcs.go` 对 basePath 下 depth 3 逐仓 `git status`）、同步传输、hero 同步三条内部路径都会触发它，累积到几十个后吃满整机 commit（11-19 `errno=1455` OOM 闪退）。内部 git 命令构造点审计为 3 处，统一加 `-c core.fsmonitor=false`。不改系统 gitconfig、不影响用户终端里的 git。"},
+  {"id":"N-1120-wsh-session-emoji-unwired","title":"wsh CLI 接线 bug：session emoji 命令组不可达（init() 漏 AddCommand）","feature":"emoji-pref","severity":"normal","reported":"2026-11-20","fixed":null,"fixedIn":null,"note":"commit 2c94b2c6e 新增 session emoji 功能（后端字段/推荐注入/MCP 六工具），但 wshcmd-session.go 的 init() 注册 sessionCmd 子命令时漏了 sessionEmojiCmd，其 5 个子命令只挂在自身身上，导致整组 CLI 不可达。修法：把它加进 sessionCmd.AddCommand 列表，另补顶层回归测试锁住 sessionCmd 子命令集合。"},
+  {"id":"N-1124-agent-cmd-resolve2","title":"Agent 块本机启动命令解析：GUI 裸 PATH 下 opencode 找不到命令（11-24-agent-local-cmd-resolve）","feature":"agent-block","severity":"normal","reported":"2026-11-24","fixed":null,"fixedIn":null,"note":"_（待补）_"},
+  {"id":"N-1124-hero-restore-header","title":"恢复的 hero 会话块 header 走通用显示逻辑：恢复时补盖章 hero 身份 meta","feature":"hero-identity","severity":"normal","reported":"2026-11-24","fixed":null,"fixedIn":null,"note":"Hero 身份只在登场时写 block meta（`buildHeroLaunchBlockDef`：`hero` / `hero:name` / `display:name` / `agent:emoji`）；从 AISessions 恢复走的是另一条 meta 构造路径 —— GUI `restoreMetaForSession`（`frontend/app/view/aisessions/utils.ts` L743，调用点 aisessions.tsx / aisessiondetailmodal.tsx / agent.tsx）与 CLI/MCP `BuildResumeBlockMeta`（`pkg/agentcontrol/restore.go` L194，golden parity test 锁两端），**两条都不写 hero 键**。显示端只认 block meta（`block.tsx` L317 `heroHeaderName`、`agent-logo.tsx` `getAgentIcon`、`term-model.ts` L377），于是恢复块回退通用逻辑：provider logo + `basename(cmd:cwd)`（hero 会话就是 `hero-<hash8>`）。"},
+  {"id":"N-1125-commontext-paste-default-writer","title":"CommonText 图片粘贴默认 writer 未生效","feature":"commontext-editor","severity":"normal","reported":"2026-11-25","fixed":null,"fixedIn":null,"note":"_（待补）_"},
+  {"id":"N-1120-property-status-to-select","title":"属性 status 类型彻底退役（数据迁移 status→select + 改类型浮层修复）","feature":"properties","severity":"normal","reported":"2026-11-20","fixed":null,"fixedIn":null,"note":"status 类型只做过前端读时归一（44046ab9f），后端白名单/校验/jsonschema、存量 sqlite prop_type 与"},
+  {"id":"N-1105-harness-redproof","title":"既有 4 个 harness 登记 red_proof","feature":"loop-workflow","severity":"low","reported":"2026-11-05","fixed":null,"fixedIn":null,"note":"现有四个 harness 只有“能跑绿”，没有“能对已知坏样本变红”的凭据。"},
+  {"id":"N-1106-overview-card-actions","title":"Overview 看板卡片动作：关闭 / 删除（含彻底删除）+ 内联 Tab 组不被误删","feature":"overview-board","severity":"low","reported":"2026-11-06","fixed":"2026-11-11","fixedIn":null,"note":"看板卡片目前只能打开会话详情，没有关闭/删除入口；关闭路径对 inline tab 组会连带删掉同组兄弟 block；删除只有移到 deleted 的软删，没有彻底删除。"},
+  {"id":"N-1106-overview-board-motion","title":"Overview 看板卡片跨列移动动画（FLIP + WAAPI）","feature":"overview-board","severity":"low","reported":"2026-11-06","fixed":"2026-11-11","fixedIn":null,"note":"_（待补）_"},
+  {"id":"F-1106-agent-card-chip-title","title":"Agent 卡片统一：状态 chip 收口 + 运行时长 + 标题编辑","feature":"agent-card","severity":"low","reported":"2026-11-06","fixed":null,"fixedIn":null,"note":"Agent 状态徽章在仓库里有 4 份互不相干的实现（Overview 列表/看板 `agent-status-chip.tsx`、悬浮卡+放大弹窗"},
+  {"id":"N-1105-cleanup-46to22","title":"清账：活跃任务 46 → ≤22（归档清单须人工过）","feature":"loop-workflow","severity":"low","reported":"2026-11-05","fixed":null,"fixedIn":null,"note":"46 个活跃任务里约一半已落地未归档，队列噪声比真实待办大两倍。"},
+  {"id":"F-1106-move-block-tab-menu","title":"Move Block to Tab：菜单 4→1 条 + 弹窗内新建 / 每行双图标动作","feature":"tab-system","severity":"low","reported":"2026-11-06","fixed":"2026-11-11","fixedIn":null,"note":"block 菜单里「把 block 送到别的 tab」被拆成 4 条（Move/Copy × New/Existing）：两条「新建」立刻执行、tab 名字不可见，"},
+  {"id":"F-1107-commontext-sync-meta","title":"Common Text 同步元数据：createdBy/origin/rev/deletedat + 迁移 + 过滤","feature":"commontext-sync","severity":"low","reported":"2026-11-07","fixed":null,"fixedIn":null,"note":"_（待补）_"},
+  {"id":"F-1109-commontext-sync-watermark","title":"Common Text 条目级同步水位：区分已同步/待上传 + 增量推送 + 墓碑","feature":"commontext-sync","severity":"low","reported":"2026-11-09","fixed":null,"fixedIn":null,"note":"CommonText 无法区分哪些条目已上传：db_common_text 无水位列，本地编辑不 bump rev（commontext-model.ts:655），引擎每轮全表推（engine.go:317），Status 只有四个全局计数。UI 删除不写墓碑（commontext-model.ts:672-676），删除推不出去会被对端复活。"},
+  {"id":"F-1111-agent-property-scope","title":"Agent 卡片属性：范围三选一 + 表单美化 + 外部操作支持","feature":"properties","severity":"low","reported":"2026-11-11","fixed":null,"fixedIn":null,"note":"_（待补）_"},
+  {"id":"F-1112-persona-agent-create","title":"A2.5 Agent 自创建：CLI + propose 闸门 + 配额 + memory 纪律","feature":"persona-core","severity":"low","reported":"2026-11-12","fixed":"2026-11-12","fixedIn":null,"note":"_（待补）_"},
+  {"id":"F-1112-persona-aisessions-r1","title":"A1.5 AISessions 集成：persona 属性 + 🎭 分组折叠 + 登场史","feature":"persona-block","severity":"low","reported":"2026-11-12","fixed":"2026-11-12","fixedIn":null,"note":"_（待补）_"},
+  {"id":"F-1112-persona-core-r2","title":"A1 persona 核心：目录布局 + scaffold + wsh persona CLI","feature":"persona-core","severity":"low","reported":"2026-11-12","fixed":"2026-11-12","fixedIn":null,"note":"_（待补）_"},
+  {"id":"F-1113-persona-widget-launch-r2","title":"A3 widget 🎭 图标 + hover 登场弹窗 + 注入开关 + props.persona 派生补带","feature":"persona-block","severity":"low","reported":"2026-11-13","fixed":"2026-11-13","fixedIn":null,"note":"A3 登场入口。实现完成于 F-1113（7/8 绿，判据 8 期望 >=1 不可满足，drop）；F-1113-r1 判据 8 用 $() 不兼容 cmd.exe（drop）。本包为第三次判据修正（裸模式 grep + 字面量行断言，cmd.exe / bash 双验证），实现零改动。"},
+  {"id":"F-1116-commontext-sync-ws-push","title":"CommonText 同步实时推送：WebSocket rev 通知 + 保存即触发 + timer 兜底","feature":"commontext-sync","severity":"low","reported":"2026-11-16","fixed":null,"fixedIn":null,"note":"CommonText 同步现只有 5 分钟 timer + 手动两个触发源，跨设备可见最坏 ~10 分钟。设置面板「实时推送」显示不支持（`CapWebSocket` 只有常量声明，全仓无实现）。用户要求做实时推送。"},
+  {"id":"F-1116-hero-identity-inject","title":"Hero 登场身份注入：据点根级 AGENTS.md 带 CHARTER 摘要","feature":"hero-identity","severity":"low","reported":"2026-11-16","fixed":"2026-11-16","fixedIn":null,"note":"rootPointerTemplate 只生成 6 行指针，pi/codex 注入面无使命正文（实测确认）。修复 = AGENTS.md 加身份段 + 必读 CHARTER 硬规则，对齐 design/plans/persona-system.md L245。"},
+  {"id":"F-1117-overview-card-props","title":"Overview agent 卡面显示 Note/Tags/自定义属性（含状态）","feature":"overview-board","severity":"low","reported":"2026-11-17","fixed":null,"fixedIn":null,"note":"Overview 列表行与看板卡此前不读 `summary.props`（用户自定义属性，如 status），列表行也无 tags。数据层完整（`Summary` RPC 返回 note/tags/props），纯渲染层缺口。方案要点：看板卡 props 彩色胶囊（status/select 类型）+ 上限 3 条 + `+n` 溢出防卡高跳动；列表行补 tags chips + 属性紧凑行；悬浮卡 `summary == null` 渲染加载占位。全部复用现有 summary 缓存，不加新 RPC；解析逻辑收口 `overview-board-model.ts` 纯函数（`resolveBoardPropRows`）。完整需求见 `.trellis/tasks/11-17-overview-agent-card-props/prd.md`（G1 已签：2026-11-17 @nita）。"},
+  {"id":"F-1120-overview-add-agent-card","title":"Overview 看板 Tab 下新建 Agent 卡（＋ 入口 + New Agent 同款居中弹窗）","feature":"overview-board","severity":"low","reported":"2026-11-20","fixed":null,"fixedIn":null,"note":"Overview 看板目前是纯只读投影：卡片只能来自已存在的 agent 块，没有任何新建入口。用户要按 Tab 组织工作时，必须先去该 Tab 开 agent 块再回看板。本次把「新建 agent 会话」入口放到 Tab 列底部，路径/连接继承该 Tab，避免上下文串台。"},
+  {"id":"F-1121-agent-resume","title":"ACS：agent resume（按会话恢复 agent 块）+ session mark","feature":"acs","severity":"low","reported":"2026-11-21","fixed":null,"fixedIn":null,"note":"GUI 已有完整恢复链路（`RestoreContext` → `restoreMetaForSession` → `createBlock`），后端 shellcontroller 也已消费 `agent:autoresume/agent:provider/agent:sessionid` 生成真实 resume 参数。缺的是 CLI/MCP 入口：外部 agent 无法「按会话续上」。同时 `session mark` 只有 GUI 入口。"},
+  {"id":"F-1122-overview-card-send","title":"Overview 列表卡展开 + composer 发送（派发/等回复/失败原地重试）","feature":"overview-board","severity":"low","reported":"2026-11-22","fixed":null,"fixedIn":null,"note":"_（待补）_"},
+  {"id":"F-1122-overview-tab-grouping","title":"Overview Tab 分组 tab-first 化：组不消失 + 未打开灰行 + 批量取块骨架","feature":"overview-board","severity":"low","reported":"2026-11-22","fixed":null,"fixedIn":null,"note":"_（待补）_"},
+  {"id":"F-1123-board-card-actions","title":"看板卡补齐能力：恢复 agent + composer 浮层发送（复用 AgentResumeCommand / card-send）","feature":"overview-board","severity":"low","reported":"2026-11-23","fixed":null,"fixedIn":null,"note":"_（待补）_"},
+  {"id":"F-1124-agent-path-links","title":"终端/AI 面板 agent 路径链接：OSC8 激活 + 脏路径修复 + Search In Files 兜底","feature":"agent-block","severity":"low","reported":"2026-11-24","fixed":null,"fixedIn":null,"note":"根因：终端只装了 WebLinksAddon（正则匹配明文 URL），Terminal.options.linkHandler 从未设置；xterm 内置 OscLinkProvider 在无 linkHandler 时把非 http(s) 的 OSC8 链接整个丢弃，而 urlId 又给单元格强加下划线 → 看着像链接、点击/hover/右键全无反应。上一期 docs/answers/terminal-file-url-ctrl-click-20261022-151126.html 已把 OSC-8 明确推迟。"},
+  {"id":"N-1105-cmd-window-flash","title":"打开看板闪黑窗：子进程漏 windowsHide","feature":"loop-workflow","severity":"normal","reported":"2026-11-06","fixed":null,"fixedIn":null,"note":"看板服务无控制台启动；/api/version 走 readGitState 连起 4 个 git 子进程，全都没 windowsHide → 一个调用一个新控制台窗口一闪而过。引擎作为孙进程同样中招（queue.mjs 的 git、prove 的 execSync）。"},
+  {"id":"N-1105-night-runner","title":"夜班真派发：headless agent 注入契约并限一包","feature":"loop-workflow","severity":"low","reported":"2026-11-05","fixed":null,"fixedIn":null,"note":"S3：把 queue run 从干跑推进到真起会话。契约与负向夹具已就绪（S1），取件入口已上线（S2）。"},
+  {"id":"N-1105-tab-hover-clip","title":"Tab 条悬停弹窗被截断（卡片贴视口边缘不做钳位）","feature":"tab-system","severity":"normal","reported":"2026-11-06","fixed":null,"fixedIn":null,"note":"悬浮 workspace Tab 弹出的 info card 定位是 fixed top=rect.bottom+2 / left=rect.left，只做相对目标偏移，没有视口钳位与翻转：靠右/靠下的 Tab 把卡片顶出窗口被裁。"},
+  {"id":"N-1108-agent-chip-phase-duration","title":"状态徽章时长按当前阶段段计算（phaseSince），而非 working 总时长","feature":"agent-card","severity":"normal","reported":"2026-11-08","fixed":null,"fixedIn":null,"note":"_（待补）_"},
+  {"id":"N-1114-commontext-tags-structured","title":"CommonText 内容与标签分离（tags 结构化权威 + 读路径惰性迁移）","feature":"commontext-tags","severity":"low","reported":"2026-11-14","fixed":null,"fixedIn":null,"note":"正文是唯一权威：tag 以 `#tag` 字面住在 `text` 里，`item.tags` 只是派生快照——正文里的 `#` 永远在。改法（方案已确认）：`item.tags` 成为唯一权威、text 纯内容；读路径 `normalizeCommonTextItem` 惰性迁移历史字面（mergedTags ∪ extract、stripSessionTagHashes 剥字面、剥空回退原文保条目）；写路径五处收口（detailTags 读 item.tags、applyDetailTags 即时写 tags 不再改正文、flushDetailSave/Pin 用 item.tags、「+」创建时拆分草稿）。"},
+  {"id":"N-1114-tab-drag-switch-fix","title":"Tab 栏交互修复：点击误判拖拽换位 + 切换高亮迟滞 + 广播重复入队","feature":"tab-system","severity":"normal","reported":"2026-11-14","fixed":null,"fixedIn":null,"note":"_（待补）_"},
+  {"id":"N-1114-tab-restore-all-r3","title":"重启后 Tab 栏只恢复激活一个 Tab，其余全被藏进「更多」","feature":"tab-system","severity":"normal","reported":"2026-11-14","fixed":null,"fixedIn":null,"note":"_（待补）_"},
+  {"id":"N-1119-agent-card-display","title":"Agent 卡片：模型新鲜度与供应商拆分 + 标题来源短标记","feature":"agent-card","severity":"low","reported":"2026-11-19","fixed":null,"fixedIn":null,"note":"_（待补）_"},
+  {"id":"N-1123-hero-sched-core","title":"Hero 定时执行后端（方案 A）：ScheduledTaskType 加 hero 字段 + hero home cwd + block meta 注入","feature":"sched-task","severity":"low","reported":"2026-11-23","fixed":null,"fixedIn":null,"note":"锚点：pkg/wconfig/settingsconfig.go ScheduledTaskType（AgentProfile/Provider/Model/Workdir/Mode）· pkg/wshrpc/wshserver/scheduledtask.go launchBlockForTask（AgentLaunchRequest 目前不传 hero meta）· pkg/hero roster/ValidateID（hero.json provider/model）· 前端镜像语义见 frontend/app/workspace/hero-launch.ts（meta hero / hero:name、cwd=hero home）"},
+  {"id":"N-1123-hero-sched-ui","title":"Hero 定时执行前端：任务编辑弹窗 hero 选择器 + Overview 独立「定时任务」区","feature":"sched-task","severity":"low","reported":"2026-11-23","fixed":null,"fixedIn":null,"note":"前置= N-1123-hero-sched-core 已合并（ScheduledTaskType.Hero 字段与 hero home 语义）。锚点：frontend/app/modals/scheduledtaskeditormodal.tsx（378 行）· frontend/app/session-overview/overview-board.tsx + overview-tab-groups.ts · pkg/scheduler GetNextRunTime 口径 · hero roster 来源 frontend/app/workspace/hero-launch.ts"},
+  {"id":"N-1123-overview-drag","title":"Overview 看板 Agent 卡跨 Tab 拖拽（拖到目标 Tab 组/折叠组头 = 移动块）","feature":"overview-board","severity":"low","reported":"2026-11-23","fixed":null,"fixedIn":null,"note":"复用既有原语：frontend/layout/lib/inlineTabs.ts moveBlockBetweenInlineTabNodes / removeBlockIdFromInlineTabNode；layoutModel.ts:1838 已有 pendingDrop 流程。卡片=block 投影，拖 A→B 后 tab(B).blockids +1、tab(A) -1，块数守恒。拖到当前 Tab/空白处必须 0 次 RPC。"},
+  {"id":"N-1125-commontext-send-model-path","title":"CommonText 发送 Agent 模型与路径选择","feature":"commontext-send","severity":"low","reported":"2026-11-25","fixed":null,"fixedIn":null,"note":"_（待补）_"},
+  {"id":"F-1113-persona-sync-r1","title":"A5 跨机同步 v1：rootdir 单仓 + gitignore + rebuild + journal 冲突合并","feature":"persona-sync","severity":"low","reported":"2026-11-13","fixed":"2026-11-13","fixedIn":null,"note":"用户 2026-11-13 会话授权继续开发；真机验证留用户手动，判据全部纯机器可判定。"},
+  {"id":"F-1121-agent-roundtrip","title":"ACS：agent roundtrip（send --wait-reply 等回合完成收回复）+ session wait","feature":"acs","severity":"low","reported":"2026-11-21","fixed":null,"fixedIn":null,"note":"`agent send` 现为 fire-and-forget：注入成功即返回，回复只能靠反复读会话。多 agent 通信缺「等对方答完并拿到回复」这一段。会话数据还会不全（pi 首条回复前无文件、半截 JSON、按预算截断），所以完成判定必须三信号交集，不能只信新 assistant turn。"},
+  {"id":"F-1113-persona-journal-r1","title":"A6 journal 写入器 + 提议制记忆 + 蒸馏（含回滚）","feature":"persona-journal","severity":"low","reported":"2026-11-13","fixed":"2026-11-13","fixedIn":null,"note":"用户 2026-11-13 授权继续开发；真机验证留用户手动。"},
+  {"id":"F-1113-persona-relocate-r1","title":"A5.5 rootdir 设置 + relocate + journal 轮转 + 容量三项","feature":"persona-sync","severity":"low","reported":"2026-11-13","fixed":"2026-11-13","fixedIn":null,"note":"用户 2026-11-13 授权继续开发；真机验证留用户手动。"},
+  {"id":"N-1119-prop-ui-add-option","title":"UI 属性新值自动追加候选（select/status/multi_select，scope 门禁）","feature":"properties","severity":"low","reported":"2026-11-19","fixed":null,"fixedIn":null,"note":"UI 写值只写会话值、不追加候选；CLI 侧 `--prop-add-option` 已实现（main，未随 0.0.131 发布）。"},
+  {"id":"F-1113-persona-roster-r1","title":"A4 人设名册 Block persona://（列表/详情 + 登场复用）","feature":"persona-block","severity":"low","reported":"2026-11-13","fixed":"2026-11-13","fixedIn":null,"note":"用户 2026-11-13 授权继续开发；真机验证留用户手动。"},
+  {"id":"N-1119-scheduled-task-agent","title":"定时任务 agent 化：CLI/MCP 创建 + headless/建块双模式 + 启动补跑","feature":"sched-task","severity":"low","reported":"2026-11-19","fixed":null,"fixedIn":null,"note":"地基已有（InProcessScheduler + headless runner + CRUD RPC + 前端 modal），缺 CLI/MCP、缺建块模式、缺 catch-up。"},
+  {"id":"F-1113-persona-create-ui-r2","title":"A2 创建向导：两步向导 + 三入口 + 同源文件树预览","feature":"persona-core","severity":"low","reported":"2026-11-13","fixed":"2026-11-13","fixedIn":null,"note":"A2 前端。承接 F-1113-persona-create-ui-r1（仅判据 6 的 grep 缺 -r 判红，实现已完成）。"},
+  {"id":"N-1117-conn-typeahead-row-rail-r3","title":"连接下拉：右栏图标居右对齐 + hover 一键复制 + 使用次数排序 + 打开时加载骨架","feature":"conn-picker","severity":"normal","reported":"2026-11-17","fixed":null,"fixedIn":null,"note":"四个同族缺陷，同一文件对：1) 右栏没居右：.typeahead-item-source 的 margin-left:auto 挂在内容宽度的 .typeahead-item-name 里，只把自己推到文字屁股后面；行级 .typeahead-current-checkbox 也在用 margin-left:auto，两个 auto 互相竞争。2) 无一键复制：行内没有动作区。3) 无加载骨架：connList 初始 []，suggestions 为空 → 面板塌成输入框再撑开。4) 排序只按 display:order（默认全 0），常用连接不上浮。"},
+  {"id":"N-1124-overview-agent-fuse","title":"看板 agent 卡与列表融合：会话方块条共用组件 + 移除恢复 icon","feature":"overview-board","severity":"normal","reported":"2026-11-24","fixed":null,"fixedIn":null,"note":"用户 2026-11-24 反馈：agent card 没有显示列表中那种会话方块；agent card 上无须显示恢复 icon。现状：看板卡只有一行 preview 文本，列表有 MessageSquares（session-overview.tsx:1257）；恢复按钮在 overview-board.tsx:419 并带整套状态/内联报错。做法：抽 session-message-squares.tsx 共用组件（列表视觉零变化是红线），OverviewBoardCard 增 recentMessages/messagesOverflow（上限 10）；恢复按钮、onResumeCard、BoardCardResumeOutcome、runRestore、restoreError、canRestore、handleResumeBoardCard 与三处 i18n 一并删除。保留 AgentResumeCommand RPC 与 AISessions 恢复到终端入口。"},
+  {"id":"N-1124-schedtask-entry-fix","title":"定时任务入口回归右侧 widget + 弹窗版式对齐 CommonText（11-24-schedtask-entry-fix）","feature":"sched-task","severity":"normal","reported":"2026-11-24","fixed":null,"fixedIn":null,"note":"需求：点右侧定时任务 widget 打开 CommonText 同款弹窗，不建块。commit 8939d11f5 做成 Overview 工具栏按钮，且弹窗无尺寸/14px 标题/实现语副标题，与 CommonText 版式差距大。"},
+  {"id":"N-1105-queue-failopen","title":"queue.json 解析失败不再静默清空（回退 last-good 快照）","feature":"loop-workflow","severity":"normal","reported":"2026-11-05","fixed":"2026-11-05","fixedIn":null,"note":"queue.json 解析失败返回空队列，等于夜间队列被静默清空。"},
+  {"id":"N-1106-agent-tag-catalog","title":"Agent 卡片标签候选：全局清单 + 计数","feature":"agent-card","severity":"low","reported":"2026-11-06","fixed":"2026-11-14","fixedIn":null,"note":"tags 编辑器已是共享 Wolai 浮层（element/property-editor/tag-editor.tsx），但候选项只含 def.options（= summary.tags）+ 本会话已选值，看不到别的会话用过的标签。全局清单与 count 后端已提供（Tags RPC → SessionTagSummary{tag,count}），前端只喂 aisessions 筛选面板。本次把清单上提到共享 store，编辑器加计数通道，候选三源合并。"},
+  {"id":"F-1118-hero-header-display","title":"Hero Block Header 显示 Hero 名而非据点哈希路径","feature":"hero-identity","severity":"low","reported":"2026-11-18","fixed":null,"fixedIn":null,"note":"Hero 登场块的 Agent Block Header 三处显示据点目录（basename(cmd:cwd) = hero-<hash8>）：block.tsx defaultTitle、term-model buildCmdCwdHeaderElem、block.tsx fullPath tooltip。磁盘不变量（ValidateID 目录名==id）不动，只改显示层：启动时写 meta hero:name / display:name，Header 优先显示 emoji+name，完整路径退到 tooltip 与点击复制。"},
+  {"id":"F-1118-tab-collapse-active","title":"Tab 收起激活 Tab：收起并切走","feature":"tab-system","severity":"low","reported":"2026-11-18","fixed":null,"fixedIn":null,"note":"「收起激活 Tab」的真实诉求是「这个 Tab 暂时不用了，收起来去看别的」——激活恰恰是最常被收起的那一个。"},
+  {"id":"F-1122-overview-new-tab","title":"Overview 新建 Tab：工具栏 + 组尾入口 + 三选一弹窗","feature":"overview-board","severity":"low","reported":"2026-11-22","fixed":null,"fixedIn":null,"note":"_（待补）_"},
+  {"id":"N-1109-overview-board-chip-polish","title":"Overview 看板 chip 美化（A：去描边胶囊化）","feature":"overview-board","severity":"low","reported":"2026-11-09","fixed":null,"fixedIn":null,"note":"纯 CSS 微调：.session-overview-board-chip 去描边、999px 胶囊、10px 字号、文字提亮、内距 2px 8px；is-tag/tag-more 与状态 chip 语义不动。交付 before/after 可切换原型（G3），nita 自验观感（G7）。"},
+  {"id":"N-1109-overview-board-empty-status-label","title":"Overview 看板：无状态 agent 卡渲染空状态标签","feature":"overview-board","severity":"normal","reported":"2026-11-09","fixed":null,"fixedIn":null,"note":"看板卡片在 status == null 时无条件渲染兜底 view-label，而 agent-like 卡的 kindLabel 恒为空串；该 span 带 border/padding，于是画出空胶囊。列表视图已经按 status 判空，本包把同一收口补到看板。"},
+  {"id":"N-1113-commontext-editor-collapse","title":"CommonText 弹窗：Editor 快捷收起 + 属性列表默认折叠","feature":"commontext-editor","severity":"normal","reported":"2026-11-13","fixed":null,"fixedIn":null,"note":"上部 Editor 多行草稿展开后无法快速收起（失焦折叠判定只对无换行文本生效），下半部列表/详情被挤压；详情区属性网格 5 行固定占高且与 footer 元信息重复。改法：editor 加显式收起按钮（手动收起态优先级高于聚焦自动展开，Alt+Up 键盘通道），属性网格默认折叠成 icon+数字单行摘要，chevron 展开完整网格。"},
+  {"id":"N-1114-commontext-draft-autosave","title":"CommonText Editor 文本持久草稿自动保存","feature":"commontext-editor","severity":"normal","reported":"2026-11-14","fixed":null,"fixedIn":null,"note":"Editor 文本只在关弹窗时快照进模块级内存 `composeDraft`，同进程重开还原，**应用重启即丢**；要保住文本只能点「+」升格为列表条目。改法（用户已确认方案 A）：文本 800ms 防抖写入 `localStorage[\"commontext:editorDraft\"]`，关弹窗/卸载强制 flush；橡皮与「+」成功后清草稿；无 query 打开从 localStorage 还原（同进程与重启统一路径，删内存 composeDraft）；footer 显示 `Draft saved`。不自动落列表条目（方案 B 已否决：重复检测 throw + 云同步 rev 噪音）。"},
+  {"id":"N-1114-commontext-tags-no-hash","title":"CommonText 标签 chip 去 # 前缀（兼容历史数据）+ 折叠摘要展示标签名","feature":"commontext-tags","severity":"normal","reported":"2026-11-14","fixed":null,"fixedIn":null,"note":"标签 chip 仍显示 `#tag`（历史 `item.tags` 数据带 `#` 存储，`normalizeCommonTextTags` 只 trim 不剥 `#`，列表行/筛选 chip/汇总直接渲染原文）；属性折叠摘要行 tags 项只显示数量，折叠态看不到标签名。改法：`normalizeCommonTextTags` 读/写路径统一剥 `#`（与 `normalizeSessionTag` 同口径，历史数据读时即净）；摘要 tags 项改渲染标签名（join \" · \"，空态 \"0\"），span 允许收缩防溢出。"},
+  {"id":"N-1114-commontext-tags-property","title":"CommonText 详情标签移入属性区（Notion/Obsidian 式选择）","feature":"commontext-tags","severity":"normal","reported":"2026-11-14","fixed":null,"fixedIn":null,"note":"详情区底部「All tags」面板独占一块纵向空间、且与属性网格割裂。改法：标签成为属性网格第一行 Tags，值区点击唤起共享 `PropertyTagEditor` 浮层（md 预览/ AISessions 同款 Wolai 式：chips+输入同行、输入过滤、全库候选带计数、无匹配「创建」、Backspace 删尾、Esc 关闭）；写回仍走正文 `#tag` 字面最小 diff + 既有 800ms 自动保存；底部面板整块删除。折叠摘要行首加 `#` 数量项。"},
+  {"id":"N-1114-commontext-tags-summary-chips","title":"CommonText 折叠摘要标签样式与展开态统一（chip）","feature":"commontext-tags","severity":"normal","reported":"2026-11-14","fixed":null,"fixedIn":null,"note":"折叠摘要 tags 项现为标签名 join 纯文本，与展开态 chip 视觉不统一。改法：tags 项特判渲染 `SessionTagChips`（与展开态/列表行同组件），空态仍 `0` 占位；容器允许收缩 + flex-wrap。"},
+  {"id":"N-1117-tab-collapse-to-more","title":"Tab 右键菜单「收起到更多」+ 激活/未读 Tab 置灰","feature":"tab-system","severity":"low","reported":"2026-11-17","fixed":null,"fixedIn":null,"note":"「更多」下拉是溢出 Tab 的收纳器，`collapseTabIds` 是驱动它的单一状态；此前没有\"主动把某个 Tab 收进去\"的入口。"},
+  {"id":"N-1119-hero-header-dup-emoji","title":"Hero Block Header 去重：保留左上 emoji，胶囊 Hero 名去掉 emoji","feature":"hero-identity","severity":"low","reported":"2026-11-19","fixed":null,"fixedIn":null,"note":"Hero 登场时同一个 emoji 写进 agent:emoji 与 hero:name，导致 Block header 出现两次。新块只写纯名字；老块读取时剥离与 agent:emoji 相同的前缀。"},
+  {"id":"N-1123-hero-group-emoji","title":"AISessions Hero 折叠组头只留 emoji（不画 fa-folder/folder-open）","feature":"hero-identity","severity":"low","reported":"2026-11-23","fixed":null,"fixedIn":null,"note":"锚点 frontend/app/view/aisessions/session-group.tsx:93-103（组头固定画 fa-folder/fa-folder-open/fa-inbox）；group.heroId 字段已有（utils.ts:356 heroIdOfSession）。hero 组头：hero 自身 emoji（roster），回落 🎭；普通项目组与未归类组（fa-inbox）不变。"},
+  {"id":"N-1123-schedtask-modal","title":"定时任务管理面弹窗化（CommonText 同款 chrome，入口改工具栏按钮，不再建块）","feature":"sched-task","severity":"low","reported":"2026-11-23","fixed":null,"fixedIn":null,"note":"把 frontend/app/view/scheduledtasks/* 的列表+新建+编辑整体搬进 CommonText 式弹窗；开关走 modalregistry.tsx 已注册机制 + atoms.modalOpen（modal-open-registry 来源登记）；与 CommonText compose 同款 Modal chrome（标题/关闭/快捷键）。前置=N-1123-hero-sched-ui（编辑弹窗 hero 字段先落，避免同文件两次 merge）。"},
+  {"id":"N-1124-agentsend-status-dispatch","title":"Agent 卡常驻发送状态 + 异步派发回执可见（292/aaaa 事故根因）","feature":"agentsend","severity":"low","reported":"2026-11-24","fixed":null,"fixedIn":null,"note":"用户 2026-11-24 反馈概览看板发送了它没发过的内容（292/aaaa）。取证：该文本是 pi 会话 7df5a37d 的 seq=2 user 消息，时间 07:10:35.447，比用户长消息早 414ms；来源是新建 agent 首发消息走 async 后台派发（session-overview.tsx:3079），整个投递过程 UI 不可见。方案：CardSendContext 新增 dispatchByBlock/markDispatching/markDispatchReceipt；SendStatusChip 常驻看板卡与列表行（data-board-send-status / data-row-send-status）；派发中懒拉 AgentDispatchGetCommand，3s 重查上限 40 次。已知限制：pkg/agentdispatch 纯内存，重启即丢（v1 不落盘），重启后无记录不得显示未发送。"},
+  {"id":"N-1124-folder-index-badges-3","title":"文件夹索引徽标（实验插件）：index.md 状态表 + badges.js 脚本源 + Agent 定向刷新 Block","feature":"idx-badges","severity":"low","reported":"2026-11-24","fixed":null,"fixedIn":null,"note":"_（待补）_"},
+  {"id":"N-1124-idxbadges-agent-surface","title":"索引徽标的 agent 发现面：wsh block refresh + agent guide 能力条目","feature":"idx-badges","severity":"low","reported":"2026-11-24","fixed":null,"fixedIn":null,"note":"_（待补）_"},
+  {"id":"N-1124-idxbadges-decoration-protocol","title":"目录装饰协议 v2：词表泛化（icon/labelColor/hidden/order）+ 自定义状态注册表 + 脚本全树上下文","feature":"idx-badges","severity":"low","reported":"2026-11-24","fixed":null,"fixedIn":null,"note":"_（待补）_"},
+  {"id":"N-1124-overview-agent-logo-only3","title":"Overview 看板 Agent 卡 provider 只显品牌 logo（无 logo 回退文字）","feature":"overview-board","severity":"low","reported":"2026-11-24","fixed":null,"fixedIn":null,"note":"_（待补）_"},
+  {"id":"N-1124-overview-input-memory","title":"Overview 输入记忆：新建弹窗记住 agent 类型 + composer 草稿持久化 + 存 CommonText icon","feature":"overview-board","severity":"low","reported":"2026-11-24","fixed":null,"fixedIn":null,"note":"用户 2026-11-24 反馈：在 Tab 列选择新建 agent、或发送给 agent 的内容希望默认存储下来，避免再次新建或打开就消失；另需支持手动存到 CommonText（UI 增加一个 icon）。现状：add-agent 弹窗每次默认选第一项、内容关掉即丢；useCardSendState 的 draftByBlock 纯内存（overview-card-send-panel.tsx:79）。方案：localStorage（sessionoverview:senddrafts / sessionoverview:addagent），防抖 400ms、maxEntries 50、14 天过期、单条 8KB；存 CommonText 复用 upsertCommonTextItem，重复内联提示不弹窗。"},
+  {"id":"F-1109-agent-block-launch","title":"Agent Block 程序化创建：wsh agent launch + MCP 工具","feature":"agent-block","severity":"low","reported":"2026-11-18","fixed":null,"fixedIn":null,"note":"外部 agent / 脚本无法程序化拉起 claude/codex/pi/opencode 的 TUI agent block：`block open --view agent`"},
+  {"id":"F-1118-agent-block-send","title":"Agent Block 发送文本：wsh agent send + launch --send + TUI 就绪判定","feature":"agent-block","severity":"low","reported":"2026-11-18","fixed":null,"fixedIn":null,"note":"昨天 CommonText「一步发送到 agent block」的注入半段是纯前端：隐藏挂载 Tab → 等 quiet →"},
+  {"id":"N-1119-emoji-p0","title":"Emoji 偏好 P0：后端地基（NormalizeEmoji + 两表 + 偏好 UPSERT + 推荐器纯函数）","feature":"emoji-pref","severity":"low","reported":"2026-11-19","fixed":null,"fixedIn":null,"note":"`11-18-aisessions-emoji-preference` 的 P0 批次（见该任务 `implement.md §1`）。目标是让后续 P1–P5"},
+  {"id":"N-1124-agentsend-image-paste","title":"Overview composer 支持粘贴图片（落盘 + markdown 引用）","feature":"agentsend","severity":"low","reported":"2026-11-24","fixed":null,"fixedIn":null,"note":"用户 2026-11-24 反馈：发送信息的编辑框无法粘贴图片。现状：CardSendPanel 的 textarea 无 onPaste（overview-card-send-panel.tsx:338-361）。CommonText 已有完整链路可复用（commontext-paste-image.ts 的 pickPastedImages/validatePasteImage/writePasteImage/buildPasteImageMarkdown/spliceTextAtRange/materializePastedImages）。方案：writePasteImage 增可选 subdir（默认不变，CommonText 行为零变化）+ 新目录 overview-send-images + onPaste 落盘插 markdown + 远端块禁用 + 10MB 上限 + 落盘失败不留半截引用。"}
+];
+
+/* ================= 帮助函数 ================= */
+function parseD(s){ return new Date(s + 'T00:00:00Z'); }
+function days(a, b){ return Math.round((parseD(b) - parseD(a)) / 864e5); }
+function bugsOf(fid){ return BUGS.filter(function(b){ return b.feature === fid; }); }
+function openOf(fid){ return bugsOf(fid).filter(function(b){ return !b.fixed; }); }
+function featById(fid){ return FEATURES.find(function(f){ return f.id === fid; }); }
+function modById(mid){ return MODULES.find(function(m){ return m.id === mid; }); }
+function fdate(f){ return f.introduced || f.target || TODAY; }
+var HAS_PLAN = false;
+var STATUS_LABEL = {shipped:'已发布', building:'开发中', planned:'计划中', deprecated:'已废弃'};
+/* 展开向外 / 折叠向内 的双向箭头图标 */
+var ICON_EXPAND = '<svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6.2l4-4 4 4"/><path d="M4 9.8l4 4 4-4"/></svg>';
+var ICON_COLLAPSE = '<svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 2.2l4 4 4-4"/><path d="M4 13.8l4-4 4 4"/></svg>';
+var STATUS_COLOR = {}, SEV_COLOR = {};
+var SEV_LABEL = {critical:'致命', high:'高', normal:'中', low:'低'};
+/* 与 CSS 主题色板对齐：HeroUI 500 阶（暗）/ 稍深（浅，保证白底对比度） */
+var PALETTE = {
+  dark: {
+    status: {shipped:'#17c964', building:'#f5a524', planned:'#71717a', deprecated:'#f31260'},
+    sev: {critical:'#f31260', high:'#ff8a5c', normal:'#f5a524', low:'#8b949e'}
+  },
+  light: {
+    status: {shipped:'#12a150', building:'#d97706', planned:'#8a8f98', deprecated:'#f31260'},
+    sev: {critical:'#f31260', high:'#f97316', normal:'#d97706', low:'#8a8f98'}
+  }
+};
+function applyPalette(t){
+  var p = PALETTE[t] || PALETTE.dark;
+  Object.keys(p.status).forEach(function(k){ STATUS_COLOR[k] = p.status[k]; });
+  Object.keys(p.sev).forEach(function(k){ SEV_COLOR[k] = p.sev[k]; });
+}
+applyPalette('dark');
+var FIXED_BUGS = null, AVG_FIX = 0, FIX_ROW = '';
+function refreshStats(){
+  FIXED_BUGS = BUGS.filter(function(b){ return b.fixed; });
+  AVG_FIX = FIXED_BUGS.length ? FIXED_BUGS.reduce(function(s, b){ return s + days(b.reported, b.fixed); }, 0) / FIXED_BUGS.length : 0;
+  FIX_ROW = FIXED_BUGS.length ? '<div class="ins-row"><span>平均修复</span><b>' + AVG_FIX.toFixed(1) + ' 天</b></div>' : '';
+}
+function esc(s){
+  return String(s).replace(/[&<>"]/g, function(c){
+    return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'})[c];
+  });
+}
+/* 粗略估宽：中文按 1em、西文按 .58em */
+function approxTextW(s, px){
+  var w = 0;
+  for (var i = 0; i < s.length; i++){
+    var c = s.charCodeAt(i);
+    w += (c > 0x2e7f && c < 0xa000) || c >= 0xff00 ? px : px * 0.58;
+  }
+  return w;
+}
+function bugRowHTML(b){
+  return '<div class="bugrow hit" data-goto-bug="' + b.id + '">' +
+    '<span class="dotsev" style="background:' + SEV_COLOR[b.severity] + '"></span>' +
+    '<div><div class="bugtitle">' + esc(b.title) + ' <span class="mono dim">' + b.id + '</span></div>' +
+    '<div class="bugmeta">' + b.reported + ' → ' +
+    (b.fixed ? (b.fixed + '（' + days(b.reported, b.fixed) + ' 天）') : ('未修 · 已开 ' + days(b.reported, TODAY) + ' 天')) +
+    (b.fixedIn ? ' · ' + b.fixedIn : '') + ' · ' + SEV_LABEL[b.severity] + '</div></div></div>';
+}
+function pillHTML(status, text){
+  return '<span class="pill pill-' + status + '">' + text + '</span>';
+}
+function cardHead(title, pill){
+  return '<div class="card-head"><h3>' + esc(title) + '</h3>' + (pill || '') +
+    '<button class="card-x" data-close aria-label="关闭">×</button></div>';
+}
+function featureCardHTML(fid){
+  var f = featById(fid); if (!f) return '';
+  var bs = bugsOf(fid), open = openOf(fid).length;
+  var kids = FEATURES.filter(function(x){ return x.parent === fid; });
+  var parent = f.parent ? featById(f.parent) : null;
+  var html = cardHead(f.title, pillHTML(f.status, STATUS_LABEL[f.status])) +
+    '<div class="sub">' + (f.__draft ? '<span class="tagchip draft">草稿</span>' : '') +
+    '<span class="tagchip">' + esc(modById(f.module).title) + '</span>' +
+    (parent ? '<span class="tagchip">父级 ' + esc(parent.title) + '</span>' : '') +
+    (kids.length ? '<span class="tagchip">子功能 ' + kids.length + '</span>' : '') + '</div>' +
+    (f.note ? '<p class="note">' + esc(f.note) + '</p>' : '') +
+    '<dl class="kv"><dt>' + (f.status === 'planned' ? '计划' : '实现') + '</dt><dd>' +
+    (f.status === 'planned' ? (f.target + ' 上线') : f.introduced) + (f.deprecated ? ' · 废弃 ' + f.deprecated : '') + '</dd>' +
+    '<dt>发布版本</dt><dd>' + (f.releases.length ? f.releases.join(' · ') : '—') + '</dd>' +
+    '<dt>修改点</dt><dd>' + bs.length + ' 个（未修 ' + open + '）</dd></dl>';
+  html += bs.length
+    ? '<div class="sec-title">修改点记录</div>' + bs.map(bugRowHTML).join('')
+    : '<div class="empty">这个功能还没有修改点</div>';
+  var acts = '';
+  if (kids.length) acts += '<button class="card-btn" data-action="toggle-kids" data-id="' + fid + '">' +
+    (collapsed.has(fid) ? '展开子功能' : '折叠子功能') + ' ' + kids.length + '</button>';
+  acts += '<button class="card-btn" data-action="focus-time" data-id="' + fid + '">聚焦时间线</button>';
+  return html + '<div class="card-actions">' + acts + '</div>';
+}
+function bugCardHTML(bid){
+  var b = BUGS.find(function(x){ return x.id === bid; }); if (!b) return '';
+  var f = featById(b.feature);
+  return cardHead(b.title, pillHTML(b.fixed ? 'shipped' : 'open', b.fixed ? '已修复' : '未修复')) +
+    '<div class="sub">' + (b.__draft ? '<span class="tagchip draft">草稿</span>' : '') +
+    '<span class="tagchip mono">' + b.id + '</span>' +
+    '<span class="tagchip">' + esc(f.title) + '</span>' +
+    '<span class="tagchip">' + SEV_LABEL[b.severity] + ' 严重度</span></div>' +
+    (b.note ? '<p class="note">' + esc(b.note) + '</p>' : '') +
+    '<dl class="kv"><dt>上报</dt><dd>' + b.reported + '</dd>' +
+    '<dt>修复</dt><dd>' + (b.fixed || '—') + '</dd>' +
+    '<dt>耗时</dt><dd>' + (b.fixed ? days(b.reported, b.fixed) + ' 天' : '已开 ' + days(b.reported, TODAY) + ' 天') + '</dd>' +
+    '<dt>修复版本</dt><dd>' + (b.fixedIn || '—') + '</dd></dl>' +
+    '<div class="card-actions"><button class="card-btn" data-action="goto-feature" data-id="' + f.id + '">看所属功能</button></div>';
+}
+function moduleCardHTML(mid){
+  var m = modById(mid); if (!m) return '';
+  var fs = FEATURES.filter(function(f){ return f.module === mid; });
+  var total = fs.reduce(function(n, f){ return n + bugsOf(f.id).length; }, 0);
+  var open = fs.reduce(function(n, f){ return n + openOf(f.id).length; }, 0);
+  var top = fs.map(function(f){ return {f:f, n:bugsOf(f.id).length}; })
+    .sort(function(a, b){ return b.n - a.n; }).slice(0, 3);
+  return cardHead(m.title) +
+    '<div class="sub"><span class="tagchip">功能 ' + fs.length + '</span>' +
+    '<span class="tagchip">修改点 ' + total + '</span>' +
+    '<span class="tagchip">未修 ' + open + '</span></div>' +
+    '<div class="sec-title">修改点最多的功能</div>' +
+    top.map(function(t){
+      return '<div class="bugrow hit" data-goto-feature="' + t.f.id + '">' +
+        '<span class="dotsev" style="background:' + STATUS_COLOR[t.f.status] + '"></span>' +
+        '<div><div class="bugtitle">' + esc(t.f.title) + '</div>' +
+        '<div class="bugmeta">' + (t.f.introduced || t.f.target) + ' · 修改点 ' + t.n + '</div></div></div>';
+    }).join('') +
+    '<div class="card-actions"><button class="card-btn" data-action="toggle-module" data-id="' + mid + '">' +
+    (collapsed.has('mod-' + mid) ? '展开模块' : '折叠模块') + '</button></div>';
+}
+function releaseCardHTML(v){
+  var r = RELEASES.find(function(x){ return x.v === v; }); if (!r) return '';
+  var i = RELEASES.indexOf(r);
+  var gap = i > 0 ? days(RELEASES[i - 1].date, r.date) + ' 天' : '首发';
+  var fs = FEATURES.filter(function(f){ return f.releases.indexOf(v) !== -1; });
+  var bs = BUGS.filter(function(b){ return b.fixedIn === v; });
+  return cardHead(r.v) +
+    '<div class="sub"><span class="tagchip mono">' + r.date + '</span>' +
+    '<span class="tagchip">距上一版 ' + gap + '</span></div>' +
+    '<dl class="kv"><dt>新功能</dt><dd>' + (fs.map(function(f){ return esc(f.title); }).join('、') || '—') + '</dd>' +
+    '<dt>修复</dt><dd>' + (bs.length ? bs.map(function(b){ return esc(b.title); }).join('；') : '—') + '</dd></dl>' +
+    '<div class="card-actions"><button class="card-btn" data-action="zoom-release" data-id="' + v + '">跳到该版本</button></div>';
+}
+function rootCardHTML(){
+  return cardHead(PROJECT.name + ' 项目') + '<div class="sub">项目总览</div>' +
+    '<div class="sec-title">统计</div>' + summaryHTML() +
+    '<div class="card-actions"><button class="card-btn" data-action="expand-all" title="展开全部">' + ICON_EXPAND + '<span>展开全部</span></button>' +
+    '<button class="card-btn" data-action="collapse-all" title="折叠全部">' + ICON_COLLAPSE + '<span>折叠全部</span></button></div>';
+}
+function cardHTML(kind, id){
+  if (kind === 'feature') return featureCardHTML(id);
+  if (kind === 'bug') return bugCardHTML(id);
+  if (kind === 'module') return moduleCardHTML(id);
+  if (kind === 'release') return releaseCardHTML(id);
+  if (kind === 'root') return rootCardHTML();
+  return '';
+}
+function summaryHTML(){
+  return '<div class="ins-row"><span>功能</span><b>' + FEATURES.length + '</b></div>' +
+    '<div class="ins-row"><span>版本</span><b>' + RELEASES.length + '</b></div>' +
+    '<div class="ins-row"><span>修改点总数</span><b>' + BUGS.length + '</b></div>' +
+    '<div class="ins-row"><span>未修</span><b>' + (BUGS.length - FIXED_BUGS.length) + '</b></div>' +
+    FIX_ROW;
+}
+/* ================= 构建功能树 ================= */
+function buildFeatureNode(f){
+  var kids = FEATURES.filter(function(x){ return x.parent === f.id; }).map(buildFeatureNode)
+    .sort(function(a, b){ return fdate(a.f) < fdate(b.f) ? -1 : fdate(a.f) > fdate(b.f) ? 1 : 0; });
+  return {id:f.id, kind:'feature', title:f.title, f:f, children:kids};
+}
+var TREE = null;
+function refreshTree(){ TREE = {
+  id:'root', kind:'root', title:PROJECT.name, introduced:PROJECT.since,
+  children: MODULES.map(function(m){
+    var kids = FEATURES.filter(function(f){ return f.module === m.id && !f.parent; }).map(buildFeatureNode)
+      .sort(function(a, b){ return fdate(a.f) < fdate(b.f) ? -1 : fdate(a.f) > fdate(b.f) ? 1 : 0; });
+    // 模块的最早日取该模块下所有层级的功能，否则嵌套子功能可能落在模块点左侧
+    var allDates = FEATURES.filter(function(f){ return f.module === m.id; }).map(fdate).sort();
+    var first = allDates.length ? allDates[0] : '';
+    return {id:'mod-' + m.id, kind:'module', title:m.title, m:m, introduced:first, children:kids};
+  }).sort(function(a, b){ return a.introduced < b.introduced ? -1 : a.introduced > b.introduced ? 1 : 0; })
+};
+}
+function flatten(node, depth, out){
+  out.push({node:node, depth:depth});
+  if (collapsed.has(node.id)) return out;
+  node.children.forEach(function(c){ flatten(c, depth + 1, out); });
+  return out;
+}
+function descendants(n){
+  return n.children.reduce(function(s, c){ return s + 1 + descendants(c); }, 0);
+}
+
+/* ================= 键盘导航 =================
+ * ↑↓ 同级/相邻移动，← 向根，→ 向叶（自动展开）；
+ * Tab 起子节点、Enter 起同级（预填 newform），空格开卡片，Delete 撤草稿。 */
+function navRows(){ return flatten(TREE, 0, []); }
+function rowById(id){
+  var rs = navRows();
+  for (var i = 0; i < rs.length; i++) if (rs[i].node.id === id) return rs[i];
+  return null;
+}
+function findNodeInTree(id, node){
+  node = node || TREE;
+  if (!node) return null;
+  if (node.id === id) return node;
+  for (var i = 0; i < node.children.length; i++){
+    var hit = findNodeInTree(id, node.children[i]);
+    if (hit) return hit;
+  }
+  return null;
+}
+function parentNodeOf(node){
+  if (!node || node.kind === 'root') return null;
+  if (node.kind === 'module') return TREE;
+  return findNodeInTree(node.f.parent || ('mod-' + node.f.module));
+}
+/* 折叠后焦点可能被藏起来：沿父链退到最近可见祖先 */
+function fixFocusHidden(){
+  if (!focusId || rowById(focusId)) return;
+  var node = findNodeInTree(focusId);
+  while (node){
+    node = parentNodeOf(node);
+    if (node && rowById(node.id)){ focusId = node.id; return; }
+  }
+  focusId = null;
+}
+function navMove(dir){
+  var rows = navRows();
+  if (!rows.length) return;
+  var idx = -1;
+  for (var i = 0; i < rows.length; i++) if (rows[i].node.id === focusId){ idx = i; break; }
+  if (idx < 0){ focusId = rows[0].node.id; render(); return; }
+  var next = idx + dir;
+  if (next < 0 || next >= rows.length) return;
+  focusId = rows[next].node.id; render();
+}
+function navInto(){
+  var r = rowById(focusId);
+  if (!r){ navMove(1); return; }
+  var n = r.node;
+  if (!n.children.length) return;
+  if (collapsed.has(n.id)) collapsed.delete(n.id);
+  focusId = n.children[0].id; render();
+}
+function navOut(){
+  var r = rowById(focusId);
+  if (!r) return;
+  var p = parentNodeOf(r.node);
+  if (p){ focusId = p.id; render(); }
+}
+function openFocusedCard(){
+  var r = rowById(focusId);
+  if (!r) return;
+  var g = NODE_GEOM[r.node.id], rect = svg.getBoundingClientRect();
+  var px = g ? rect.left + g.x : innerWidth / 2, py = g ? rect.top + g.y : innerHeight / 2;
+  var n = r.node;
+  if (n.kind === 'root') openCard('root', null, px, py);
+  else if (n.kind === 'module') openCard('module', n.m.id, px, py);
+  else openCard('feature', n.f.id, px, py);
+}
+/* Tab/Enter 起节点：按焦点上下文预填 newform（root/模块 → 模块或模块下功能） */
+function presetForCreate(rel){
+  var r = rowById(focusId);
+  var n = r ? r.node : TREE;
+  if (n.kind === 'root'){
+    return rel === 'sibling' ? { kind:'module' }
+      : { kind:'feature', values:{ module:(MODULES[0] || {}).id || '', parent:'' } };
+  }
+  if (n.kind === 'module'){
+    return rel === 'sibling' ? { kind:'module' }
+      : { kind:'feature', values:{ module:n.m.id, parent:'' } };
+  }
+  var f = n.f;
+  return rel === 'child'
+    ? { kind:'feature', values:{ module:f.module, parent:f.id } }
+    : { kind:'feature', values:{ module:f.module, parent:(f.parent || '') } };
+}
+function deleteFocused(){
+  var r = rowById(focusId);
+  if (!r || r.node.kind === 'root') return;
+  var n = r.node;
+  var kind = n.kind === 'module' ? 'module' : 'feature';
+  var id = kind === 'module' ? n.m.id : n.f.id;
+  var keep = parentNodeOf(n), keepId = keep ? keep.id : null;
+  for (var i = 0; i < DRAFTS.length; i++){
+    if (DRAFTS[i].kind === kind && DRAFTS[i].data.id === id){
+      dropDraft(i);
+      focusId = keepId && rowById(keepId) ? keepId : null;
+      fixFocusHidden();
+      render();  // dropDraft 内部的 render 发生在焦点回退前，这里补一次
+      hintEl.textContent = '已撤下草稿 ' + id + '；正式数据请删 ' + dirOf(kind) + '/' + id + '.md';
+      return;
+    }
+  }
+  hintEl.textContent = 'md 是唯一真相：删除请删 loop/' + dirOf(kind) + '/' + id + '.md，再跑 queue map build';
+}
+
+/* ================= 视图状态 ================= */
+var wrap = document.querySelector('.canvas-wrap');
+var svg = document.getElementById('map');
+var cardEl = document.getElementById('card');
+var cardPos = {x:0, y:0};
+var hintEl = document.getElementById('hint');
+var PAD = {l:34, r:24, top:46, bottom:44};
+var DATES = [], FULL = null;
+function refreshSpan(){
+  DATES = [];
+  RELEASES.forEach(function(r){ DATES.push(r.date); });
+  FEATURES.forEach(function(f){ DATES.push(f.introduced, f.deprecated, f.target); });
+  DATES.push(PROJECT.since, TODAY);
+  DATES = DATES.filter(Boolean).sort();
+  FULL = { t0: new Date(+parseD(DATES[0]) - 12 * 864e5), t1: new Date(+parseD(DATES[DATES.length - 1]) + 12 * 864e5) };
+}
+function refreshAll(){
+  refreshStats(); refreshTree(); refreshSpan();
+  HAS_PLAN = FEATURES.some(function(f){ return f.status === 'planned'; });
+  if (typeof view !== 'undefined' && view){
+    if (+view.t0 < +FULL.t0) view.t0 = new Date(+FULL.t0);
+    if (+view.t1 > +FULL.t1) view.t1 = new Date(+FULL.t1);
+    if (+view.t1 <= +view.t0){ view.t0 = new Date(+FULL.t0); view.t1 = new Date(+FULL.t1); }
+  }
+}
+refreshAll();
+var view = {t0: new Date(FULL.t0), t1: new Date(FULL.t1)};
+var mix = 1;  // 0 = 顺序（只表先后），1 = 时间线（真实日期）
+var focusId = null;   // 键盘焦点：TREE 节点 id（root / mod-x / 功能 id）
+var NODE_GEOM = {};   // 渲染时记录的节点坐标（svg 坐标 → 空格开卡片用）
+var collapsed = new Set();
+var moved = false;
+var viewMode = 'chart';                     // chart = 顺序/时间线；mind = 导图
+var mindView = { tx: 40, ty: 40, k: 1 };     // 导图画布变换
+
+function xOf(t){
+  var plotW = wrap.clientWidth - PAD.l - PAD.r;
+  return PAD.l + (t - view.t0) * plotW / (view.t1 - view.t0);
+}
+function clampSpan(ms){ return Math.max(22 * 864e5, Math.min(300 * 864e5, ms)); }
+
+/* ================= 渲染 ================= */
+function render(){
+  var W = wrap.clientWidth, H = wrap.clientHeight;
+  if (!W || !H) return;
+  NODE_GEOM = {};
+  var out = [];
+  if (viewMode === 'mind'){
+    renderMind(W, H, out);
+  } else {
+    var plotW = W - PAD.l - PAD.r;
+    var rows = [];
+    TREE.children.forEach(function(m){ flatten(m, 1, rows); });
+    var topPad = 88, bottomPad = 20;
+    var rowH = Math.max(28, Math.min(46, (H - topPad - bottomPad) / rows.length));
+    rows.forEach(function(r, i){ r.y = topPad + i * rowH + rowH / 2; });
+    var rightEdge = W - PAD.r - 2;
+    var plotBottom = H - bottomPad;
+    var today = parseD(TODAY);
+
+    renderChart(W, H, rows, rowH, out, plotW, plotBottom, rightEdge, today);
+  }
+
+  svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
+  svg.innerHTML = out.join('');
+  svg.classList.toggle('pannable', viewMode === 'mind' || mix >= 0.5);
+}
+
+/* ---------- 树状模式 ---------- */
+function renderChart(W, H, rows, rowH, out, plotW, plotBottom, rightEdge, today){
+  var byId = {};
+  rows.forEach(function(r){ byId[r.node.id] = r; });
+  var gridTop = 42;
+  var timeOn = mix > 0.05, orderOn = mix < 0.95;
+  var tA = mix, oA = 1 - mix;
+
+  // ---- 顺序布局 x（缩进 + 轻微先后错开）----
+  var mods = TREE.children;
+  var msList = mods.map(function(m){ return +parseD(m.introduced || TODAY); });
+  var minD = Math.min.apply(null, msList);
+  var maxD = Math.max.apply(null, msList);
+  var driftMax = Math.min(150, Math.max(70, plotW * 0.16));
+  function modDrift(mid){
+    var m = mods.find(function(x){ return x.id === mid; });
+    if (!m || maxD === minD) return 0;
+    return (+parseD(m.introduced || TODAY) - minD) / (maxD - minD) * driftMax;
+  }
+  function featDrift(f){
+    var sibs = FEATURES.filter(function(x){ return x.module === f.module && !x.parent; });
+    if (sibs.length < 2) return 0;
+    var ds = sibs.map(function(x){ return +parseD(fdate(x)); });
+    var lo = Math.min.apply(null, ds), hi = Math.max.apply(null, ds);
+    if (hi === lo) return 0;
+    return (+parseD(fdate(f)) - lo) / (hi - lo) * Math.min(80, driftMax * 0.55);
+  }
+  var xo = {}, xt = {};
+  rows.forEach(function(r){
+    var n = r.node;
+    if (n.kind === 'module'){
+      xo[n.id] = PAD.l + 26 + modDrift(n.id);
+      // 统一夹取到 [PAD.l+2, rightEdge]：模块和功能同一条规则，平移后谁也不会跑到父节点左侧
+      var mraw = xOf(parseD(n.introduced || TODAY));
+      xt[n.id] = Math.max(PAD.l + 2, Math.min(rightEdge, mraw));
+    } else {
+      var f = n.f;
+      var pid = f.parent || 'mod-' + f.module;
+      xo[n.id] = (xo[pid] != null ? xo[pid] : PAD.l + 44) + 18 + (f.parent ? 0 : featDrift(f));
+      var raw = Math.max(PAD.l + 2, Math.min(rightEdge, xOf(parseD(fdate(f)))));
+      xt[n.id] = raw;
+    }
+    r.x = xo[n.id] * oA + xt[n.id] * tA;
+    r.xEarly = xo[n.id] < PAD.l + 30 && xt[n.id] <= PAD.l + 2;
+    r.xFuture = mix > 0.5 && xt[n.id] >= rightEdge - 1;
+  });
+
+  // ---- 模块行底色 ----
+  rows.forEach(function(r){
+    if (r.node.kind === 'module'){
+      out.push('<rect class="band" x="' + PAD.l + '" y="' + (r.y - rowH / 2) + '" width="' + plotW + '" height="' + rowH + '"/>');
+    }
+  });
+
+  // ---- 时间侧装饰：日期尺 / 版本 / 今天（随 mix 淡入）----
+  if (timeOn){
+    var gT = [];
+    var spanDays = (view.t1 - view.t0) / 864e5;
+    var daily = spanDays <= 50;
+    var hasToday = today >= view.t0 && today <= view.t1;
+    var todayX = hasToday ? xOf(today) : -1e9;
+    var lastLabelX = -1e9;
+    var d = new Date(+view.t0);
+    d = daily
+      ? new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()))
+      : new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1));
+    while (d <= view.t1){
+      if (d >= view.t0){
+        var mx = xOf(d);
+        gT.push('<line class="grid-line" x1="' + mx + '" y1="' + gridTop + '" x2="' + mx + '" y2="' + plotBottom + '"/>');
+        var label = daily
+          ? ((d.getUTCMonth() + 1) + '月' + d.getUTCDate() + '日')
+          : (d.getUTCMonth() === 0 ? (d.getUTCFullYear() + '年') : ((d.getUTCMonth() + 1) + '月'));
+        if (mx - lastLabelX >= 62 && Math.abs(mx - todayX) > 58){
+          gT.push('<text class="axis-text" x="' + mx + '" y="' + (gridTop - 8) + '" text-anchor="middle">' + label + '</text>');
+          lastLabelX = mx;
+        }
+      }
+      d = new Date(+d);
+      if (daily) d.setUTCDate(d.getUTCDate() + 1);
+      else d.setUTCMonth(d.getUTCMonth() + 1);
+    }
+    if (hasToday){
+      gT.push('<line class="today-line" x1="' + todayX + '" y1="' + gridTop + '" x2="' + todayX + '" y2="' + plotBottom + '"/>');
+      gT.push('<text class="axis-text today" x="' + todayX + '" y="' + (gridTop - 8) + '" text-anchor="middle">今天</text>');
+      if (HAS_PLAN && todayX < W - PAD.r){
+        gT.push('<rect class="plan-band" x="' + todayX + '" y="' + gridTop +
+          '" width="' + (W - PAD.r - todayX) + '" height="' + (plotBottom - gridTop) + '"/>');
+        var pw = 56;
+        gT.push('<rect class="rel-pill" x="' + (W - PAD.r - pw - 2) + '" y="4" width="' + pw + '" height="18" rx="9"/>' +
+          '<text class="rel-tag" x="' + (W - PAD.r - pw / 2 - 2) + '" y="17" text-anchor="middle">计划区</text>');
+      }
+    }
+    RELEASES.forEach(function(rel){
+      var rd = parseD(rel.date);
+      if (rd < view.t0 || rd > view.t1) return;
+      var rx = xOf(rd);
+      var px = Math.max(PAD.l + 26, Math.min(W - PAD.r - 26, rx));
+      gT.push('<line class="rel-line" x1="' + rx + '" y1="' + gridTop + '" x2="' + rx + '" y2="' + plotBottom + '"/>');
+      gT.push('<g class="hit rel-hit" data-kind="release" data-id="' + rel.v + '">' +
+        '<rect class="rel-pill" x="' + (px - 25) + '" y="4" width="50" height="18" rx="9"/>' +
+        '<text class="rel-tag" x="' + px + '" y="17" text-anchor="middle">' + rel.v + '</text>' +
+        '<title>' + rel.v + ' · ' + rel.date + '</title></g>');
+    });
+    out.push('<g opacity="' + tA.toFixed(2) + '">' + gT.join('') + '</g>');
+  }
+
+  // ---- 根盒子 + 主干 ----
+  var rootTxt = PROJECT.name + ' 项目';
+  var boxH = 26, boxY = gridTop + 5;
+  var boxW = Math.round(approxTextW(rootTxt, 13) + 24);
+  var rootX = PAD.l + 13;
+  out.push('<g class="hit' + (focusId === 'root' ? ' focused' : '') + '" data-kind="root">' +
+    '<rect class="root-box" x="' + PAD.l + '" y="' + boxY + '" width="' + boxW + '" height="' + boxH + '" rx="10"/>' +
+    (focusId === 'root' ? '<rect class="focus-ring" x="' + (PAD.l - 4) + '" y="' + (boxY - 4) +
+      '" width="' + (boxW + 8) + '" height="' + (boxH + 8) + '" rx="12"/>' : '') +
+    '<text class="root-label" x="' + (PAD.l + 12) + '" y="' + (boxY + 17.5) + '">' + esc(rootTxt) + '</text></g>');
+  NODE_GEOM.root = { x: PAD.l + boxW / 2, y: boxY + boxH / 2 };
+  if (rows.length){
+    out.push('<line class="spine" x1="' + rootX + '" y1="' + (boxY + boxH) + '" x2="' + rootX + '" y2="' + rows[rows.length - 1].y + '"/>');
+  }
+
+  // ---- 树状连接线（父 → 子，肘形）----
+  rows.forEach(function(r){
+    var n = r.node;
+    if (n.kind === 'module'){
+      out.push('<path class="link" d="M' + rootX + ',' + r.y + ' H' + r.x + '"/>');
+      return;
+    }
+    var f = n.f;
+    var pid = f.parent || 'mod-' + f.module;
+    var p = byId[pid];
+    if (!p || r.xEarly) return;
+    out.push('<path class="link" d="' + elbow(p.x, p.y, r.x, r.y) + '"/>');
+  });
+
+  // ---- 行：节点 + 存活/Bug 泳道（时间侧） + 标签 ----
+  rows.forEach(function(r){
+    var n = r.node;
+    var y = r.y;
+    var isModule = n.kind === 'module';
+    var x = r.x;
+    var flip = x > W - PAD.r - 170;
+    var anchor = flip ? 'end' : 'start';
+
+    if (isModule){
+      var modFold = n.children.length > 0;
+      var mFoc = focusId === n.id;
+      NODE_GEOM[n.id] = { x: x, y: y };
+      out.push('<g class="hit' + (mFoc ? ' focused' : '') + '" data-kind="module" data-id="' + n.m.id + '">' +
+        '<circle class="mod-dot" cx="' + x + '" cy="' + y + '" r="4.5"' +
+        (modFold ? ' data-toggle="' + n.id + '"' : '') + '/>' +
+        (modFold && collapsed.has(n.id)
+          ? '<circle class="dot-ring" cx="' + x + '" cy="' + y + '" r="8" style="stroke:var(--mod-dot)"/>'
+          : '') +
+        (mFoc ? '<circle class="focus-ring" cx="' + x + '" cy="' + y + '" r="9.5"/>' : '') +
+        '<text class="mod-label" x="' + (x + 10) + '" y="' + (y + 4) + '">' + esc(n.title) + '</text>' +
+        '<title>' + esc(n.title) + ' · ' + n.children.length + ' 个功能' + (modFold ? '（点圆点折叠）' : '') + '</title></g>');
+      return;
+    }
+
+    var f = n.f;
+    var laneY = y + 12;
+    var endX = Math.min(xOf(f.deprecated ? parseD(f.deprecated) : today), W - PAD.r);
+    var hasKids = n.children.length > 0;
+    var labelX = flip ? x - 8 : x + 8;
+    var fFoc = focusId === n.id;
+    NODE_GEOM[n.id] = { x: x, y: y };
+
+    out.push('<g class="hit' + (fFoc ? ' focused' : '') + '" data-kind="feature" data-id="' + f.id + '"' +
+      (r.xFuture ? ' opacity="0.32"' : '') + '>');
+    out.push('<rect class="rowbg' + (fFoc ? ' rowactive' : '') + '" x="' + PAD.l + '" y="' + (y - rowH / 2) + '" width="' + plotW + '" height="' + rowH + '"/>');
+    if (timeOn && mix > 0.15){
+      var lane = [];
+      if (f.status === 'planned'){
+        var nowX = xOf(today);
+        var la = Math.max(PAD.l, Math.min(nowX, x)), lb = Math.min(W - PAD.r, Math.max(nowX, x));
+        if (lb - la > 4){
+          lane.push('<line class="life plan" x1="' + la + '" y1="' + laneY + '" x2="' + lb + '" y2="' + laneY +
+            '" stroke="' + STATUS_COLOR.planned + '"/>');
+        }
+      } else if (endX > xt[f.id] * tA + x * oA){
+        lane.push('<line class="life' + (f.deprecated ? ' dep' : '') + '" x1="' + x + '" y1="' + laneY +
+          '" x2="' + endX + '" y2="' + laneY + '" stroke="' + STATUS_COLOR[f.status] + '"/>');
+      }
+      bugsOf(f.id).forEach(function(b){
+        var bx = xo[f.id] * oA + xOf(parseD(b.reported)) * tA;
+        if (bx < PAD.l || bx > W - PAD.r) return;
+        lane.push('<g class="hit" data-kind="bug" data-id="' + b.id + '">' +
+          '<circle class="bug-dot ' + (b.fixed ? 'fixed' : 'open') + '" cx="' + bx + '" cy="' + laneY + '" r="3.2"/>' +
+          '<title>' + b.id + ' · ' + esc(b.title) + ' · ' + b.reported +
+          (b.fixed ? (' → ' + b.fixed) : ' · 未修') + '</title></g>');
+      });
+      if (lane.length) out.push('<g opacity="' + Math.min(1, (mix - 0.15) / 0.5).toFixed(2) + '">' + lane.join('') + '</g>');
+    }
+    out.push('<circle class="feat-dot' + (f.status === 'planned' ? ' plan' : '') + '" cx="' + x + '" cy="' + y + '" r="4"' +
+      ' fill="' + (f.status === 'planned' ? 'none' : STATUS_COLOR[f.status]) + '"' +
+      (f.status === 'planned' ? ' style="stroke:' + STATUS_COLOR.planned + ';stroke-dasharray:2.4 2"' : '') +
+      (hasKids ? ' data-toggle="' + f.id + '"' : '') + '/>');
+    if (fFoc) out.push('<circle class="focus-ring" cx="' + x + '" cy="' + y + '" r="8.5"/>');
+    if (hasKids && collapsed.has(f.id)){
+      out.push('<circle class="dot-ring" cx="' + x + '" cy="' + y + '" r="7.5" style="stroke:' + STATUS_COLOR[f.status] + '"/>');
+    }
+    var badge = (hasKids && collapsed.has(f.id)) ? ' <tspan class="fold-badge">+' + descendants(n) + '</tspan>' : '';
+    if (f.__draft) badge += ' <tspan class="draft-tag">草稿</tspan>';
+    out.push('<text class="feat-label' + (f.parent ? ' child' : '') + '" x="' + labelX + '" y="' + (y + 4) +
+      '" text-anchor="' + anchor + '">' + (r.xEarly ? '‹ ' : '') + esc(f.title) + badge + '</text>');
+    out.push('<title>' + esc(f.title) + ' · ' + STATUS_LABEL[f.status] + ' · ' + (f.introduced || f.target) +
+      ' · 修改点 ' + bugsOf(f.id).length + (hasKids ? '（点圆点折叠）' : '') + '</title></g>');
+  });
+
+  // ---- 顺序侧右列（日期 / Bug 数，随 mix 淡出）----
+  if (orderOn){
+    var gO = [];
+    rows.forEach(function(r){
+      var n = r.node;
+      var y = r.y;
+      var meta = n.kind === 'module'
+        ? (n.children.length + ' 个功能 · 修改点 ' + n.children.reduce(function(s, c){ return s + countBugs(c); }, 0))
+        : ((n.f.introduced || n.f.target) + ' · 修改点 ' + bugsOf(n.id).length);
+      gO.push('<text class="tree-meta" x="' + (W - PAD.r) + '" y="' + (y - 8) + '" text-anchor="end">' + meta + '</text>');
+    });
+    out.push('<g opacity="' + oA.toFixed(2) + '">' + gO.join('') + '</g>');
+  }
+}
+function countBugs(node){
+  return bugsOf(node.id).length + node.children.reduce(function(s, c){ return s + countBugs(c); }, 0);
+}
+function elbow(px, py, cx, cy){
+  if (Math.abs(cy - py) < 1) return 'M' + px + ',' + py + ' H' + cx;
+  var dir = cy > py ? 1 : -1;
+  var rr = Math.min(10, Math.abs(cy - py) / 2);
+  if (cx < px + rr) return 'M' + px + ',' + py + ' V' + cy + ' H' + cx;
+  return 'M' + px + ',' + py + ' V' + (cy - dir * rr) +
+    ' Q' + px + ',' + cy + ' ' + (px + rr) + ',' + cy + ' H' + cx;
+}
+
+/* ================= 导图模式 ================= */
+/* 布局纯函数：可见节点 → tidy-tree 坐标（右单向，根在左，模块间留白） */
+var MIND_NH = { root: 46, module: 34, feature: 44 };
+var MIND_PX = 13;   // 节点内左右留白
+function layoutMind(){
+  var VGAP = 10, MODGAP = 26, LGAP = 72;
+  var nodes = [];
+  (function walk(n, depth, parent){
+    var o = { id: n.id, kind: n.kind, depth: depth, parent: parent, node: n, children: [] };
+    nodes.push(o);
+    if (!collapsed.has(n.id)) n.children.forEach(function(c){ o.children.push(walk(c, depth + 1, o)); });
+    return o;
+  })(TREE, 0, null);
+  var root = nodes[0];
+
+  nodes.forEach(function(o){
+    var title = o.kind === 'root' ? (PROJECT.name + ' 项目') : o.node.title;
+    var px = o.kind === 'root' ? 14 : o.kind === 'module' ? 13 : 12.5;
+    var w = Math.round(approxTextW(title, px)) + MIND_PX * 2;
+    o.h = MIND_NH[o.kind];
+    o.foldN = (o.node.children.length && !o.children.length) ? descendants(o.node) : 0;
+    if (o.foldN) w += 32;
+    if (o.kind === 'feature'){
+      var f = o.node.f;
+      w += 14;                                   // 状态点位置
+      var bs = bugsOf(f.id);
+      if (bs.length){
+        o.bugTxt = (bs.length - openOf(f.id).length) + '/' + bs.length;
+        w += approxTextW(o.bugTxt, 10) + 12;
+      }
+      if (f.__draft) w += 30;
+      // 日期行（日期 · Bug 角标）可能比标题行宽，不能溢出右缘
+      var dateW = approxTextW(f.introduced || f.target || '', 9.5);
+      if (o.bugTxt) dateW += approxTextW(' · ●' + o.bugTxt, 10) + 8;
+      w = Math.max(w, 26 + dateW + MIND_PX);
+    }
+    o.w = Math.max(w, 58);
+  });
+
+  var colW = [];
+  nodes.forEach(function(o){ colW[o.depth] = Math.max(colW[o.depth] || 0, o.w); });
+  var colX = [], xEnd = 0;
+  for (var d = 0; d < colW.length; d++){
+    if (colW[d] == null) continue;
+    colX[d] = xEnd;
+    xEnd += colW[d] + LGAP;
+  }
+  nodes.forEach(function(o){ o.x = colX[o.depth] || 0; });
+
+  var cur = 0;
+  (function place(o){
+    if (!o.children.length){ o.y = cur + o.h / 2; cur += o.h + VGAP; return; }
+    o.children.forEach(function(c, i){
+      if (i && o.depth === 0) cur += MODGAP;   // 模块之间的呼吸感
+      place(c);
+    });
+    o.y = (o.children[0].y + o.children[o.children.length - 1].y) / 2;
+  })(root);
+
+  return { nodes: nodes, root: root, bw: xEnd - LGAP, bh: cur };
+}
+
+function mindNodeSVG(o){
+  var n = o.node, x = o.x, y = o.y, w = o.w, h = o.h;
+  var foc = focusId === o.id;
+  var g = '<g class="hit mnode' + (foc ? ' focused' : '') + '" data-kind="' + o.kind + '"';
+  if (o.kind === 'module') g += ' data-id="' + n.m.id + '"';
+  if (o.kind === 'feature') g += ' data-id="' + n.f.id + '"';
+  g += '>';
+  var s = '';
+  var tog = o.node.children.length ? ' data-toggle="' + o.id + '"' : '';
+
+  if (o.kind === 'root'){
+    s += '<rect class="mroot-box" x="' + x + '" y="' + (y - h / 2) + '" width="' + w + '" height="' + h + '" rx="12"/>' +
+      '<text class="root-label" x="' + (x + MIND_PX) + '" y="' + (y + 5) + '">' + esc(n.title) + ' 项目</text>';
+  } else if (o.kind === 'module'){
+    s += '<rect class="mmod-box" x="' + x + '" y="' + (y - h / 2) + '" width="' + w + '" height="' + h + '" rx="9"/>' +
+      '<circle class="mod-dot" cx="' + (x + 14) + '" cy="' + y + '" r="4.5"' + tog + '/>' +
+      (o.foldN ? '<circle class="dot-ring" cx="' + (x + 14) + '" cy="' + y + '" r="8" style="stroke:var(--mod-dot)"/>' : '') +
+      '<text class="mod-label" x="' + (x + 26) + '" y="' + (y + 4.5) + '">' + esc(n.title) +
+      (o.foldN ? ' <tspan class="fold-badge">+' + o.foldN + '</tspan>' : '') +
+      (n.m.__draft ? ' <tspan class="draft-tag">草稿</tspan>' : '') + '</text>';
+  } else {
+    var f = n.f;
+    var dotFill = f.status === 'planned' ? 'none' : STATUS_COLOR[f.status];
+    var dotStyle = f.status === 'planned' ? ' style="stroke:' + STATUS_COLOR.planned + ';stroke-dasharray:2.4 2"' : '';
+    var kids = o.node.children.length;
+    s += '<rect class="mfeat-box" x="' + x + '" y="' + (y - h / 2) + '" width="' + w + '" height="' + h + '" rx="10"/>' +
+      '<circle class="feat-dot' + (f.status === 'planned' ? ' plan' : '') + '" cx="' + (x + 14) + '" cy="' + (y - 3) + '" r="4"' +
+      ' fill="' + dotFill + '"' + dotStyle + (kids ? ' data-toggle="' + o.id + '"' : '') + '/>' +
+      (o.foldN ? '<circle class="dot-ring" cx="' + (x + 14) + '" cy="' + (y - 3) + '" r="7.5" style="stroke:' + STATUS_COLOR[f.status] + '"/>' : '') +
+      '<text class="feat-label' + (f.parent ? ' child' : '') + '" x="' + (x + 26) + '" y="' + (y + 0) + '">' + esc(f.title) +
+      (o.foldN ? ' <tspan class="fold-badge">+' + o.foldN + '</tspan>' : '') +
+      (f.__draft ? ' <tspan class="draft-tag">草稿</tspan>' : '') + '</text>' +
+      '<text class="mdate" x="' + (x + 26) + '" y="' + (y + 14) + '">' + (f.introduced || f.target || '') +
+      (o.bugTxt ? ' · <tspan style="fill:' + (openOf(f.id).length ? 'var(--err)' : 'var(--dim)') +
+        ';font-weight:600">●' + o.bugTxt + '</tspan>' : '') + '</text>';
+  }
+  if (foc) s += '<rect class="focus-ring" x="' + (x - 4) + '" y="' + (y - h / 2 - 4) + '" width="' + (w + 8) + '" height="' + (h + 8) + '" rx="12"/>';
+  return g + s + '</g>';
+}
+
+function renderMind(W, H, out){
+  var lay = layoutMind();
+  var t = mindView;
+  out.push('<g transform="translate(' + t.tx.toFixed(1) + ',' + t.ty.toFixed(1) + ') scale(' + t.k.toFixed(3) + ')">');
+  lay.nodes.forEach(function(o){
+    if (!o.parent) return;
+    var p = o.parent;
+    var px = p.x + p.w, py = p.y, cx = o.x, cy = o.y, dx = (cx - px) / 2;
+    out.push('<path class="mlink" d="M' + px + ',' + py + ' C' + (px + dx) + ',' + py +
+      ' ' + (cx - dx) + ',' + cy + ' ' + cx + ',' + cy + '"/>');
+  });
+  lay.nodes.forEach(function(o){ out.push(mindNodeSVG(o)); });
+  out.push('</g>');
+  lay.nodes.forEach(function(o){
+    NODE_GEOM[o.id] = { x: t.tx + (o.x + o.w / 2) * t.k, y: t.ty + o.y * t.k };
+  });
+}
+
+function fitMind(){
+  var W = wrap.clientWidth, H = wrap.clientHeight;
+  if (!W || !H) return;
+  var lay = layoutMind();
+  var k = Math.min((W - 100) / Math.max(lay.bw, 1), (H - 100) / Math.max(lay.bh, 1), 1.15);
+  mindView.k = Math.max(0.25, k);
+  mindView.tx = (W - lay.bw * mindView.k) / 2;
+  mindView.ty = (H - lay.bh * mindView.k) / 2;
+}
+
+function setMode(m){
+  viewMode = m;
+  closeCard();
+  applyChrome();
+  if (m === 'mind') fitMind();
+  render();
+}
+/* ================= 交互 ================= */
+function toggle(id){
+  if (collapsed.has(id)) collapsed.delete(id); else collapsed.add(id);
+  fixFocusHidden();
+  render();
+}
+function collapseAllNodes(){
+  collapsed.clear();
+  (function walk(n){
+    if (n.children.length) collapsed.add(n.id);
+    n.children.forEach(walk);
+  })(TREE);
+  fixFocusHidden();
+  render();
+}
+function zoomTo(dateStr, before, after){
+  var d = parseD(dateStr);
+  view.t0 = new Date(+d - before * 864e5);
+  view.t1 = new Date(+d + after * 864e5);
+  if (view.t1 - view.t0 > 300 * 864e5) view.t1 = new Date(+view.t0 + 300 * 864e5);
+  render();
+}
+function setMix(v){
+  mix = v;
+  var el = document.getElementById('mix');
+  if (el) el.value = Math.round(v * 100);
+  syncSliderFill();
+  closeCard();
+  applyChrome();
+  render();
+}
+
+/* ---- 就地卡片 ---- */
+function cardAccent(kind, id){
+  if (kind === 'feature'){ var f = featById(id); return f ? STATUS_COLOR[f.status] : 'var(--acc)'; }
+  if (kind === 'bug'){ var b = BUGS.find(function(x){ return x.id === id; }); return b ? SEV_COLOR[b.severity] : 'var(--err)'; }
+  return 'var(--acc)';
+}
+function openCard(kind, id, x, y){
+  var html = cardHTML(kind, id);
+  if (!html) return;
+  cardPos = {x:x, y:y};
+  cardEl.innerHTML = html;
+  cardEl.style.setProperty('--card-acc', cardAccent(kind, id));
+  cardEl.classList.add('open');
+  var w = cardEl.offsetWidth, h = cardEl.offsetHeight;
+  var left = x + 14, top = y + 14;
+  if (left + w > innerWidth - 10) left = Math.max(10, x - w - 14);
+  if (top + h > innerHeight - 10) top = Math.max(56, y - h - 14);
+  cardEl.style.left = left + 'px';
+  cardEl.style.top = top + 'px';
+}
+function closeCard(){
+  cardEl.classList.remove('open');
+  cardEl.innerHTML = '';
+  // 卡片里的按钮可能还搭着焦点，不清掉会吃掉后续键盘事件
+  var ae = document.activeElement;
+  if (ae && cardEl.contains(ae)) ae.blur();
+}
+cardEl.addEventListener('click', function(e){
+  if (e.target.closest('[data-close]')){ closeCard(); return; }
+  var gb = e.target.closest('[data-goto-bug]');
+  if (gb){ openCard('bug', gb.dataset.gotoBug, cardPos.x, cardPos.y); return; }
+  var gf = e.target.closest('[data-goto-feature]');
+  if (gf){
+    var fid = gf.dataset.gotoFeature;
+    focusId = fid; render();
+    openCard('feature', fid, cardPos.x, cardPos.y);
+    return;
+  }
+  var a = e.target.closest('[data-action]');
+  if (!a) return;
+  var act = a.dataset.action, id = a.dataset.id;
+  if (act === 'toggle-kids'){ toggle(id); openCard('feature', id, cardPos.x, cardPos.y); }
+  else if (act === 'toggle-module'){ toggle('mod-' + id); openCard('module', id, cardPos.x, cardPos.y); }
+  else if (act === 'focus-time'){
+    var f = featById(id);
+    if (viewMode === 'mind') setMode('chart');
+    if (mix < 1) setMix(1);
+    focusId = id; render();
+    zoomTo(fdate(f), 15, 75);
+    closeCard();
+  }
+  else if (act === 'goto-feature'){ focusId = id; render(); openCard('feature', id, cardPos.x, cardPos.y); }
+  else if (act === 'zoom-release'){
+    zoomTo(RELEASES.find(function(r){ return r.v === id; }).date, 20, 40);
+    closeCard();
+  }
+  else if (act === 'expand-all'){ collapsed.clear(); render(); openCard('root', null, cardPos.x, cardPos.y); }
+  else if (act === 'collapse-all'){ collapseAllNodes(); closeCard(); }
+});
+
+svg.addEventListener('click', function(e){
+  if (moved){ moved = false; return; }
+  var t = e.target.closest('[data-toggle]');
+  if (t){ toggle(t.dataset.toggle); return; }
+  var g = e.target.closest('[data-kind]');
+  if (!g){ focusId = null; render(); closeCard(); return; }
+  var kind = g.dataset.kind, id = g.dataset.id;
+  if (kind === 'feature'){
+    focusId = (focusId === id) ? null : id;
+    render();
+    if (focusId) openCard('feature', id, e.clientX, e.clientY);
+    else closeCard();
+  } else if (kind === 'bug'){
+    var b = BUGS.find(function(x){ return x.id === id; });
+    focusId = b.feature; render();
+    openCard('bug', id, e.clientX, e.clientY);
+  } else if (kind === 'module'){
+    focusId = 'mod-' + id; render();
+    openCard('module', id, e.clientX, e.clientY);
+  } else if (kind === 'release'){
+    openCard('release', id, e.clientX, e.clientY);
+    if (mix >= 0.5){
+      zoomTo(RELEASES.find(function(r){ return r.v === id; }).date, 20, 40);
+    }
+  } else if (kind === 'root'){
+    focusId = 'root'; render();
+    openCard('root', null, e.clientX, e.clientY);
+  }
+});
+svg.addEventListener('dblclick', function(e){
+  if (viewMode === 'mind'){
+    if (e.target.closest('[data-kind]')) return;  // 双击节点不动画布
+    focusId = null; closeCard(); fitMind(); render();
+    return;
+  }
+  if (mix < 0.5) return;
+  view.t0 = new Date(FULL.t0); view.t1 = new Date(FULL.t1);
+  focusId = null; render(); closeCard();
+});
+
+var dragging = false, dragStart = null;
+svg.addEventListener('pointerdown', function(e){
+  if (e.button !== 0) return;
+  if (viewMode !== 'mind' && mix < 0.5) return;
+  dragging = true; moved = false;
+  dragStart = viewMode === 'mind'
+    ? {x: e.clientX, y: e.clientY, tx: mindView.tx, ty: mindView.ty}
+    : {x: e.clientX, t0: +view.t0, t1: +view.t1};
+  svg.classList.add('dragging');
+});
+svg.addEventListener('pointermove', function(e){
+  if (!dragging) return;
+  var dx = e.clientX - dragStart.x;
+  if (viewMode === 'mind'){
+    var dy = e.clientY - dragStart.y;
+    if (Math.abs(dx) + Math.abs(dy) > 3) moved = true;
+    if (!moved) return;
+    if (cardEl.classList.contains('open')) closeCard();
+    mindView.tx = dragStart.tx + dx;
+    mindView.ty = dragStart.ty + dy;
+    render();
+    return;
+  }
+  if (Math.abs(dx) > 3) moved = true;
+  if (!moved) return;
+  if (cardEl.classList.contains('open')) closeCard();
+  var plotW = wrap.clientWidth - PAD.l - PAD.r;
+  var dt = -dx * (dragStart.t1 - dragStart.t0) / plotW;
+  view.t0 = new Date(dragStart.t0 + dt);
+  view.t1 = new Date(dragStart.t1 + dt);
+  render();
+});
+function endDrag(){ dragging = false; svg.classList.remove('dragging'); }
+svg.addEventListener('pointerup', endDrag);
+svg.addEventListener('pointercancel', endDrag);
+
+svg.addEventListener('wheel', function(e){
+  if (viewMode === 'mind'){
+    e.preventDefault();
+    if (cardEl.classList.contains('open')) closeCard();
+    var rect = svg.getBoundingClientRect();
+    var mx = e.clientX - rect.left, my = e.clientY - rect.top;
+    var k2 = Math.max(0.25, Math.min(3, mindView.k * (e.deltaY > 0 ? 0.88 : 1 / 0.88)));
+    mindView.tx = mx - (mx - mindView.tx) * k2 / mindView.k;
+    mindView.ty = my - (my - mindView.ty) * k2 / mindView.k;
+    mindView.k = k2;
+    render();
+    return;
+  }
+  if (mix < 0.5) return;
+  e.preventDefault();
+  if (cardEl.classList.contains('open')) closeCard();
+  var rect2 = svg.getBoundingClientRect();
+  var mx2 = e.clientX - rect2.left;
+  var plotW = wrap.clientWidth - PAD.l - PAD.r;
+  var fx = Math.max(0, Math.min(1, (mx2 - PAD.l) / plotW));
+  var span = view.t1 - view.t0;
+  var newSpan = clampSpan(span * (e.deltaY > 0 ? 1.18 : 1 / 1.18));
+  var anchor = +view.t0 + fx * span;
+  var t0 = anchor - fx * newSpan;
+  view.t0 = new Date(t0); view.t1 = new Date(t0 + newSpan);
+  render();
+}, {passive:false});
+
+window.addEventListener('keydown', function(e){
+  var ae = document.activeElement;
+  var inForm = ae && ae.closest && ae.closest('#newform');
+  if (e.key === 'Escape'){
+    // 分层退出：先关表单，再关卡片，最后才清地图焦点
+    var nfEl = document.getElementById('newform');
+    if (nfEl && !nfEl.classList.contains('hidden')){ closeNewForm(); return; }
+    if (cardEl.classList.contains('open')){ closeCard(); return; }
+    if (focusId){ focusId = null; render(); }
+    return;
+  }
+  if (inForm){
+    if (e.key === 'Enter' && ae.tagName !== 'TEXTAREA') saveNewForm();
+    return;  // 表单开着：其余按键交给输入框
+  }
+  if (ae && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName)) return;
+  if (!TREE || !navRows().length) return;
+  if (e.key === 'ArrowDown'){ e.preventDefault(); navMove(1); }
+  else if (e.key === 'ArrowUp'){ e.preventDefault(); navMove(-1); }
+  else if (e.key === 'ArrowRight'){ e.preventDefault(); navInto(); }
+  else if (e.key === 'ArrowLeft'){ e.preventDefault(); navOut(); }
+  else if (e.key === 'Tab'){
+    e.preventDefault();
+    if (!focusId){ focusId = 'root'; render(); }
+    openNewForm(presetForCreate('child'));
+  }
+  else if (e.key === 'Enter'){
+    e.preventDefault();
+    if (!focusId){ focusId = 'root'; render(); }
+    openNewForm(presetForCreate('sibling'));
+  }
+  else if (e.key === ' ' || e.key === 'Spacebar'){ e.preventDefault(); openFocusedCard(); }
+  else if (e.key === 'Delete' || e.key === 'Backspace'){ e.preventDefault(); deleteFocused(); }
+  else if (e.key === 'm' || e.key === 'M'){ setMode(viewMode === 'mind' ? 'chart' : 'mind'); }
+});
+
+document.getElementById('presets').querySelectorAll('.chip').forEach(function(btn){
+  btn.onclick = function(){
+    document.querySelectorAll('#presets .chip').forEach(function(x){ x.classList.remove('on'); });
+    btn.classList.add('on');
+    var p = btn.dataset.preset;
+    if (p === 'all'){ view.t0 = new Date(FULL.t0); view.t1 = new Date(FULL.t1); }
+    else {
+      var n = parseInt(p, 10);
+      var t = parseD(TODAY);
+      view.t0 = new Date(+t - n * 864e5);
+      view.t1 = new Date(+t + (n === 30 ? 5 : 7) * 864e5);
+      if (+view.t0 < +FULL.t0) view.t0 = new Date(FULL.t0);
+      if (+view.t1 > +FULL.t1) view.t1 = new Date(FULL.t1);
+    }
+    closeCard();
+    render();
+  };
+});
+
+document.getElementById('mix').addEventListener('input', function(){
+  mix = +this.value / 100;
+  syncSliderFill();
+  closeCard();
+  applyChrome();
+  render();
+});
+function syncSliderFill(){
+  var el = document.getElementById('mix');
+  if (el) el.style.setProperty('--fill', el.value + '%');
+}
+function applyChrome(){
+  var mind = viewMode === 'mind';
+  var time = !mind && mix >= 0.5;
+  document.getElementById('presets').classList.toggle('hide', !time);
+  document.getElementById('mindBtn').classList.toggle('on', mind);
+  document.querySelector('.layout-ctl').classList.toggle('off', mind);
+  var mixEl = document.getElementById('mix');
+  if (mixEl) mixEl.disabled = mind;
+  hintEl.textContent = mind
+    ? '方向键走树 · Tab 加子 / Enter 加同级 · 空格看卡片 · 拖拽平移 · 滚轮缩放 · 双击空白复位 · M 返回'
+    : (time
+      ? '方向键走树 · Tab 加子 / Enter 加同级 · 空格看卡片 · 点圆点折叠 · 滚轮缩放 · 双击复位 · M 导图'
+      : '方向键走树 · Tab 加子 / Enter 加同级 · 空格看卡片 · 点圆点折叠 · 拖滑杆切到时间线 · M 导图');
+  svg.classList.toggle('pannable', mind || time);
+}
+document.getElementById('expandAll').onclick = function(){ collapsed.clear(); render(); };
+document.getElementById('collapseAll').onclick = collapseAllNodes;
+document.getElementById('mindBtn').onclick = function(){ setMode(viewMode === 'mind' ? 'chart' : 'mind'); };
+
+function applyTheme(t){
+  if (t !== 'light') t = 'dark';
+  document.documentElement.dataset.theme = t;
+  applyPalette(t);
+  document.getElementById('theme').textContent = t === 'light' ? '深色' : '浅色';
+  try { localStorage.setItem('pmap-theme', t); } catch (e) {}
+  if (typeof render === 'function' && TREE) render();
+}
+var savedTheme = null;
+try { savedTheme = localStorage.getItem('pmap-theme'); } catch (e) {}
+var initialTheme = savedTheme || 'dark';
+applyTheme(initialTheme);
+document.getElementById('theme').onclick = function(){
+  applyTheme(document.documentElement.dataset.theme === 'light' ? 'dark' : 'light');
+};
+
+window.addEventListener('resize', function(){ closeCard(); if (viewMode === 'mind'){ fitMind(); render(); } else render(); });
+
+/* ================= 页内新建节点（写回 md） ================= */
+var DRAFT_KEY = 'pmap-drafts::' + PROJECT.name;
+var DRAFTS = [];
+var dirHandle = null;
+var NF_KIND = 'feature', NF_VALUES = {}, NF_ERR = '';
+var KIND_LABEL = {feature:'功能点', bug:'修改点', module:'模块', release:'版本'};
+// 修改点 = loop 工作项：类型决定门链（清单由引擎注入），严重度走 loop 的 S0..S3，显示时映射成 4 档颜色
+var TYPE_LABEL = {bug:'bug 缺陷', 'fix-small':'fix-small 小修', docs:'docs 文档', chore:'chore 杂务', question:'question 问答',
+  feature:'feature 功能', redesign:'redesign 重设计', 'new-surface':'new-surface 新界面', arch:'arch 架构'};
+var SEV2PMAP = {S0:'critical', S1:'high', S2:'normal', S3:'low'};
+
+function todayStr(){
+  var d = new Date(), p = function(n){ return (n < 10 ? '0' : '') + n; };
+  return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
+}
+function arrOf(kind){ return kind === 'feature' ? FEATURES : kind === 'bug' ? BUGS : kind === 'module' ? MODULES : RELEASES; }
+function idFieldOf(kind){ return kind === 'release' ? 'v' : 'id'; }
+// 落点（相对消费者仓库根）：功能层在 loop/map/**，修改点写进 loop/items/（工作项 md）
+function dirOf(kind){ return kind === 'feature' ? 'map/features' : kind === 'bug' ? 'items' : kind === 'module' ? 'map/modules' : 'map/releases'; }
+function loadDrafts(){ try { return JSON.parse(localStorage.getItem(DRAFT_KEY) || '[]'); } catch (e){ return []; } }
+function saveDrafts(){ try { localStorage.setItem(DRAFT_KEY, JSON.stringify(DRAFTS)); } catch (e){} }
+
+// 把浏览器里存的草稿并回数据；已经进了 md（被 build 进数据）的草稿自动丢掉
+function injectDrafts(){
+  var keep = [];
+  DRAFTS.forEach(function(d){
+    var arr = arrOf(d.kind), idf = idFieldOf(d.kind);
+    if (arr.some(function(x){ return x[idf] === d.data[idf]; })) return;
+    d.data.__draft = true;
+    arr.push(d.data);
+    keep.push(d);
+  });
+  DRAFTS = keep;
+  saveDrafts();
+}
+
+var DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+function badDate(s){ if (!DATE_RE.test(s || '')) return true; var d = new Date(s + 'T00:00:00Z'); return isNaN(+d) || d.toISOString().slice(0, 10) !== s; }
+function slugOk(s){ return /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(s || ''); }
+
+function validateNew(kind, v){
+  var e = [], idf = idFieldOf(kind), id = v[idf];
+  if (!id) e.push(kind === 'release' ? '版本号不能为空' : 'id 不能为空');
+  else if (!slugOk(id)) e.push('id 只能用字母、数字、. _ -，以字母或数字开头');
+  else if (arrOf(kind).some(function(x){ return x[idf] === id; })) e.push('id “' + id + '” 已存在');
+  if (kind !== 'release' && !(v.title || '').trim()) e.push('标题不能为空');
+  if (kind === 'release' && badDate(v.date)) e.push('日期要写 YYYY-MM-DD');
+  if (kind === 'feature'){
+    if (!MODULES.some(function(m){ return m.id === v.module; })) e.push('先选一个模块');
+    if (v.parent && !FEATURES.some(function(f){ return f.id === v.parent; })) e.push('父功能不存在');
+    if (v.parent === v.id) e.push('父功能不能是自己');
+    if (v.status === 'planned'){
+      if (badDate(v.target)) e.push('计划上线日要写 YYYY-MM-DD');
+      if (v.target && v.target < TODAY) e.push('计划日已经早于今天（' + TODAY + '）');
+    } else if (badDate(v.introduced)) e.push('实现日要写 YYYY-MM-DD');
+  }
+  if (kind === 'bug'){
+    // 修改点写进 loop/items/<id>.md（工作项 md）：类型决定门链，优先级决定开工顺序
+    if (!FEATURES.filter(function(f){ return f.id !== '_orphan'; }).some(function(f){ return f.id === v.feature; })) e.push('先选所属功能点（没有功能点就先建一个）');
+    if (LOOP_TYPES.indexOf(v.type) < 0) e.push('类型必须是 ' + LOOP_TYPES.join(' / '));
+    if (LOOP_PRIORITIES.indexOf(v.priority) < 0) e.push('优先级必须是 ' + LOOP_PRIORITIES.join(' / '));
+    if (LOOP_SEVERITIES.indexOf(v.severity) < 0) e.push('严重度必须是 ' + LOOP_SEVERITIES.join(' / '));
+  }
+  return e;
+}
+
+function toRecord(kind, v){
+  if (kind === 'feature'){
+    var planned = v.status === 'planned';
+    var rec = { id:v.id, title:v.title.trim(), module:v.module, parent:(v.parent || null), status:v.status, releases: [] };
+    if (planned) rec.target = v.target; else rec.introduced = v.introduced;
+    if (v.note && v.note.trim()) rec.note = v.note.trim();
+    return rec;
+  }
+  if (kind === 'bug'){
+    // 图上渲染要 pmap 形状（severity/reported/fixed）；写盘要 loop 工作项字段（loopType/loopPriority/loopSeverity）
+    var b = { id:v.id, title:v.title.trim(), feature:v.feature, severity:SEV2PMAP[v.severity] || 'normal',
+      reported:todayStr(), fixed:null, fixedIn:null,
+      loopType:v.type, loopPriority:v.priority, loopSeverity:v.severity };
+    if (v.note && v.note.trim()) b.note = v.note.trim();
+    return b;
+  }
+  if (kind === 'module') return { id:v.id, title:v.title.trim(), order:Number(v.order) || (MODULES.length + 1) };
+  return { v:v.v, date:v.date };
+}
+
+function yv(x){
+  if (x === null || x === undefined || x === '') return 'null';
+  var s = String(x);
+  return /[#]/.test(s) || /^\s|\s$/.test(s) ? JSON.stringify(s) : s;
+}
+function mdOf(kind, d){
+  var L = ['---'];
+  if (kind === 'feature'){
+    L.push('id: ' + yv(d.id), 'title: ' + yv(d.title), 'module: ' + yv(d.module), 'parent: ' + yv(d.parent), 'status: ' + yv(d.status));
+    if (d.status === 'planned') L.push('target: ' + yv(d.target)); else L.push('introduced: ' + yv(d.introduced));
+    L.push('releases: []');
+  } else if (kind === 'bug'){
+    // 修改点 = loop 工作项：字段名走 loop 的 item 约定，正文固定四小节（RUNBOOK §11）
+    var note = (d.note || '').trim() || '（地图页内新建，待补背景）';
+    L.push('id: ' + yv(d.id), 'title: ' + yv(d.title), 'type: ' + yv(d.loopType || 'fix-small'),
+      'priority: ' + yv(d.loopPriority || 'P2'), 'severity: ' + yv(d.loopSeverity || 'S2'),
+      'status: open', 'origin: self', 'source: ' + yv('map 页内新建 ' + d.reported),
+      'order: 100', 'feature: ' + yv(d.feature), 'createdAt: ' + yv(d.reported + 'T00:00:00.000Z'),
+      '---', '', '# ' + d.title, '',
+      '## 背景', '', note, '',
+      '## 来源', '', '- self：项目地图页内新建 ' + d.reported, '',
+      '## 验收判据', '', '_（待补：命令 → 期望数字）_', '',
+      '## 记录', '', '_（待补）_', '');
+    return L.join('\n');
+  } else if (kind === 'module'){
+    L.push('id: ' + yv(d.id), 'title: ' + yv(d.title), 'order: ' + yv(d.order));
+  } else {
+    L.push('v: ' + yv(d.v), 'date: ' + yv(d.date));
+  }
+  L.push('---', '');
+  if (d.note) L.push(d.note);
+  return L.join('\n') + '\n';
+}
+function fileNameOf(kind, d){ return (kind === 'release' ? d.v : d.id) + '.md'; }
+
+/* ---- 表单 ---- */
+function defaultsFor(kind){
+  var t = todayStr();
+  if (kind === 'feature') return {id:'', title:'', module:(MODULES[0] || {}).id || '', parent:'', status:'shipped', introduced:t, target:'', note:''};
+  if (kind === 'bug') return {id:'', title:'', feature:(FEATURES.filter(function(f){ return f.id !== '_orphan'; })[0] || {}).id || '', type:'fix-small', priority:'P2', severity:'S2', note:''};
+  if (kind === 'module') return {id:'', title:'', order:String(MODULES.length + 1), note:''};
+  return {v:'', date:t, note:''};
+}
+function readForm(){
+  var el = document.getElementById('newform');
+  if (!el) return;
+  el.querySelectorAll('[data-nf]').forEach(function(i){ NF_VALUES[i.dataset.nf] = i.value; });
+  var k = el.querySelector('#nf-kind');
+  if (k) NF_KIND = k.value;
+}
+function fld(label, key, type, extra){
+  return '<div class="nf-row"><label>' + label + '</label><input data-nf="' + key + '" type="' + (type || 'text') +
+    '" value="' + esc(NF_VALUES[key] || '') + '"' + (extra || '') + '></div>';
+}
+function sel(label, key, opts){
+  return '<div class="nf-row"><label>' + label + '</label><select data-nf="' + key + '">' +
+    opts.map(function(o){ return '<option value="' + esc(o.v) + '"' + (String(NF_VALUES[key]) === String(o.v) ? ' selected' : '') + '>' + esc(o.t) + '</option>'; }).join('') +
+    '</select></div>';
+}
+function renderNewForm(){
+  var el = document.getElementById('newform');
+  var kind = NF_KIND;
+  var h = '<div class="nf-head"><b>新建</b><select id="nf-kind">' +
+    ['feature', 'bug', 'module', 'release'].map(function(k){
+      return '<option value="' + k + '"' + (k === kind ? ' selected' : '') + '>' + KIND_LABEL[k] + '</option>';
+    }).join('') + '</select><button class="nf-x" data-nf-act="close" aria-label="关闭">×</button></div><div class="nf-body">';
+
+  if (kind === 'feature'){
+    h += fld('标题', 'title');
+    h += fld('id', 'id', 'text', ' placeholder="如 session-persist"');
+    h += sel('模块', 'module', MODULES.map(function(m){ return {v:m.id, t:m.title}; }));
+    h += sel('父功能', 'parent', [{v:'', t:'（无，挂在模块下）'}].concat(FEATURES.map(function(f){ return {v:f.id, t:f.title}; })));
+    h += sel('状态', 'status', [{v:'shipped',t:'已发布'},{v:'building',t:'开发中'},{v:'planned',t:'计划中'},{v:'deprecated',t:'已废弃'}]);
+    h += (NF_VALUES.status === 'planned') ? fld('计划上线日', 'target', 'date') : fld('实现日', 'introduced', 'date');
+  } else if (kind === 'bug'){
+    h += fld('标题', 'title');
+    h += fld('id', 'id', 'text', ' placeholder="如 B-21"');
+    h += sel('所属功能点', 'feature', FEATURES.filter(function(f){ return f.id !== '_orphan'; }).map(function(f){ return {v:f.id, t:f.title}; }));
+    h += sel('类型（决定门链）', 'type', LOOP_TYPES.map(function(t){ return {v:t, t:TYPE_LABEL[t] || t}; }));
+    h += sel('严重度', 'severity', [{v:'S0',t:'S0 致命'},{v:'S1',t:'S1 高'},{v:'S2',t:'S2 中'},{v:'S3',t:'S3 低'}]);
+    h += sel('优先级', 'priority', LOOP_PRIORITIES.map(function(x){ return {v:x, t:x}; }));
+  } else if (kind === 'module'){
+    h += fld('标题', 'title');
+    h += fld('id', 'id');
+    h += fld('顺序', 'order', 'number');
+  } else {
+    h += fld('版本号', 'v', 'text', ' placeholder="v0.6.0"');
+    h += fld('发布日期', 'date', 'date');
+  }
+  h += '<div class="nf-row"><label>' + (kind === 'bug' ? '背景（写进工作项的「背景」小节，可空）' : '说明（正文首段，可空）') + '</label><textarea data-nf="note">' + esc(NF_VALUES.note || '') + '</textarea></div>';
+  h += '</div><div class="nf-foot"><span class="nf-err">' + esc(NF_ERR) + '</span><button class="nf-btn pri" data-nf-act="save">上图</button></div>';
+  el.innerHTML = h;
+}
+function openNewForm(preset){
+  NF_KIND = (preset && preset.kind) || 'feature';
+  NF_VALUES = defaultsFor(NF_KIND);
+  // 键盘起节点时把上下文预填进来（root/模块 → 模块下功能；功能 → 子/同级功能）
+  if (preset && preset.values){
+    Object.keys(preset.values).forEach(function(k){
+      if (preset.values[k] != null) NF_VALUES[k] = String(preset.values[k]);
+    });
+  }
+  NF_ERR = '';
+  renderNewForm();
+  document.getElementById('newform').classList.remove('hidden');
+  var first = document.querySelector('#newform .nf-body input, #newform .nf-body select');
+  if (first) first.focus();
+}
+function closeNewForm(){
+  var el = document.getElementById('newform');
+  var ae = document.activeElement;
+  if (ae && el.contains(ae)) ae.blur();  // 隐藏后 input 仍抱着焦点，会吃掉键盘事件
+  el.classList.add('hidden');
+}
+
+function saveNewForm(){
+  readForm();
+  var errs = validateNew(NF_KIND, NF_VALUES);
+  if (errs.length){ NF_ERR = errs[0] + (errs.length > 1 ? '（另有 ' + (errs.length - 1) + ' 条）' : ''); renderNewForm(); return; }
+  var rec = toRecord(NF_KIND, NF_VALUES);
+  rec.__draft = true;
+  DRAFTS.push({ kind:NF_KIND, data:rec, savedPath:null });
+  saveDrafts();
+  arrOf(NF_KIND).push(rec);
+  focusId = NF_KIND === 'feature' ? rec.id : NF_KIND === 'module' ? 'mod-' + rec.id : null;
+  refreshAll(); render(); renderDraftBar(); closeNewForm();
+  hintEl.textContent = '已上图（草稿）· 保存 md 并跑 queue map build 才转正';
+}
+
+/* ---- 草稿条 ---- */
+function renderDraftBar(){
+  var bar = document.getElementById('draftbar');
+  if (!bar) return;
+  if (!DRAFTS.length){ bar.classList.add('hidden'); bar.innerHTML = ''; return; }
+  bar.classList.remove('hidden');
+  var h = '<div class="db-head">新建 ' + DRAFTS.length + ' 条 · 还没转正</div>';
+  DRAFTS.forEach(function(d, i){
+    var name = d.kind === 'release' ? d.data.v : d.data.id;
+    var state = d.savedPath ? ('已写到 ' + d.savedPath + '，跑 queue map build 转正') : '只在浏览器里';
+    h += '<div class="db-row"><div class="db-t"><b>' + esc(d.data.title || name) + '</b>' +
+      '<span class="db-k">' + KIND_LABEL[d.kind] + ' · ' + esc(name) + '</span>' +
+      '<div class="db-s">' + esc(state) + '</div></div><div class="db-a">' +
+      (d.savedPath ? '' : '<button data-db="save" data-i="' + i + '">保存 md</button>') +
+      '<button data-db="copy" data-i="' + i + '">复制</button>' +
+      '<button data-db="drop" data-i="' + i + '" title="从图上撤掉">×</button></div></div>';
+  });
+  h += '<div class="db-foot"><button class="nf-btn" data-db="saveall">全部保存</button><button class="nf-btn" data-db="hide">收起</button></div>';
+  bar.innerHTML = h;
+}
+
+function legacyCopy(text){
+  var ta = document.createElement('textarea');
+  ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+  document.body.appendChild(ta); ta.select();
+  try { document.execCommand('copy'); } catch (e) {}
+  document.body.removeChild(ta);
+}
+function copyMd(text){
+  var done = function(){ hintEl.textContent = 'md 已复制，粘到对应目录即可'; };
+  if (navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(text).then(done, function(){ legacyCopy(text); done(); });
+  } else { legacyCopy(text); done(); }
+}
+
+async function writeDraft(i){
+  var d = DRAFTS[i];
+  if (!d) return;
+  try {
+    if (!window.showDirectoryPicker) throw new Error('这个浏览器不支持目录写入，请用 Chrome / Edge，或用「复制」');
+    if (!dirHandle) dirHandle = await window.showDirectoryPicker({ id: 'loop-map', mode: 'readwrite' });
+    // 选的是消费者仓库根：先下潜 loop/，再进目标子目录（都 create:true，目录不存在就建）
+    var loopDir = await dirHandle.getDirectoryHandle('loop', { create: true });
+    var sub = await loopDir.getDirectoryHandle(dirOf(d.kind), { create: true });
+    var name = fileNameOf(d.kind, d.data);
+    var fh = await sub.getFileHandle(name, { create: true });
+    var w = await fh.createWritable();
+    await w.write(mdOf(d.kind, d.data));
+    await w.close();
+    d.savedPath = 'loop/' + dirOf(d.kind) + '/' + name;
+    saveDrafts(); renderDraftBar();
+    hintEl.textContent = '已写入 ' + d.savedPath + ' · 跑 node bin/loop.mjs queue map build 转正';
+  } catch (err) {
+    if (err && err.name === 'AbortError') return;
+    alert('写盘失败：' + ((err && err.message) || err) + '\n可以先用「复制」把 md 粘进文件。');
+  }
+}
+function dropDraft(i){
+  var d = DRAFTS[i];
+  if (!d) return;
+  DRAFTS.splice(i, 1);
+  saveDrafts();
+  var arr = arrOf(d.kind), idf = idFieldOf(d.kind), id = d.data[idf];
+  for (var j = arr.length - 1; j >= 0; j--) if (arr[j][idf] === id && arr[j].__draft) arr.splice(j, 1);
+  refreshAll(); render(); closeCard(); renderDraftBar();
+}
+
+document.getElementById('newNode').onclick = function(){ openNewForm(); };
+(function wireNewForm(){
+  var el = document.getElementById('newform');
+  el.addEventListener('change', function(e){
+    readForm();
+    if (e.target.id === 'nf-kind' || e.target.dataset.nf === 'status'){
+      if (e.target.id === 'nf-kind') NF_VALUES = defaultsFor(NF_KIND);
+      NF_ERR = '';
+      renderNewForm();
+    }
+  });
+  el.addEventListener('click', function(e){
+    var b = e.target.closest('[data-nf-act]');
+    if (!b) return;
+    if (b.dataset.nfAct === 'save') saveNewForm();
+    else closeNewForm();
+  });
+  var bar = document.getElementById('draftbar');
+  bar.addEventListener('click', function(e){
+    var b = e.target.closest('[data-db]');
+    if (!b) return;
+    var act = b.dataset.db, i = Number(b.dataset.i);
+    if (act === 'save') writeDraft(i);
+    else if (act === 'copy') copyMd(mdOf(DRAFTS[i].kind, DRAFTS[i].data));
+    else if (act === 'drop') dropDraft(i);
+    else if (act === 'saveall') DRAFTS.forEach(function(_, k){ writeDraft(k); });
+    else if (act === 'hide') document.getElementById('draftbar').classList.add('hidden');
+  });
+})();
+
+DRAFTS = loadDrafts();
+injectDrafts();
+refreshAll();
+renderDraftBar();
+
+// 点完 header / 草稿条上的按钮就把焦点还给画布，方向键才能继续走树
+document.querySelector('header').addEventListener('click', function(e){
+  var b = e.target.closest('button'); if (b) b.blur();
+});
+document.getElementById('draftbar').addEventListener('click', function(e){
+  var b = e.target.closest('button'); if (b) b.blur();
+});
+
+applyChrome();
+syncSliderFill();
+render();
+</script>
+</body>
+</html>

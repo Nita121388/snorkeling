@@ -13,6 +13,7 @@ rollback: null
 budget: {minutes: 90, retries: 1}
 releaseCandidate: false
 createdAt: "2026-11-14T07:05:22Z"
+feature: tab-system
 ---
 
 # Tab 栏交互修复：点击误判拖拽换位 + 切换高亮迟滞 + 广播重复入队

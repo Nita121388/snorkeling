@@ -13,6 +13,7 @@ rollback: null
 budget: {minutes: 40, retries: 2}
 releaseCandidate: false
 createdAt: "2026-11-07T06:05:17Z"
+feature: commontext-sync
 ---
 
 # Common Text 同步元数据：createdBy/origin/rev/deletedat + 迁移 + 过滤

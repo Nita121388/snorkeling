@@ -14,6 +14,7 @@ rubricPath: .trellis/tasks/11-20-f-1120-overview-add-agent-card/design-rubric.md
 budget: {minutes: 300, retries: 2}
 releaseCandidate: false
 createdAt: "2026-11-20T03:16:03Z"
+feature: overview-board
 ---
 
 # Overview 看板 Tab 下新建 Agent 卡（＋ 入口 + New Agent 同款居中弹窗）

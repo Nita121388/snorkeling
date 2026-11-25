@@ -13,6 +13,7 @@ rollback: "git checkout -- loop/queue.json"
 budget: {minutes: 45, retries: 1}
 releaseCandidate: false
 createdAt: "2026-11-05T09:40"
+feature: loop-workflow
 ---
 
 # 既有 4 个 harness 登记 red_proof

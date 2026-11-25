@@ -14,6 +14,7 @@ rollback: null
 budget: {minutes: 240, retries: 2}
 releaseCandidate: false
 createdAt: "2026-11-19T06:16:03Z"
+feature: agent-card
 ---
 
 # Agent 卡片：模型新鲜度与供应商拆分 + 标题来源短标记

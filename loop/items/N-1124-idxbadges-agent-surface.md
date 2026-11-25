@@ -13,6 +13,7 @@ rollback: null
 budget: {minutes: 90, retries: 2}
 releaseCandidate: false
 createdAt: "2026-11-24T03:28:21Z"
+feature: idx-badges
 ---
 
 # 索引徽标的 agent 发现面：wsh block refresh + agent guide 能力条目

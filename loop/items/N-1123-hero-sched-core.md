@@ -13,6 +13,7 @@ rollback: null
 budget: {minutes: 300, retries: 2}
 releaseCandidate: false
 createdAt: "2026-11-23T11:16:20Z"
+feature: sched-task
 ---
 
 # Hero 定时执行后端（方案 A）：ScheduledTaskType 加 hero 字段 + hero home cwd + block meta 注入

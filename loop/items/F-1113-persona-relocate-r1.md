@@ -14,6 +14,7 @@ budget: {minutes: 300, retries: 2}
 releaseCandidate: false
 score: {value: 4, by: nita, at: "2026-11-13T04:48:37Z", note: "用户 2026-11-13 会话原话授权代理验收「继续开发直到完成」；真机验证留用户手动。9/9 判据机器采数全绿；白名单生成物偏差已披露（metaconsts/schema 由 settings 键再生成）。"}
 createdAt: "2026-11-13T04:37:19Z"
+feature: persona-sync
 ---
 
 # A5.5 rootdir 设置 + relocate + journal 轮转 + 容量三项

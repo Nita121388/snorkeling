@@ -14,6 +14,7 @@ rollback: "新增 CLI/MCP 与 mode 字段默认 headless（旧任务行为不变
 budget: {minutes: 300, retries: 2}
 releaseCandidate: true
 createdAt: "2026-11-19T14:30:00Z"
+feature: sched-task
 ---
 
 # 定时任务 agent 化

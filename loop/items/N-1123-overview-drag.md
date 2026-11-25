@@ -13,6 +13,7 @@ rollback: null
 budget: {minutes: 240, retries: 2}
 releaseCandidate: false
 createdAt: "2026-11-23T11:17:10Z"
+feature: overview-board
 ---
 
 # Overview 看板 Agent 卡跨 Tab 拖拽（拖到目标 Tab 组/折叠组头 = 移动块）

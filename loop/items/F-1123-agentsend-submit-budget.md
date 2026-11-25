@@ -14,6 +14,7 @@ rollback: null
 budget: {minutes: 300, retries: 2}
 releaseCandidate: false
 createdAt: "2026-11-23T02:14:47Z"
+feature: agentsend
 ---
 
 # 提交确认按时间预算退避（45s 次数上限绕过 180s/600s 预算）+ 派发回执不许掩盖未确认

@@ -13,6 +13,7 @@ rollback: null
 budget: {minutes: 600, retries: 2}
 releaseCandidate: false
 createdAt: "2026-11-23T05:35:25Z"
+feature: overview-board
 ---
 
 # 看板卡补齐能力：恢复 agent + composer 浮层发送（复用 AgentResumeCommand / card-send）

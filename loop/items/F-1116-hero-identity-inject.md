@@ -13,6 +13,7 @@ rollback: null
 budget: {minutes: 60, retries: 2}
 releaseCandidate: false
 createdAt: "2026-11-16T03:12:35Z"
+feature: hero-identity
 ---
 
 # Hero 登场身份注入：据点根级 AGENTS.md 带 CHARTER 摘要

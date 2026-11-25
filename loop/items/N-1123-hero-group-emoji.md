@@ -14,6 +14,7 @@ rollback: null
 budget: {minutes: 90, retries: 2}
 releaseCandidate: false
 createdAt: "2026-11-23T11:17:37Z"
+feature: hero-identity
 ---
 
 # AISessions Hero 折叠组头只留 emoji（不画 fa-folder/folder-open）

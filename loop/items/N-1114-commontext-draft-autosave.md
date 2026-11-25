@@ -13,6 +13,7 @@ rollback: null
 budget: {minutes: 40, retries: 2}
 releaseCandidate: false
 createdAt: "2026-11-14T06:42:00Z"
+feature: commontext-editor
 ---
 
 # CommonText Editor 文本持久草稿自动保存

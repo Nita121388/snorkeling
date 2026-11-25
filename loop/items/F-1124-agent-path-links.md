@@ -13,6 +13,7 @@ rollback: "git checkout frontend/app/view/term frontend/app/element frontend/app
 budget: {minutes: 300, retries: 2}
 releaseCandidate: false
 createdAt: "2026-11-24T06:09:08Z"
+feature: agent-block
 ---
 
 # 终端/AI 面板 agent 路径链接：OSC8 激活 + 脏路径修复 + Search In Files 兜底

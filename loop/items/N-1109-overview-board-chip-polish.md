@@ -13,6 +13,7 @@ rollback: "git checkout -- session-overview.scss 单文件；原型目录可整�
 budget: {minutes: 30, retries: 1}
 releaseCandidate: false
 createdAt: "2026-11-09T03:58:02Z"
+feature: overview-board
 ---
 
 # Overview 看板 chip 美化（A：去描边胶囊化）

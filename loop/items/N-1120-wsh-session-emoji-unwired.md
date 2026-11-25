@@ -14,6 +14,7 @@ rollback: null
 budget: {minutes: 60, retries: 2}
 releaseCandidate: false
 createdAt: "2026-11-20T00:45:31Z"
+feature: emoji-pref
 ---
 
 # wsh CLI 接线 bug：session emoji 命令组不可达（init() 漏 AddCommand）

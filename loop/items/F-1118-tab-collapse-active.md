@@ -13,6 +13,7 @@ rollback: null
 budget: {minutes: 90, retries: 1}
 releaseCandidate: false
 createdAt: "2026-11-18T02:23:17Z"
+feature: tab-system
 ---
 
 # Tab 收起激活 Tab：收起并切走

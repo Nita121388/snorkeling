@@ -13,6 +13,7 @@ rollback: null
 budget: {minutes: 30, retries: 2}
 releaseCandidate: false
 createdAt: "2026-11-14T09:10:00Z"
+feature: commontext-tags
 ---
 
 # CommonText 标签 chip 去 # 前缀（兼容历史数据）+ 折叠摘要展示标签名

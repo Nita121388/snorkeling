@@ -14,6 +14,7 @@ rollback: "纯新增文件 + 建表，无调用方；revert 即无痕（回滚�
 budget: {minutes: 180, retries: 2}
 releaseCandidate: false
 createdAt: "2026-11-19T10:40:00Z"
+feature: emoji-pref
 ---
 
 # Emoji 偏好 P0：后端地基

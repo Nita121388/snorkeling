@@ -13,6 +13,7 @@ rollback: "git revert 单提交；phaseSince 是新增可选字段，旧读路�
 budget: {minutes: 60, retries: 2}
 releaseCandidate: false
 createdAt: "2026-11-08T05:58:20Z"
+feature: agent-card
 ---
 
 # 状态徽章时长按当前阶段段计算（phaseSince），而非 working 总时长

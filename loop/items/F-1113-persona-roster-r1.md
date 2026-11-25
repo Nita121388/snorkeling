@@ -14,6 +14,7 @@ budget: {minutes: 300, retries: 2}
 releaseCandidate: false
 score: {value: 4, by: nita, at: "2026-11-13T05:13:45Z", note: "用户 2026-11-13 会话原话授权代理验收；真机验证留用户手动。6/6 判据机器采数全绿。"}
 createdAt: "2026-11-13T04:50:14Z"
+feature: persona-block
 ---
 
 # A4 人设名册 Block persona://（列表/详情 + 登场复用）

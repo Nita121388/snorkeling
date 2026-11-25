@@ -13,6 +13,7 @@ rollback: null
 budget: {minutes: 50, retries: 2}
 releaseCandidate: false
 createdAt: "2026-11-06T00:21:39Z"
+feature: tab-system
 ---
 
 # Tab 条悬停弹窗被截断（卡片贴视口边缘不做钳位）

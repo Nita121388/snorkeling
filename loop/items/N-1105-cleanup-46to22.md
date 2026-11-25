@@ -13,6 +13,7 @@ rollback: "python .trellis/scripts/task.py list-archive <月> 后逐个还原目
 budget: {minutes: 120, retries: 0}
 releaseCandidate: false
 createdAt: 2026-11-05T09:40
+feature: loop-workflow
 ---
 
 # 清账：活跃任务 46 → ≤22（归档清单须人工过）

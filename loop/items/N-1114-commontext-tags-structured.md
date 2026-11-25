@@ -13,6 +13,7 @@ rollback: null
 budget: {minutes: 90, retries: 2}
 releaseCandidate: false
 createdAt: "2026-11-14T10:50:00Z"
+feature: commontext-tags
 ---
 
 # CommonText 内容与标签分离（tags 结构化权威 + 读路径惰性迁移）

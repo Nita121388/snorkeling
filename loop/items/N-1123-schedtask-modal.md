@@ -13,6 +13,7 @@ rollback: null
 budget: {minutes: 300, retries: 2}
 releaseCandidate: false
 createdAt: "2026-11-23T11:17:37Z"
+feature: sched-task
 ---
 
 # 定时任务管理面弹窗化（CommonText 同款 chrome，入口改工具栏按钮，不再建块）

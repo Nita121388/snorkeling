@@ -14,6 +14,7 @@ budget: {minutes: 180, retries: 2}
 releaseCandidate: false
 score: {value: 5, by: nita, at: "2026-11-08T13:17:04Z", note: null}
 createdAt: "2026-11-06T00:45:53Z"
+feature: overview-board
 ---
 
 # Overview 看板卡片动作：关闭 / 删除（含彻底删除）+ 内联 Tab 组不被误删

@@ -14,6 +14,7 @@ rollback: null
 budget: {minutes: 60, retries: 2}
 releaseCandidate: false
 createdAt: "2026-11-18T03:45:29Z"
+feature: hero-identity
 ---
 
 # Hero Block Header 显示 Hero 名而非据点哈希路径

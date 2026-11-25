@@ -13,6 +13,7 @@ rollback: null
 budget: {minutes: 120, retries: 1}
 releaseCandidate: false
 createdAt: "2026-11-05T07:05:59Z"
+feature: loop-workflow
 ---
 
 # 夜班真派发：headless agent 注入契约并限一包

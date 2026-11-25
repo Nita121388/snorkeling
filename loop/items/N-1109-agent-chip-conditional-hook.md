@@ -13,6 +13,7 @@ rollback: "git revert 单提交；三处改动均为 hook 调用位置调整，�
 budget: {minutes: 90, retries: 2}
 releaseCandidate: false
 createdAt: "2026-11-09T01:50:49Z"
+feature: agent-card
 ---
 
 # Agent 状态 chip 条件调用 hook 导致整窗白屏（React #310）

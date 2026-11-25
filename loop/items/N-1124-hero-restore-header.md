@@ -14,6 +14,7 @@ rollback: null
 budget: {minutes: 120, retries: 2}
 releaseCandidate: false
 createdAt: "2026-11-24T07:42:25Z"
+feature: hero-identity
 ---
 
 # 恢复的 hero 会话块 header 走通用显示逻辑：恢复时补盖章 hero 身份 meta

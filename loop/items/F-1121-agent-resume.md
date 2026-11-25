@@ -13,6 +13,7 @@ rollback: null
 budget: {minutes: 480, retries: 2}
 releaseCandidate: false
 createdAt: "2026-11-21T14:55:10Z"
+feature: acs
 ---
 
 # ACS：agent resume（按会话恢复 agent 块）+ session mark

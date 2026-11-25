@@ -14,6 +14,7 @@ rollback: "纯前端追加逻辑，判定不满足（session scope / 已存在�
 budget: {minutes: 120, retries: 2}
 releaseCandidate: false
 createdAt: "2026-11-19T11:45:00Z"
+feature: properties
 ---
 
 # UI 属性新值自动追加候选

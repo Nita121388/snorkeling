@@ -14,6 +14,7 @@ rollback: null
 budget: {minutes: 45, retries: 2}
 releaseCandidate: false
 createdAt: "2026-11-24T06:39:23Z"
+feature: overview-board
 ---
 
 # Overview 看板 Agent 卡 provider 只显品牌 logo（无 logo 回退文字）

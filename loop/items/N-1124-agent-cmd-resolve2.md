@@ -14,6 +14,7 @@ rollback: null
 budget: {minutes: 90, retries: 2}
 releaseCandidate: false
 createdAt: "2026-11-24T13:06:40Z"
+feature: agent-block
 ---
 
 # Agent 块本机启动命令解析：GUI 裸 PATH 下 opencode 找不到命令（11-24-agent-local-cmd-resolve）

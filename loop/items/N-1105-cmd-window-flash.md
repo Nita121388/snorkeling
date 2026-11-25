@@ -13,6 +13,7 @@ rollback: null
 budget: {minutes: 30, retries: 2}
 releaseCandidate: false
 createdAt: "2026-11-06T00:50:19Z"
+feature: loop-workflow
 ---
 
 # 打开看板闪黑窗：子进程漏 windowsHide

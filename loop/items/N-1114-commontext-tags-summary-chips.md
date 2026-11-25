@@ -13,6 +13,7 @@ rollback: null
 budget: {minutes: 20, retries: 1}
 releaseCandidate: false
 createdAt: "2026-11-14T10:05:00Z"
+feature: commontext-tags
 ---
 
 # CommonText 折叠摘要标签样式与展开态统一（chip）

@@ -14,6 +14,7 @@ rollback: null
 budget: {minutes: 240, retries: 2}
 releaseCandidate: false
 createdAt: "2026-11-20T02:20:11Z"
+feature: properties
 ---
 
 # 属性 status 类型彻底退役（数据迁移 status→select + 改类型浮层修复）

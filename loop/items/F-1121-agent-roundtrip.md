@@ -13,6 +13,7 @@ rollback: null
 budget: {minutes: 480, retries: 2}
 releaseCandidate: false
 createdAt: "2026-11-21T14:57:00Z"
+feature: acs
 ---
 
 # ACS：agent roundtrip（send --wait-reply 等回合完成收回复）+ session wait

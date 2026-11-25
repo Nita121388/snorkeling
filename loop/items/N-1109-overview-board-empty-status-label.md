@@ -13,6 +13,7 @@ rollback: "git revert 单提交；无数据/接口/存储变更"
 budget: {minutes: 45, retries: 2}
 releaseCandidate: false
 createdAt: "2026-11-09T03:31:25Z"
+feature: overview-board
 ---
 
 # Overview 看板：无状态 agent 卡渲染空状态标签

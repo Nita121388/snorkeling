@@ -13,6 +13,7 @@ rollback: null
 budget: {minutes: 40, retries: 2}
 releaseCandidate: false
 createdAt: "2026-11-14T07:40:00Z"
+feature: commontext-tags
 ---
 
 # CommonText 详情标签移入属性区（Notion/Obsidian 式选择）

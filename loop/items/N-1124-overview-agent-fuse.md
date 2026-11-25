@@ -14,6 +14,7 @@ rollback: null
 budget: {minutes: 150, retries: 2}
 releaseCandidate: false
 createdAt: "2026-11-24T08:46:02Z"
+feature: overview-board
 ---
 
 # 看板 agent 卡与列表融合：会话方块条共用组件 + 移除恢复 icon

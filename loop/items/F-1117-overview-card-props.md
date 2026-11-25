@@ -13,6 +13,7 @@ rollback: null
 budget: {minutes: 90, retries: 1}
 releaseCandidate: false
 createdAt: "2026-11-17T07:43:27Z"
+feature: overview-board
 ---
 
 # Overview agent 卡面显示 Note/Tags/自定义属性（含状态）

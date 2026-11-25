@@ -14,6 +14,7 @@ rollback: null
 budget: {minutes: 90, retries: 2}
 releaseCandidate: false
 createdAt: "2026-11-24T08:45:55Z"
+feature: agentsend
 ---
 
 # Overview 发送已成功却显示发送失败（客户端超时预算 + 超时误映射 + 重复投递）

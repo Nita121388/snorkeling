@@ -13,6 +13,7 @@ rollback: null
 budget: {minutes: 120, retries: 1}
 releaseCandidate: false
 createdAt: "2026-11-18T13:00:00Z"
+feature: agent-block
 ---
 
 # Agent Block 程序化创建：wsh agent launch + MCP 工具

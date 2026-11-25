@@ -13,6 +13,7 @@ rollback: null
 budget: {minutes: 150, retries: 2}
 releaseCandidate: false
 createdAt: "2026-11-24T03:55:42Z"
+feature: idx-badges
 ---
 
 # 目录装饰协议 v2：词表泛化（icon/labelColor/hidden/order）+ 自定义状态注册表 + 脚本全树上下文

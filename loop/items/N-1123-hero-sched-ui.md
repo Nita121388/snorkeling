@@ -13,6 +13,7 @@ rollback: null
 budget: {minutes: 240, retries: 2}
 releaseCandidate: false
 createdAt: "2026-11-23T11:17:09Z"
+feature: sched-task
 ---
 
 # Hero 定时执行前端：任务编辑弹窗 hero 选择器 + Overview 独立「定时任务」区

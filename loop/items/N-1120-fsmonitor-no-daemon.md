@@ -14,6 +14,7 @@ rollback: null
 budget: {minutes: 40, retries: 2}
 releaseCandidate: false
 createdAt: "2026-11-20T01:26:47Z"
+feature: loop-workflow
 ---
 
 # 内部 git 调用禁用 fsmonitor 常驻 daemon（三处收口）

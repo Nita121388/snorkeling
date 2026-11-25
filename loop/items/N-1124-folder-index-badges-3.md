@@ -13,6 +13,7 @@ rollback: null
 budget: {minutes: 240, retries: 2}
 releaseCandidate: false
 createdAt: "2026-11-24T02:16:18Z"
+feature: idx-badges
 ---
 
 # 文件夹索引徽标（实验插件）：index.md 状态表 + badges.js 脚本源 + Agent 定向刷新 Block

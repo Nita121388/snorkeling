@@ -13,6 +13,7 @@ rollback: null
 budget: {minutes: 60, retries: 1}
 releaseCandidate: false
 createdAt: "2026-11-14T06:54:08Z"
+feature: tab-system
 ---
 
 # 重启后 Tab 栏只恢复激活一个 Tab，其余全被藏进「更多」

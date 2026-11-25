@@ -14,6 +14,7 @@ budget: {minutes: 40, retries: 2}
 releaseCandidate: false
 score: {value: 4, by: nita, at: "2026-11-05T03:44:28Z", note: "一次通过，红证有数字"}
 createdAt: "2026-11-05T02:16:05Z"
+feature: loop-workflow
 ---
 
 # queue.json 解析失败不再静默清空（回退 last-good 快照）

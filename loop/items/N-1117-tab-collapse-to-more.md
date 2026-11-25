@@ -14,6 +14,7 @@ rollback: "git revert f44ec0942；新增菜单项为纯增量，collapseTabIds �
 budget: {minutes: 60, retries: 1}
 releaseCandidate: false
 createdAt: "2026-11-17T10:30:00Z"
+feature: tab-system
 ---
 
 # Tab 右键菜单「收起到更多」+ 激活/未读 Tab 置灰

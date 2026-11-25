@@ -15,6 +15,7 @@ rollback: "git revert 单提交；origin 建键向后兼容（空 origin = 旧�
 budget: {minutes: 90, retries: 2}
 releaseCandidate: false
 createdAt: "2026-11-18T05:17:38Z"
+feature: session-details
 ---
 
 # 标题缓存缺 origin 维度：外部 dump 会话的 Header 退化为 Session Details，写操作落错库

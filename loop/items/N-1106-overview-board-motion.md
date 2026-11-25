@@ -14,6 +14,7 @@ budget: {minutes: 90, retries: 1}
 releaseCandidate: false
 score: {value: 4, by: nita, at: "2026-11-11T06:22:54Z", note: null}
 createdAt: "2026-11-06T01:05:49Z"
+feature: overview-board
 ---
 
 # Overview 看板卡片跨列移动动画（FLIP + WAAPI）

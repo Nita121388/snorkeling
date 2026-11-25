@@ -14,6 +14,7 @@ rollback: null
 budget: {minutes: 240, retries: 2}
 releaseCandidate: false
 createdAt: "2026-11-23T00:58:27Z"
+feature: commontext-send
 ---
 
 # CommonText 新建 agent 发送丢失：create 路径改走后端 agentsend（提交确认+补回车）

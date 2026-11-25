@@ -15,6 +15,7 @@ rollback: "git revert 单提交；仅缩窄匹配，不改存储"
 budget: {minutes: 60, retries: 2}
 releaseCandidate: false
 createdAt: "2026-11-18T05:17:38Z"
+feature: session-details
 ---
 
 # 会话定位的 id 前缀匹配：唯一命中时静默返回另一个会话

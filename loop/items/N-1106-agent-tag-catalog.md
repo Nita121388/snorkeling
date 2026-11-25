@@ -14,6 +14,7 @@ budget: {minutes: 150, retries: 2}
 releaseCandidate: false
 score: {value: 4, by: nita, at: "2026-11-14T13:18:30Z", note: null}
 createdAt: "2026-11-06T05:27:52Z"
+feature: agent-card
 ---
 
 # Agent 卡片标签候选：全局清单 + 计数

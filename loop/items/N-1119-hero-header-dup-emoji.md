@@ -14,6 +14,7 @@ rollback: null
 budget: {minutes: 45, retries: 2}
 releaseCandidate: false
 createdAt: "2026-11-19T05:31:38Z"
+feature: hero-identity
 ---
 
 # Hero Block Header 去重：保留左上 emoji，胶囊 Hero 名去掉 emoji

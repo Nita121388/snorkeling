@@ -15,6 +15,7 @@ rollback: "git revert 单提交；三处改动（回落分流 / seq 守卫 / 渲
 budget: {minutes: 90, retries: 2}
 releaseCandidate: false
 createdAt: "2026-11-20T03:30:00Z"
+feature: session-details
 ---
 
 # AI 会话详情块绑定错位：打开的详情常常不是列表里点的那一行

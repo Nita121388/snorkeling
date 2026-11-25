@@ -14,6 +14,7 @@ budget: {minutes: 90, retries: 2}
 releaseCandidate: false
 score: {value: 5, by: nita, at: "2026-11-08T13:16:00Z", note: null}
 createdAt: "2026-11-05T09:40"
+feature: loop-workflow
 ---
 
 # loop 台账骨架 + 门引擎

@@ -13,6 +13,7 @@ rollback: null
 budget: {minutes: 360, retries: 2}
 releaseCandidate: false
 createdAt: "2026-11-22T06:39:17Z"
+feature: overview-board
 ---
 
 # Overview Tab 分组 tab-first 化：组不消失 + 未打开灰行 + 批量取块骨架

@@ -14,6 +14,7 @@ budget: {minutes: 150, retries: 2}
 releaseCandidate: false
 score: {value: 5, by: nita, at: "2026-11-08T13:16:07Z", note: null}
 createdAt: "2026-11-06T12:44:52Z"
+feature: tab-system
 ---
 
 # Move Block to Tab：菜单 4→1 条 + 弹窗内新建 / 每行双图标动作

@@ -13,6 +13,7 @@ rollback: "git revert 单提交；迁移 000014 down 只 DROP 新表，主表未
 budget: {minutes: 150, retries: 2}
 releaseCandidate: false
 createdAt: "2026-11-09T02:03:02Z"
+feature: commontext-sync
 ---
 
 # Common Text 条目级同步水位：区分已同步/待上传 + 增量推送 + 墓碑

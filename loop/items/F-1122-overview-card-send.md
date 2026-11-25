@@ -13,6 +13,7 @@ rollback: null
 budget: {minutes: 420, retries: 2}
 releaseCandidate: false
 createdAt: "2026-11-22T09:53:21Z"
+feature: overview-board
 ---
 
 # Overview 列表卡展开 + composer 发送（派发/等回复/失败原地重试）

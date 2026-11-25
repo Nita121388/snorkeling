@@ -13,6 +13,7 @@ rollback: null
 budget: {minutes: 150, retries: 2}
 releaseCandidate: false
 createdAt: "2026-11-24T08:46:10Z"
+feature: overview-board
 ---
 
 # Overview 输入记忆：新建弹窗记住 agent 类型 + composer 草稿持久化 + 存 CommonText icon
