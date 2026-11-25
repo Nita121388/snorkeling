@@ -330,7 +330,7 @@ g.hit:hover .bug-dot{stroke:var(--hover-label);stroke-width:1.5}
 </head>
 <body>
 
-<div class="proto-flag">loop map · build 2026-11-25T05:43:21Z · 13 模块 · 150 功能点 · 86 修改点</div>
+<div class="proto-flag">loop map · build 2026-11-25T05:54:35Z · 13 模块 · 159 功能点 · 86 修改点</div>
 
 <header>
   <div class="brand"><span class="mark"></span><b>Snorkeling</b><span>项目地图</span></div>
@@ -372,8 +372,8 @@ g.hit:hover .bug-dot{stroke:var(--hover-label);stroke-width:1.5}
 <div id="draftbar" class="hidden"></div>
 
 <script>
-/* loop map · build 2026-11-25T05:43:21Z
-   loop map · build 2026-11-25T05:43:21Z · 13 模块 · 150 功能点 · 86 修改点
+/* loop map · build 2026-11-25T05:54:35Z
+   loop map · build 2026-11-25T05:54:35Z · 13 模块 · 159 功能点 · 86 修改点
    功能层来自 loop/map/**（人写）；修改点来自 loop/items/*.md（工作项）
    改完重跑 queue map build */
 var TODAY = "2026-11-25";
@@ -475,6 +475,7 @@ var FEATURES = [
   {"id":"agentsend","title":"派发与回执","module":"agents","parent":"agent-workflow","status":"building","introduced":"2026-11-23","target":null,"deprecated":null,"releases":[],"note":"loop 工作项细分功能点（保留原 id，items/*.md 的 feature: 引用不变）。"},
   {"id":"ai-sessions","title":"AI Sessions 会话工作台","module":"aisessions","parent":null,"status":"shipped","introduced":"2026-05-05","target":null,"deprecated":null,"releases":[],"note":"本机 Codex/Claude/OpenCode/Pi 会话浏览、检索、批注、属性与恢复。"},
   {"id":"app-isolation","title":"应用身份与运行路径隔离","module":"identity-release","parent":null,"status":"shipped","introduced":"2026-04-17","target":null,"deprecated":null,"releases":[],"note":"独立 app id、配置/缓存/运行路径与更新地址。"},
+  {"id":"base-view","title":"Obsidian .base 查看器","module":"files","parent":"files-workflow","status":"shipped","introduced":"2026-08-14","target":null,"deprecated":null,"releases":[],"note":".base 表格/筛选视图与内部 preview plugin registry。"},
   {"id":"block-minimize","title":"区块最小化与悬浮管理","module":"workspace","parent":"workspace-tabs","status":"shipped","introduced":"2026-04-20","target":null,"deprecated":null,"releases":[],"note":"最小化块、浮动按钮、预览/恢复/删除。"},
   {"id":"block-sidebar","title":"Block Sidebar","module":"workspace","parent":"workspace-tabs","status":"shipped","introduced":"2026-09-01","target":null,"deprecated":null,"releases":[],"note":"最小化区块侧栏。"},
   {"id":"ccswitch-isolation","title":"cc-switch 每块隔离","module":"agents","parent":"agent-workflow","status":"shipped","introduced":"2026-07-21","target":null,"deprecated":null,"releases":[],"note":"Claude/Codex/OpenCode/Pi 每块独立 vendor 配置目录。"},
@@ -504,21 +505,28 @@ var FEATURES = [
   {"id":"files-workflow","title":"Files 文件工作流","module":"files","parent":null,"status":"shipped","introduced":"2026-04-18","target":null,"deprecated":null,"releases":[],"note":"定向打开、Copy Context、编辑器增强与 Files Explorer。"},
   {"id":"floating-copy-paste","title":"浮动 Copy / Paste","module":"workspace","parent":"workspace-tabs","status":"shipped","introduced":"2026-04-19","target":null,"deprecated":null,"releases":[],"note":"应用级浮动复制粘贴快捷动作。"},
   {"id":"folder-index-badges","title":"文件夹索引徽标与装饰协议","module":"files","parent":"files-workflow","status":"shipped","introduced":"2026-11-24","target":null,"deprecated":null,"releases":[],"note":"index.md 状态表、词表泛化、agent 刷新入口。"},
+  {"id":"folder-multi-move","title":"文件夹多选与 Cut/Move","module":"files","parent":"files-workflow","status":"shipped","introduced":"2026-08-17","target":null,"deprecated":null,"releases":[],"note":"预览树文件夹多选、剪切/移动到指定目录。"},
   {"id":"fsmonitor-guard","title":"fsmonitor 常驻 daemon 收口","module":"platform","parent":"platform-stability","status":"shipped","introduced":"2026-11-20","target":null,"deprecated":null,"releases":[],"note":"内部 git 调用禁用 fsmonitor daemon。"},
   {"id":"hero-identity","title":"Hero 登场身份","module":"persona","parent":"persona-system","status":"shipped","introduced":"2026-11-16","target":null,"deprecated":null,"releases":[],"note":"据点根级 AGENTS.md CHARTER 摘要注入与 Header 身份显示。"},
   {"id":"hero-rename","title":"Persona → Hero 改名","module":"persona","parent":"persona-system","status":"shipped","introduced":"2026-11-14","target":null,"deprecated":null,"releases":[],"note":"磁盘布局、CLI、settings、RPC 与 UI 词汇统一为 Hero。"},
   {"id":"hero-scheduler","title":"Hero 定时执行","module":"persona","parent":"persona-system","status":"shipped","introduced":"2026-11-23","target":null,"deprecated":null,"releases":[],"note":"hero home cwd、block meta 注入与 Overview 定时区。"},
   {"id":"i18n","title":"双进程 i18n 全量迁移","module":"platform","parent":"platform-stability","status":"shipped","introduced":"2026-11-14","target":null,"deprecated":null,"releases":[],"note":"i18next dual-process、auto/en/zh、CI gate。"},
   {"id":"idx-badges","title":"目录索引徽标 · 装饰协议","module":"files","parent":"files-workflow","status":"building","introduced":"2026-11-24","target":null,"deprecated":null,"releases":[],"note":"loop 工作项细分功能点（保留原 id，items/*.md 的 feature: 引用不变）。"},
+  {"id":"image-lightbox","title":"图片放大灯箱","module":"files","parent":"files-workflow","status":"shipped","introduced":"2026-08-14","target":null,"deprecated":null,"releases":[],"note":"图片放大、右键菜单、光标定位编辑与块插入按钮。"},
   {"id":"inline-tab-lock","title":"Inline Tab 锁定","module":"workspace","parent":"workspace-tabs","status":"shipped","introduced":"2026-08-10","target":null,"deprecated":null,"releases":[],"note":"锁定与关闭其他/全部（锁定除外）。"},
   {"id":"inline-tab-overflow","title":"Inline Tab Overflow「更多」","module":"workspace","parent":"workspace-tabs","status":"shipped","introduced":"2026-09-18","target":null,"deprecated":null,"releases":[],"note":"非激活 Tab 收进 more pill。"},
   {"id":"inline-tabs","title":"Inline Tabs 引擎","module":"workspace","parent":"workspace-tabs","status":"shipped","introduced":"2026-06-22","target":null,"deprecated":null,"releases":[],"note":"布局树、瓦片核心与 block/header/tab 接线。"},
+  {"id":"launch-at-login","title":"Launch at Login","module":"identity-release","parent":null,"status":"shipped","introduced":"2026-05-08","target":null,"deprecated":null,"releases":[],"note":"应用菜单控制开机登录后自动启动 Snorkeling。"},
   {"id":"light-theme-rework","title":"浅色主题层次重做","module":"workspace","parent":"workspace-tabs","status":"shipped","introduced":"2026-10-27","target":null,"deprecated":null,"releases":[],"note":"浅色层次与更多收纳语义对齐。"},
   {"id":"loop-workflow","title":"loop 台账与夜班","module":"engineering","parent":"dev-workflow","status":"shipped","introduced":"2026-11-05","target":null,"deprecated":null,"releases":[],"note":"工作项、门凭据、事件流、取件契约与交接。"},
   {"id":"markdown-export","title":"Markdown 导出 HTML/PDF","module":"files","parent":"files-workflow","status":"shipped","introduced":"2026-09-03","target":null,"deprecated":null,"releases":[],"note":"Markdown 导出与块侧栏完善。"},
+  {"id":"markdown-image-assets","title":"Markdown 贴图自动落盘","module":"files","parent":"files-workflow","status":"shipped","introduced":"2026-08-15","target":null,"deprecated":null,"releases":[],"note":"编辑块粘贴图片自动落 assets/ 并插入 Markdown 引用。"},
   {"id":"markdown-list-assist","title":"Markdown 有序列表辅助","module":"files","parent":"files-workflow","status":"shipped","introduced":"2026-04-18","target":null,"deprecated":null,"releases":[],"note":"列表项上移/下移、自动重编号与视觉反馈。"},
+  {"id":"md-properties","title":"Obsidian Properties 渲染","module":"files","parent":"files-workflow","status":"shipped","introduced":"2026-08-15","target":null,"deprecated":null,"releases":[],"note":"Markdown frontmatter 属性卡片只读渲染。"},
   {"id":"monochrome-theme","title":"Monochrome 主题","module":"workspace","parent":"workspace-tabs","status":"shipped","introduced":"2026-07-11","target":null,"deprecated":null,"releases":[],"note":"黑白主题与 token 化。"},
   {"id":"move-tab-window","title":"Move Tab to New Window","module":"workspace","parent":"workspace-tabs","status":"shipped","introduced":"2026-04-18","target":null,"deprecated":null,"releases":[],"note":"Tab 移到新窗口与移回。"},
+  {"id":"open-obsidian","title":"Open in Obsidian","module":"files","parent":"files-workflow","status":"shipped","introduced":"2026-07-09","target":null,"deprecated":null,"releases":[],"note":"从文件/预览路径用 Obsidian 打开笔记。"},
+  {"id":"open-vscode","title":"Open VS Code Here","module":"files","parent":"files-workflow","status":"shipped","introduced":"2026-04-19","target":null,"deprecated":null,"releases":[],"note":"Files 右键用 VS Code 打开本地目录/文件，支持 URI/CLI/系统 fallback。"},
   {"id":"opencode-pi-provider","title":"OpenCode / Pi Provider","module":"agents","parent":"agent-workflow","status":"shipped","introduced":"2026-08-03","target":null,"deprecated":null,"releases":[],"note":"内置 profile、vendor 注入与 session 解析。"},
   {"id":"overview-board","title":"Overview 看板","module":"overview","parent":null,"status":"shipped","introduced":"2026-11-05","target":null,"deprecated":null,"releases":[],"note":"按 Agent 状态分列的卡片墙，支持 Tab/Provider 分组。"},
   {"id":"overview-card-actions","title":"看板卡片动作","module":"overview","parent":"overview-board","status":"shipped","introduced":"2026-11-08","target":null,"deprecated":null,"releases":[],"note":"关闭/删除会话、彻底删除与定位到块。"},
@@ -535,6 +543,7 @@ var FEATURES = [
   {"id":"persona-sync","title":"Persona 跨机同步","module":"persona","parent":"persona-system","status":"shipped","introduced":"2026-11-13","target":null,"deprecated":null,"releases":[],"note":"rootdir 单仓、relocate、journal 轮转与冲突合并。"},
   {"id":"persona-system","title":"Persona / Hero 体系","module":"persona","parent":null,"status":"shipped","introduced":"2026-11-12","target":null,"deprecated":null,"releases":[],"note":"数据地基、创建、名册、跨机同步、记忆与登场。"},
   {"id":"platform-stability","title":"调度 / 稳定性 / i18n","module":"platform","parent":null,"status":"shipped","introduced":"2026-07-11","target":null,"deprecated":null,"releases":[],"note":"跨平台安装、远程传输、定时任务、i18n 与 wavesrv 稳定性。"},
+  {"id":"preview-save-conflict","title":"预览编辑冲突保护","module":"files","parent":"files-workflow","status":"shipped","introduced":"2026-08-20","target":null,"deprecated":null,"releases":[],"note":"文件编辑保存冲突保护，避免覆盖外部修改。"},
   {"id":"project-map","title":"项目地图","module":"engineering","parent":"dev-workflow","status":"shipped","introduced":"2026-11-25","target":null,"deprecated":null,"releases":[],"note":"功能点 × 修改点 × 计划；queue map / next / serve。"},
   {"id":"properties","title":"属性体系","module":"commontext","parent":"property-system","status":"building","introduced":"2026-11-11","target":null,"deprecated":null,"releases":[],"note":"loop 工作项细分功能点（保留原 id，items/*.md 的 feature: 引用不变）。"},
   {"id":"property-scope","title":"属性范围与 UI 候选","module":"commontext","parent":"property-system","status":"shipped","introduced":"2026-11-11","target":null,"deprecated":null,"releases":[],"note":"会话/Agent/全局三档范围、新值自动追加候选。"},
