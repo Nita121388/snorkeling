@@ -5,15 +5,17 @@ type: bug
 priority: P1
 severity: S2
 solution: fixed
-status: open
+status: accepted
 origin: self
 source: "nita 2026-11-18：打开的 session detail 内容和 header 对不上；根因之一是入口只传裸 id"
 task: 11-18-aisessions-detail-scope-threading
+feature: session-details
 order: 100
 touch: [frontend/app/modals/**, frontend/app/session-overview/**, frontend/app/view/aisessions/**, frontend/app/store/session-note-cache.ts, frontend/app/store/session-note-hook.ts, frontend/app/block/use-block-session-title.ts, frontend/app/block/block.tsx, .trellis/tasks/11-18-aisessions-detail-scope-threading/**, .trellis/spec/**]
 rollback: "git revert 单提交；改动只是把已有参数传全，无数据迁移"
 budget: {minutes: 90, retries: 2}
 releaseCandidate: false
+score: {value: 5, by: nita, at: "2026-11-25T03:02:01Z", note: null}
 createdAt: "2026-11-18T05:17:22Z"
 ---
 

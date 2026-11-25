@@ -9,7 +9,7 @@ import { atom } from "jotai";
  *
  * 设计:
  * - 单一全局实例, 所有消费 D elapsed 的 derive (A 头部徽章 term-model.getAgentStatusHeaderElem,
- *   B/C agentDots agent-status-tab-aggregate) 都通过 `get(nowMinuteTickAtom)` 加入订阅, 分钟跳变时
+ *   B/C agent status entries / legacy agentDots in agent-status-tab-aggregate) 都通过 `get(nowMinuteTickAtom)` 加入订阅, 分钟跳变时
  *   一并 rederive, 而不是各自起 setInterval 翻自己的 atoms.
  * - 缓存友好: 60s tick, 不是每秒 Date.now(); D 类文案 1m 分辨率足够, 高频 tick 无意义且费力.
  * - 模块加载时启动 setInterval, 进程生命周期内常驻. 这是有意为之 — D 会在 idle 状态长期挂着,

@@ -1,0 +1,17 @@
+{
+  "g1": {
+    "at": "2026-11-25T02:41:29Z",
+    "by": "nita",
+    "verdict": "confirmed",
+    "prdHash": "9fcd9904642e"
+  },
+  "g2": {
+    "redProof": "loop/red/N-1125-commontext-send-model-path.txt",
+    "at": "2026-11-25T03:54:45Z"
+  },
+  "g5": {
+    "ok": true,
+    "executedAt": "2026-11-25T03:55:19Z",
+    "by": "compliance"
+  }
+}

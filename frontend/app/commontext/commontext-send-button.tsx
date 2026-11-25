@@ -1,7 +1,7 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-// CommonText Send 目标选择器：split button（主键按当前配置直接发送）+ popover（目标卡 + Agent/Tab/目录三行常显 + 确认）。
+// CommonText Send 目标选择器：split button（主键按当前配置直接发送）+ popover（Agent/模型/Tab/可见路径 + 确认）。
 // 设计依据：design/prototypes/commontext/commontext-send-compact/（v2）
 // 规则：只有 Agent Block（term + agent:* meta）才能作为「已存在」目标；其余组合都会新建 agent block，
 // 文本经后端 agentsend 投递（就绪门 + paste + 回车 + 提交确认，与 existing 路径同一入口；R10 同款，2026-11-23）。
@@ -19,6 +19,13 @@ import { TabRpcClient } from "@/app/store/wshrpcutil";
 import * as WOS from "@/app/store/wos";
 import { stripSessionTagHashes } from "@/app/view/aisessions/session-tags";
 import { getAgentIcon } from "@/app/view/term/agent-logo";
+import {
+    findAgentProfile,
+    loadAgentCatalog,
+    modelOptionsFor,
+    pickDefaultModel,
+    type AgentProfileInfo,
+} from "@/app/workspace/agent-catalog";
 import {
     collectAgentLaunchTargetsInTab,
     createAgentBlockDefForProfile,
@@ -70,6 +77,8 @@ export type CommontextSendConfig = {
     tab: SendTabSelection;
     /** null = 跟随聚焦块 cwd（无聚焦时用当前工作区 cwd） */
     folder: string | null;
+    /** null = profile/vendor 默认模型；非空 = 仅本次新建块的 model override */
+    model: string | null;
 };
 
 export const commontextSendConfigAtom = atom<CommontextSendConfig>({
@@ -78,6 +87,7 @@ export const commontextSendConfigAtom = atom<CommontextSendConfig>({
     profile: null,
     tab: { kind: "current" },
     folder: null,
+    model: null,
 });
 
 export type SendStatusKind = "info" | "ok" | "err";
@@ -181,7 +191,7 @@ export function previewSendTarget(input: {
             folder: config.folder ?? "",
             // existing 判定不用默认值（null = 跟随聚焦块）；仅 create 路径用它作 cwd 兜底
             folderDefault: inheritedDefault !== "" ? inheritedDefault : null,
-            forceCreate: config.mode === "create",
+            forceCreate: config.mode === "create" || (config.model ?? null) != null,
         },
         focusedAgent,
         { profileLabel }
@@ -278,7 +288,15 @@ export async function executeCommonTextSend(input: {
         preview.cwd === ""
             ? { inheritWorkspaceContext: true }
             : { connection: null, cwd: preview.cwd, inheritWorkspaceContext: false };
-    const blockDef = createAgentBlockDefForProfile(preview.profileName, settings, context);
+    const blockDef = createAgentBlockDefForProfile(
+        preview.profileName,
+        settings,
+        context,
+        undefined,
+        undefined,
+        undefined,
+        config.model ?? undefined
+    );
     // undefined 视为开（旧配置对象没有这个字段时默认后台执行）
     const background = config.background !== false;
     const activation = planSendActivation(background);
@@ -374,7 +392,7 @@ function TargetChip(props: {
             type="button"
             data-commontext-send-mode={props.mode}
             className={clsx(
-                "relative inline-flex items-center gap-2 h-[28px] px-2.5 rounded-md text-xs transition-colors cursor-pointer border-0",
+                "relative inline-flex items-center gap-2 h-[28px] px-2.5 rounded-md text-xs transition-colors cursor-pointer border-0 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent",
                 props.selected
                     ? "bg-accent/12 text-foreground"
                     : "bg-transparent text-muted hover:bg-surface-soft hover:text-secondary"
@@ -394,7 +412,7 @@ function TargetChip(props: {
 const menuItemClass =
     "split-menu-item flex items-center gap-2 w-full px-2.5 py-2 rounded-md text-left text-[12px] cursor-pointer bg-transparent border-0 text-[color:var(--main-text-color)] hover:bg-hoverbg";
 
-// ─── 面板内下拉（Type / Folder 二级菜单） ───
+// ─── 面板内下拉（Type 二级菜单） ───
 // 面板本体（SplitButton 弹层）带 max-height + overflow:auto，绝对定位子元素会被裁剪，
 // 所以二级菜单自己走 FloatingPortal（body 上无定位容器，zIndex 1001 稳定在面板之上）。
 // 挂在面板 children 里（React 树内）→ 面板的 useDismiss outsidePress 拿得到 insideReactTree，
@@ -454,28 +472,59 @@ function SendTargetPanel(props: { text: string; onSent: () => void; onStatus: Se
     const settings = useAtomValue(atoms.settingsAtom);
     const tabCandidates = useAtomValue(sendTabCandidatesAtom);
     const profiles = useDetectedAgentProfileOptions(settings);
-    const [menuOpen, setMenuOpen] = React.useState<"tab" | "folder" | null>(null);
+    const [menuOpen, setMenuOpen] = React.useState<"tab" | null>(null);
     const [menuAnchor, setMenuAnchor] = React.useState<HTMLElement | null>(null);
+    const [catalog, setCatalog] = React.useState<AgentProfileInfo[]>([]);
 
+    React.useEffect(() => {
+        let active = true;
+        void loadAgentCatalog().then((nextCatalog) => {
+            if (active) setCatalog(nextCatalog);
+        });
+        return () => {
+            active = false;
+        };
+    }, []);
+
+    const folderCandidates = React.useMemo(() => collectSendFolderCandidates(config), [config]);
+    const folderDefault = folderCandidates[0]?.path ?? "";
     const workspaceCwd = getWorkspaceContextCwd();
     const preview = previewSendTarget({
         config,
         focusedAgent,
         profiles,
         workspaceCwd,
-        folderDefault: collectSendFolderCandidates(config)[0]?.path,
+        folderDefault,
     });
-    const folderCandidates: FolderCandidate[] = React.useMemo(() => collectSendFolderCandidates(config), [config]);
+    const catalogProfile = React.useMemo(
+        () => findAgentProfile(catalog, preview.profileName ?? undefined),
+        [catalog, preview.profileName]
+    );
+    const selectedModel = config.model ?? null;
+    const modelOptions = React.useMemo(
+        () => modelOptionsFor(catalogProfile, selectedModel ?? undefined),
+        [catalogProfile, selectedModel]
+    );
+    const catalogDefaultModel = pickDefaultModel(catalogProfile);
+    const modelAutoHint =
+        catalogDefaultModel === ""
+            ? t("commontext:send.modelAutoHint")
+            : `${t("commontext:send.modelAutoHint")} (${catalogDefaultModel})`;
+    const selectedFolder = config.folder ?? folderCandidates[0]?.path ?? "";
 
-    const openMenu = (kind: "tab" | "folder", event: React.MouseEvent<HTMLElement>) => {
+    const openMenu = (event: React.MouseEvent<HTMLElement>) => {
         setMenuAnchor(event.currentTarget);
-        setMenuOpen(kind);
+        setMenuOpen("tab");
     };
 
     const closeMenu = () => setMenuOpen(null);
 
-    // Tab / 目录切换统一在这里发生：切 Tab 一律把 folder 重置为「跟随该 Tab」
+    // 切 Tab 一律把 folder 重置为「跟随该 Tab」，模型选择保持不变。
     const applyTab = (tab: SendTabSelection) => setConfig({ ...config, tab, folder: null });
+    const selectModel = (value: string) => {
+        const model = value.trim() === "" ? null : value.trim();
+        setConfig({ ...config, model, mode: model == null ? config.mode : "create" });
+    };
 
     const doSend = () => {
         fireAndForget(async () => {
@@ -505,109 +554,84 @@ function SendTargetPanel(props: { text: string; onSent: () => void; onStatus: Se
               ? t("commontext:send.tabNoteNew")
               : t("commontext:send.tabExisting");
 
-    const profileIcon =
-        preview.profileName == null ? null : getAgentIcon(preview.profileName, { personas: personaMap });
-    const dirLabel = preview.folder !== "" ? preview.folder : t("commontext:send.inheritWorkspace");
-    const cardSub = `${selectedTabName} · ${preview.folder !== "" ? preview.folder : t("commontext:send.inheritWorkspace")}`;
+    const targetCrumb = [
+        preview.profileLabel,
+        selectedModel,
+        selectedTabName,
+        selectedFolder !== "" ? selectedFolder : t("commontext:send.inheritWorkspace"),
+    ]
+        .filter((part) => part != null && part !== "")
+        .join(" · ");
 
     const pickerClass =
-        "flex min-w-0 flex-1 items-center gap-2 rounded-md border border-border/60 bg-surface-soft px-2.5 py-2 text-[12px] cursor-pointer hover:border-border";
+        "flex min-w-0 flex-1 items-center gap-2 rounded-md border border-border/60 bg-surface-soft px-2.5 py-2 text-[12px] cursor-pointer hover:border-border focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent";
     const rowLabelClass = "w-9 shrink-0 text-[10px] text-muted";
     const squareButtonClass =
-        "h-[34px] w-[36px] shrink-0 rounded-md border border-dashed border-border grid place-items-center text-[12px] text-secondary hover:text-accent hover:border-[color-mix(in_srgb,var(--accent-color)_45%,transparent)] hover:bg-actionsoft cursor-pointer";
+        "h-[34px] w-[36px] shrink-0 rounded-md border border-dashed border-border grid place-items-center text-[12px] text-secondary hover:text-accent hover:border-[color-mix(in_srgb,var(--accent-color)_45%,transparent)] hover:bg-actionsoft cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent";
 
     return (
         <div
-            className="flex flex-col"
+            className="flex max-h-[min(552px,calc(100vh-32px))] min-h-0 flex-col overflow-hidden"
             data-commontext-send-popover
             /* 2026-11-19 追加：弹层太挤。宽度收口到这里（唯一权威）：宽视口 440px ≥ 420，
                窄视口（≤420px）回落 94vw 不溢出；menu 用 w-fit! 贴合本宽度。 */
             style={{ width: "min(440px, 94vw)" }}
         >
-            {/* 1. 目标：chip（聚焦块 / 新建）+ 一张目标卡。落点信息只在这里出现一次。 */}
-            <div className="px-3 pt-2.5 pb-2.5">
-                <div className="mb-2.5 flex items-center gap-1.5">
-                    <span className="inline-flex items-center gap-1.5 text-xxs text-muted">
-                        <i className="fa-solid fa-crosshairs text-[9px]" />
-                        {t("commontext:send.chooseTarget")}
-                    </span>
-                    <span className="ml-auto flex items-center gap-1" data-commontext-send-modes>
-                        {focusedAgent != null ? (
-                            <TargetChip
-                                mode="focused"
-                                selected={preview.kind === "existing"}
-                                icon={<i className="fa-solid fa-bullseye text-[10px]" />}
-                                label={t("commontext:send.focusedBlock")}
-                                title={t("commontext:send.focusedBlockTitle")}
-                                onClick={() =>
-                                    setConfig({
-                                        ...config,
-                                        mode: "focused",
-                                        profile: null,
-                                        tab: { kind: "current" },
-                                        folder: null,
-                                    })
-                                }
-                            />
-                        ) : null}
+            {/* 1. 固定 header：标题 + 目标模式 + 关闭 */}
+            <div className="flex shrink-0 items-center gap-2 border-b border-border/60 px-3 py-2">
+                <span className="min-w-0 truncate text-[13px] font-semibold text-foreground">
+                    {t("commontext:send.menuLabel")}
+                </span>
+                <span className="ml-auto flex shrink-0 items-center gap-1" data-commontext-send-modes>
+                    {focusedAgent != null ? (
                         <TargetChip
-                            mode="create"
-                            selected={preview.kind === "create"}
-                            icon={<i className="fa-solid fa-plus text-[10px]" />}
-                            label={t("commontext:send.createNew")}
-                            title={t("commontext:send.createNewTitle")}
-                            onClick={() => setConfig({ ...config, mode: "create" })}
+                            mode="focused"
+                            selected={preview.kind === "existing"}
+                            icon={<i className="fa-solid fa-bullseye text-[10px]" />}
+                            label={t("commontext:send.focusedBlock")}
+                            title={t("commontext:send.focusedBlockTitle")}
+                            onClick={() =>
+                                setConfig({
+                                    ...config,
+                                    mode: "focused",
+                                    model: null,
+                                    profile: null,
+                                    tab: { kind: "current" },
+                                    folder: null,
+                                })
+                            }
                         />
-                    </span>
-                </div>
-                <div
-                    className="flex items-center gap-3 rounded-lg border border-border/60 bg-surface-soft px-3 py-2.5"
-                    data-commontext-send-target-card
+                    ) : null}
+                    <TargetChip
+                        mode="create"
+                        selected={preview.kind === "create"}
+                        icon={<i className="fa-solid fa-plus text-[10px]" />}
+                        label={t("commontext:send.createNew")}
+                        title={t("commontext:send.createNewTitle")}
+                        onClick={() => setConfig({ ...config, mode: "create" })}
+                    />
+                </span>
+                <button
+                    type="button"
+                    className="grid h-7 w-7 shrink-0 cursor-pointer place-items-center rounded-md border-0 bg-transparent text-muted hover:bg-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
+                    onClick={props.close}
+                    title={t("commontext:send.closePanel")}
+                    aria-label={t("commontext:send.closePanel")}
                 >
-                    <span className="grid h-[34px] w-[34px] shrink-0 place-items-center rounded-lg bg-accent/12 text-accent">
-                        {profileIcon == null ? (
-                            <i className="fa-solid fa-robot text-[13px]" />
-                        ) : profileIcon.kind === "emoji" ? (
-                            <span className="agent-emoji-icon">{profileIcon.emoji}</span>
-                        ) : (
-                            profileIcon.icon
-                        )}
-                    </span>
-                    <div className="min-w-0 flex-1 text-left">
-                        <div className="truncate text-[12.5px] font-medium leading-tight">
-                            {preview.kind === "existing"
-                                ? t("commontext:send.focusedBlock")
-                                : t("commontext:send.createNew")}
-                            <span className="text-muted"> · </span>
-                            {preview.profileLabel}
-                        </div>
-                        <div className="mt-0.5 truncate font-mono text-[10px] leading-tight text-muted" title={cardSub}>
-                            {cardSub}
-                        </div>
-                    </div>
-                    <span
-                        className={clsx(
-                            "shrink-0 rounded-full px-1.5 py-px text-[9.5px]",
-                            preview.kind === "existing" ? "bg-accent/12 text-accent" : "bg-surface-soft text-muted"
-                        )}
-                    >
-                        {preview.kind === "existing"
-                            ? t("commontext:send.badgeExisting")
-                            : t("commontext:send.badgeCreate")}
-                    </span>
-                </div>
+                    <i className="fa-solid fa-xmark text-[12px]" />
+                </button>
             </div>
 
-            {/* 2. 三个选择器常显：Agent / Tab / 目录 */}
+            {/* 2. 常显选择区：Agent / 模型 / Tab / 可见路径 */}
             <div
-                className="flex flex-col border-t border-border/60 px-3 py-2.5"
+                className="flex flex-col px-3 py-2.5"
                 data-commontext-send-rows
                 /* 行间距 inline 表达（≥8px）：jsdom 可读 computed rowGap 做数字断言，真实 app 同样生效 */
                 style={{ rowGap: "10px" }}
             >
-                <div className="flex items-center gap-2.5" data-commontext-agent-row>
+                <div className="flex min-w-0 flex-col gap-1.5" data-commontext-agent-row>
                     <span className={rowLabelClass}>{t("commontext:send.rowAgent")}</span>
-                    <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto overflow-y-hidden pb-0.5">
+                    <div className="flex min-w-0 items-center gap-1 overflow-x-auto overflow-y-hidden pb-0.5">
                         {profiles.map((profile) => {
                             const isSelected = preview.profileName === profile.name;
                             const iconSpec = getAgentIcon(profile.name, { personas: personaMap });
@@ -617,12 +641,20 @@ function SendTargetPanel(props: { text: string; onSent: () => void; onStatus: Se
                                     type="button"
                                     data-commontext-agent-chip={profile.name}
                                     className={clsx(
-                                        "relative h-[32px] w-[32px] shrink-0 grid place-items-center rounded-md border-0 cursor-pointer transition-colors",
+                                        "relative inline-flex h-[30px] shrink-0 items-center gap-1.5 rounded-md border-0 px-2 text-[12px] whitespace-nowrap cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent",
                                         isSelected
-                                            ? "bg-accent/12 text-foreground"
+                                            ? "bg-actionsoft text-actionsofttext"
                                             : "bg-transparent text-muted hover:bg-surface-soft hover:text-secondary"
                                     )}
-                                    onClick={() => setConfig({ ...config, profile: profile.name })}
+                                    onClick={() =>
+                                        setConfig({
+                                            ...config,
+                                            profile: profile.name,
+                                            model: null,
+                                            mode:
+                                                profile.name === preview.profileName ? config.mode : "create",
+                                        })
+                                    }
                                     title={
                                         profile.isDefault
                                             ? i18n.t("commontext:send.defaultProfile", { label: profile.label })
@@ -639,9 +671,10 @@ function SendTargetPanel(props: { text: string; onSent: () => void; onStatus: Se
                                     ) : (
                                         iconSpec.icon
                                     )}
+                                    <span className="truncate">{profile.label}</span>
                                     {profile.isDefault ? (
                                         <span
-                                            className="absolute right-1 top-1 h-1 w-1 rounded-full bg-accent"
+                                            className="h-1 w-1 shrink-0 rounded-full bg-accent"
                                             title={t("commontext:send.defaultAgent")}
                                         />
                                     ) : null}
@@ -654,12 +687,49 @@ function SendTargetPanel(props: { text: string; onSent: () => void; onStatus: Se
                     </div>
                 </div>
 
+                <div className="flex min-w-0 items-center gap-2.5" data-commontext-model-row>
+                    <span className={rowLabelClass}>{t("commontext:send.rowModel")}</span>
+                    {modelOptions.length > 0 ? (
+                        <select
+                            className="h-[28px] min-w-0 flex-1 rounded-md border border-border/60 bg-surface-soft px-2 text-[12px] text-foreground cursor-pointer focus:border-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
+                            value={selectedModel ?? ""}
+                            onChange={(event) => selectModel(event.target.value)}
+                            title={modelAutoHint}
+                            aria-label={t("commontext:send.rowModel")}
+                            data-commontext-model-select
+                        >
+                            <option value="" title={modelAutoHint}>
+                                {t("commontext:send.modelAuto")}
+                            </option>
+                            {modelOptions.map((model) => (
+                                <option key={model.id} value={model.id}>
+                                    {model.label}
+                                </option>
+                            ))}
+                        </select>
+                    ) : (
+                        <input
+                            type="text"
+                            className="h-[28px] min-w-0 flex-1 rounded-md border border-border/60 bg-surface-soft px-2 text-[12px] text-foreground placeholder:text-muted focus:border-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
+                            value={selectedModel ?? ""}
+                            onChange={(event) => selectModel(event.target.value)}
+                            placeholder={
+                                catalogDefaultModel === ""
+                                    ? t("commontext:send.modelPlaceholder")
+                                    : modelAutoHint
+                            }
+                            aria-label={t("commontext:send.rowModel")}
+                            data-commontext-model-select
+                        />
+                    )}
+                </div>
+
                 <div className="flex items-center gap-2.5" data-commontext-tab-row>
                     <span className={rowLabelClass}>{t("commontext:send.rowTab")}</span>
                     <button
                         type="button"
                         className={pickerClass}
-                        onClick={(e) => (menuOpen === "tab" ? closeMenu() : openMenu("tab", e))}
+                        onClick={(e) => (menuOpen === "tab" ? closeMenu() : openMenu(e))}
                         onKeyDown={(e) => {
                             if (e.key === "Escape" && menuOpen === "tab") {
                                 e.preventDefault();
@@ -682,96 +752,135 @@ function SendTargetPanel(props: { text: string; onSent: () => void; onStatus: Se
                         className={squareButtonClass}
                         onClick={() => applyTab({ kind: "new" })}
                         title={t("commontext:send.newTab")}
+                        aria-label={t("commontext:send.newTab")}
                     >
                         <i className="fa-solid fa-plus" />
                     </button>
                 </div>
 
-                <div className="flex items-center gap-2.5" data-commontext-dir-row>
-                    <span className={rowLabelClass}>{t("commontext:send.rowFolder")}</span>
-                    <button
-                        type="button"
-                        className={pickerClass}
-                        onClick={(e) => (menuOpen === "folder" ? closeMenu() : openMenu("folder", e))}
-                        onKeyDown={(e) => {
-                            if (e.key === "Escape" && menuOpen === "folder") {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                closeMenu();
-                            }
-                        }}
-                        title={dirLabel}
-                        data-commontext-dir-trigger
-                        aria-haspopup="menu"
-                        aria-expanded={menuOpen === "folder"}
-                    >
-                        <i className="fa-solid fa-folder text-[10px] text-secondary" />
-                        <span className="truncate font-mono text-[10px]">{dirLabel}</span>
+                <div className="flex min-w-0 flex-col gap-1.5" data-commontext-dir-row>
+                    <div className="flex min-w-0 items-center gap-2">
+                        <span className={rowLabelClass}>{t("commontext:send.rowFolder")}</span>
                         <span
                             className={clsx(
-                                "ml-auto shrink-0 text-[10px]",
+                                "ml-auto truncate text-[10px]",
                                 config.folder == null ? "text-accent" : "text-muted"
                             )}
                             data-commontext-dir-note
                         >
                             {config.folder == null ? t("commontext:send.dirAuto") : t("commontext:send.dirPicked")}
                         </span>
-                        <i className="fa-solid fa-chevron-down text-[9px] text-muted" />
-                    </button>
+                    </div>
+                    <div
+                        className="flex max-h-[150px] min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden overscroll-contain rounded-md border border-border/60 bg-surface-soft"
+                        role="listbox"
+                        aria-label={t("commontext:send.chooseFolderTitle")}
+                        data-commontext-path-list
+                    >
+                        {folderCandidates.length === 0 ? (
+                            <span className="px-2.5 py-2 text-[11px] text-muted">
+                                {t("commontext:send.noFolders")}
+                            </span>
+                        ) : null}
+                        {folderCandidates.map((candidate, index) => {
+                            const isSelected = selectedFolder === candidate.path;
+                            const isDefault = config.folder == null && index === 0;
+                            return (
+                                <button
+                                    key={candidate.path}
+                                    type="button"
+                                    role="option"
+                                    aria-selected={isSelected}
+                                    className={clsx(
+                                        "relative flex h-[28px] w-full min-w-0 shrink-0 items-center gap-2 border-0 px-2.5 text-left cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-accent",
+                                        isSelected
+                                            ? "bg-actionsoft text-actionsofttext"
+                                            : "bg-transparent text-secondary hover:bg-hover"
+                                    )}
+                                    onClick={() => setConfig({ ...config, folder: candidate.path, mode: "create" })}
+                                    title={candidate.path}
+                                    data-commontext-path-row={candidate.path}
+                                >
+                                    {isSelected ? (
+                                        <span className="absolute left-0 top-1 bottom-1 w-[2px] rounded-full bg-accent" />
+                                    ) : null}
+                                    <i className="fa-regular fa-folder shrink-0 text-[10px]" />
+                                    <span className="min-w-0 flex-1 truncate font-mono text-[11px]">
+                                        {candidate.path}
+                                    </span>
+                                    <span className="ml-auto max-w-[45%] shrink-0 truncate text-[10px] text-muted">
+                                        {isDefault ? t("commontext:send.pathDefault") : candidate.note}
+                                    </span>
+                                </button>
+                            );
+                        })}
+                    </div>
                     <button
                         type="button"
-                        className={squareButtonClass}
+                        className="flex h-[28px] w-full min-w-0 shrink-0 cursor-pointer items-center gap-2 rounded-md border-0 bg-transparent px-2.5 text-left text-[11px] text-secondary hover:bg-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
                         onClick={() => browseFolder(setConfig, config, props.onStatus)}
                         title={t("commontext:send.browseOther")}
                     >
-                        <i className="fa-solid fa-ellipsis" />
+                        <i className="fa-solid fa-ellipsis w-[10px] shrink-0 text-center" />
+                        <span className="truncate">{t("commontext:send.browseOther")}</span>
                     </button>
                 </div>
             </div>
 
-            {/* 3. footer：后台执行 + 取消 / 主按钮（按钮文案即落点） */}
-            <div className="flex items-center gap-2.5 border-t border-border/60 px-3 py-2.5" data-commontext-send-footer>
-                <button
-                    type="button"
-                    role="switch"
-                    aria-checked={config.background !== false}
-                    aria-label={t("commontext:send.background")}
-                    title={t("commontext:send.backgroundHint")}
-                    className={clsx(
-                        "relative h-[16px] w-[28px] shrink-0 rounded-full border-0 p-0 transition-colors cursor-pointer",
-                        config.background !== false ? "bg-accent" : "bg-surface-soft border border-border"
-                    )}
-                    onClick={() => setConfig({ ...config, background: config.background === false })}
-                >
-                    {/* 滑块必须是真白：tailwindsetup.css 把 --color-white 重定义成了主文本色，
-                        浅色主题下 bg-white 会变成深棕，滑块在 accent 轨道上糊成一团。 */}
-                    <span
+            {/* 3. 固定 footer：单一落点摘要 + 后台执行 + 取消 / 动态主按钮 */}
+            <div
+                className="flex shrink-0 flex-col gap-2 border-t border-border/60 px-3 py-2.5"
+                data-commontext-send-footer
+            >
+                <div className="flex min-w-0 items-center gap-2" title={targetCrumb}>
+                    <i className="fa-solid fa-location-crosshairs shrink-0 text-[10px] text-muted" />
+                    <span className="min-w-0 flex-1 truncate font-mono text-[10px] text-secondary">
+                        {targetCrumb}
+                    </span>
+                </div>
+                <div className="flex min-w-0 items-center gap-2.5">
+                    <button
+                        type="button"
+                        role="switch"
+                        aria-checked={config.background !== false}
+                        aria-label={t("commontext:send.background")}
+                        title={t("commontext:send.backgroundHint")}
                         className={clsx(
-                            "absolute top-[2px] h-[12px] w-[12px] rounded-full bg-[#fff] transition-all",
-                            config.background !== false ? "left-[14px]" : "left-[2px]"
+                            "relative h-[16px] w-[28px] shrink-0 rounded-full border-0 p-0 transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent",
+                            config.background !== false ? "bg-accent" : "bg-surface-soft border border-border"
                         )}
-                    />
-                </button>
-                <span className="whitespace-nowrap text-[11.5px] text-secondary">
-                    {t("commontext:send.background")}
-                </span>
-                <span className="ml-auto" />
-                <Button className="grey" onClick={props.close}>
-                    {t("commontext:send.cancel")}
-                </Button>
-                <Button
-                    className="green"
-                    onClick={doSend}
-                    disabled={preview.profileName == null}
-                    title={preview.label}
-                    data-commontext-send-submit
-                >
-                    <i className="fa-solid fa-paper-plane mr-1" />
-                    {preview.kind === "existing" ? t("commontext:send.send") : t("commontext:send.sendCreateOnly")}
-                </Button>
+                        onClick={() => setConfig({ ...config, background: config.background === false })}
+                    >
+                        {/* 滑块必须是真白：tailwindsetup.css 把 --color-white 重定义成了主文本色，
+                            浅色主题下 bg-white 会变成深棕，滑块在 accent 轨道上糊成一团。 */}
+                        <span
+                            className={clsx(
+                                "absolute top-[2px] h-[12px] w-[12px] rounded-full bg-[#fff] transition-all",
+                                config.background !== false ? "left-[14px]" : "left-[2px]"
+                            )}
+                        />
+                    </button>
+                    <span className="min-w-0 truncate text-[11.5px] text-secondary">
+                        {t("commontext:send.background")}
+                    </span>
+                    <span className="ml-auto" />
+                    <Button className="grey" onClick={props.close}>
+                        {t("commontext:send.cancel")}
+                    </Button>
+                    <Button
+                        className="green"
+                        onClick={doSend}
+                        disabled={preview.profileName == null}
+                        title={preview.label}
+                        data-commontext-send-submit
+                    >
+                        <i className="fa-solid fa-paper-plane mr-1" />
+                        {preview.kind === "existing" ? t("commontext:send.send") : t("commontext:send.sendCreateOnly")}
+                    </Button>
+                </div>
             </div>
 
-            {/* Type / Folder 的二级下拉（portal 到 body，不被面板 overflow 裁剪） */}
+            {/* Tab 二级下拉（portal 到 body，不被面板 overflow 裁剪） */}
             <AnchoredMenu
                 open={menuOpen === "tab"}
                 anchor={menuOpen === "tab" ? menuAnchor : null}
@@ -807,40 +916,6 @@ function SendTargetPanel(props: { text: string; onSent: () => void; onStatus: Se
                     <span>{t("commontext:send.newTab")}</span>
                 </button>
             </AnchoredMenu>
-            <AnchoredMenu
-                open={menuOpen === "folder"}
-                anchor={menuOpen === "folder" ? menuAnchor : null}
-                label={t("commontext:send.chooseFolderTitle")}
-                onClose={closeMenu}
-            >
-                <button
-                    type="button"
-                    className={menuItemClass}
-                    onClick={() => {
-                        setConfig({ ...config, folder: null });
-                        closeMenu();
-                    }}
-                >
-                    <i className="fa-solid fa-wand-magic-sparkles text-[10px] text-secondary" />
-                    <span>{t("commontext:send.dirFollowTab")}</span>
-                    <span className="ml-auto text-[10px] text-accent">{t("commontext:send.dirAuto")}</span>
-                </button>
-                {folderCandidates.map((candidate) => (
-                    <button
-                        key={candidate.path}
-                        type="button"
-                        className={menuItemClass}
-                        onClick={() => {
-                            setConfig({ ...config, folder: candidate.path });
-                            closeMenu();
-                        }}
-                    >
-                        <i className="fa-regular fa-folder text-[10px] text-secondary" />
-                        <span className="truncate font-mono text-[11px]">{candidate.path}</span>
-                        <span className="ml-auto text-[10px] text-muted">{candidate.note}</span>
-                    </button>
-                ))}
-            </AnchoredMenu>
         </div>
     );
 }
@@ -853,7 +928,7 @@ async function browseFolder(
     try {
         const dir = await getApi().pickDirectory();
         if (dir != null && dir !== "") {
-            setConfig({ ...config, folder: dir });
+            setConfig({ ...config, folder: dir, mode: "create" });
         }
     } catch (error) {
         onStatus(

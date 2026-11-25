@@ -345,3 +345,5 @@
 | 2026-11-24 16:34 | overview-board | ❌ 80/81 | launch+reset | `20261124T16333-overviewboard` | working-tree |
 | 2026-11-24 16:43 | overview-board | ✅ 81/81 | launch+reset | `20261124T16424-overviewboard` | working-tree |
 | 2026-11-24 16:45 | scheduled-hero | ✅ 22/22 | launch+reset | `20261124T16445-scheduled-hero` | 56c0b8100 |
+| 2026-11-25 04:30 | commontext-send-agent-block | ❌ fatal（未跑） | launch+reset | `20261125T04241-commontext-send-agent-block` | b60eea589 |
+| 2026-11-25 04:39 | commontext-send-agent-block | ❌ fatal（未跑） | attach | `20261125T04383-commontext-send-agent-block` | b60eea589 |

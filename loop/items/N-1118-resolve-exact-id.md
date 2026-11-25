@@ -5,17 +5,18 @@ type: bug
 priority: P1
 severity: S2
 solution: fixed
-status: open
+status: accepted
 origin: self
 source: "nita 2026-11-18：详情内容和 Header 对不上的隐患之一；resolveSession/Index.GetSession/SQLiteIndex.GetSession 三处都有 HasPrefix(id) 匹配"
 task: 11-18-aisessions-resolve-exact-id
+feature: session-details
 order: 100
 touch: [pkg/aisessions/**, pkg/service/aisessionsservice/**, .trellis/tasks/11-18-aisessions-resolve-exact-id/**, .trellis/spec/**]
 rollback: "git revert 单提交；仅缩窄匹配，不改存储"
 budget: {minutes: 60, retries: 2}
 releaseCandidate: false
+score: {value: 5, by: nita, at: "2026-11-25T03:38:52Z", note: null}
 createdAt: "2026-11-18T05:17:38Z"
-feature: session-details
 ---
 
 # 会话定位的 id 前缀匹配：唯一命中时静默返回另一个会话

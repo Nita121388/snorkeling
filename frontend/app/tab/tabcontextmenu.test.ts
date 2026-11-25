@@ -14,15 +14,17 @@
 
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { mockCollapseTabIds, mockRecordTEvent, mockSetActiveTab } = vi.hoisted(() => ({
+const { mockCollapseTabIds, mockRecordTEvent, mockSetActiveTab, mockSetConfig, mockConfigValues } = vi.hoisted(() => ({
     mockCollapseTabIds: vi.fn(),
     mockRecordTEvent: vi.fn(),
     mockSetActiveTab: vi.fn(),
+    mockSetConfig: vi.fn(async () => {}),
+    mockConfigValues: {} as Record<string, unknown>,
 }));
 
 vi.mock("@/app/store/global", () => ({
     getOrefMetaKeyAtom: () => ({}) as never,
-    globalStore: { get: () => undefined },
+    globalStore: { get: (atom: any) => atom?.configKey ? mockConfigValues[atom.configKey] : undefined },
     recordTEvent: mockRecordTEvent,
 }));
 vi.mock("@/app/store/wshrpcutil", () => ({ TabRpcClient: {} }));
@@ -37,11 +39,11 @@ import { buildTabContextMenu } from "./tabcontextmenu";
 const env = {
     rpc: {
         SetMetaCommand: async () => {},
-        SetConfigCommand: async () => {},
+        SetConfigCommand: mockSetConfig,
         ActivityCommand: () => {},
     },
     atoms: { fullConfigAtom: {} },
-    getSettingsKeyAtom: () => ({}),
+    getSettingsKeyAtom: (key: string) => ({ configKey: key }),
     electron: {
         moveTabToNewWindow: async () => {},
         moveTabBack: async () => {},
@@ -66,6 +68,8 @@ describe("buildTabContextMenu — 收起到更多", () => {
         mockCollapseTabIds.mockClear();
         mockRecordTEvent.mockClear();
         mockSetActiveTab.mockClear();
+        mockSetConfig.mockClear();
+        mockConfigValues["tab:agent-status-mode"] = undefined;
     });
 
     it("普通 Tab: 菜单项存在且可点", () => {
@@ -114,5 +118,48 @@ describe("buildTabContextMenu — 收起到更多", () => {
     it("未传 visibility 时保持可点 (向后兼容旧调用点)", () => {
         const item = findCollapseItem();
         expect(item?.enabled).toBe(true);
+    });
+});
+
+describe("buildTabContextMenu — Agent 状态编码", () => {
+    beforeAll(async () => {
+        await initI18n("en");
+    });
+
+    beforeEach(() => {
+        mockSetConfig.mockClear();
+        mockRecordTEvent.mockClear();
+        mockConfigValues["tab:agent-status-mode"] = undefined;
+    });
+
+    function findModeItem() {
+        return buildTabContextMenu("t1", renameRef, onClose, env).find(
+            (item) => item.label === i18n.t("tab:contextMenu.agentStatusDisplay")
+        );
+    }
+
+    it("提供 B / C / G 三个全局选项，默认勾选 G", () => {
+        const item = findModeItem();
+        expect(item?.type).toBe("submenu");
+        expect(item?.sublabel).toBe(i18n.t("tab:contextMenu.agentStatusAllTabs"));
+        expect(item?.submenu?.map((entry) => entry.label)).toEqual([
+            i18n.t("tab:contextMenu.agentStatusAvatars"),
+            i18n.t("tab:contextMenu.agentStatusRail"),
+            i18n.t("tab:contextMenu.agentStatusHybrid"),
+        ]);
+        expect(item?.submenu?.map((entry) => entry.checked)).toEqual([false, false, true]);
+    });
+
+    it("已保存的模式决定勾选项", () => {
+        mockConfigValues["tab:agent-status-mode"] = "rail";
+        expect(findModeItem()?.submenu?.map((entry) => entry.checked)).toEqual([false, true, false]);
+    });
+
+    it("点击模式写入已注册的 settings key，不写 Tab meta", () => {
+        const item = findModeItem()?.submenu?.find((entry) => entry.label === i18n.t("tab:contextMenu.agentStatusAvatars"));
+        item?.click?.();
+        expect(mockSetConfig).toHaveBeenCalledTimes(1);
+        expect(mockSetConfig).toHaveBeenCalledWith({}, { "tab:agent-status-mode": "avatars" });
+        expect(mockRecordTEvent).toHaveBeenCalledWith("action:settabagentstatusmode");
     });
 });

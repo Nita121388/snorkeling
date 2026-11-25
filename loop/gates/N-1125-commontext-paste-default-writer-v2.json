@@ -1,0 +1,6 @@
+{
+  "g2": {
+    "redProof": "修复前新增默认 writer 回归测试：1 failed | 16 passed；失败原文 Image paste failed (32 B): write is not a function",
+    "at": "2026-11-25T03:23:48Z"
+  }
+}

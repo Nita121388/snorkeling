@@ -5,17 +5,18 @@ type: bug
 priority: P1
 severity: S2
 solution: fixed
-status: open
+status: accepted
 origin: self
 source: "nita 2026-11-18：Header 走 session-note-cache（只按 connection 建键）而正文走带 origin 的 Detail，两条链路不同源"
 task: 11-18-aisessions-header-note-origin
+feature: session-details
 order: 100
 touch: [frontend/app/store/**, frontend/app/block/**, frontend/app/element/info-card/**, frontend/app/modals/**, frontend/app/view/aisessions/**, pkg/service/aisessionsservice/**, frontend/types/gotypes.d.ts, .trellis/tasks/11-18-aisessions-header-note-origin/**, .trellis/spec/**]
 rollback: "git revert 单提交；origin 建键向后兼容（空 origin = 旧行为），无数据迁移"
 budget: {minutes: 90, retries: 2}
 releaseCandidate: false
+score: {value: 5, by: nita, at: "2026-11-25T03:33:36Z", note: null}
 createdAt: "2026-11-18T05:17:38Z"
-feature: session-details
 ---
 
 # 标题缓存缺 origin 维度：外部 dump 会话的 Header 退化为 Session Details，写操作落错库

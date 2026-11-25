@@ -6,7 +6,9 @@ import { ackBumpAtom, agentStatusDoneAckStore } from "@/app/agent-status/agent-s
 import { nowMinuteTickAtom } from "@/app/agent-status/agent-status-done-tick";
 import { AgentStatusStore } from "@/app/agent-status/agent-status-store";
 import type { AgentStatus } from "@/app/agent-status/agent-status-types";
+import { deriveAgentStatusView, type AgentStatusView } from "@/app/agent-status/agent-status-view";
 import { isAgentStatusUnread, normalizeTimeMs, type AgentStatusFp } from "@/app/agent-status/agent-status-unread";
+import { isAgentTerminalMeta } from "@/app/view/term/agent-meta";
 import { makeAgentTraceId, pslogEvent } from "@/app/store/pslog-trace";
 import { SessionOverviewModel } from "@/app/session-overview/session-overview-model";
 import * as WOS from "@/store/wos";
@@ -16,28 +18,16 @@ import { useEffect } from "react";
 import { useAtomValue } from "jotai";
 
 /**
- * C 层 (顶部 app tab) agent status 聚合 — 22 号方案决策 6B 选定: D 走 agent-status 自有通道,
- * 不进 badge.ts set/clear 管线. 这里只把 store 里已存在的 per-block status atom 按 tab 聚合,
- * 渲染交给 TabBadges 槽位复用, 但数据出口与 ack 语义仍归 agent-status 通道管.
+ * C 层 (顶部 app tab) agent status 聚合有两条管线：
+ * - `getTabAgentStatusDotsAtom`：旧未阅提醒，只收 D / R.blocked / S.stale，供强制可见判定。
+ * - `getTabAgentStatusEntriesAtom`：B / C / G 展示源，收 Tab 内全部 Agent 状态。
+ * 两条管线都读 AgentStatusStore 的 presented atom，不新增 RPC，也不互相改变 read 语义。
  *
- * 设计要点:
- * - 不主动 acquire 任何 block (那样的强订阅会强行订阅未使用的 block); 只 peek 已缓存的 atom
- *   ("agent block 的状态被 inline-tab / term-header / session-overview 之一订阅过才参与聚合").
- * - 收集范围: D (非 idle→idle 跳变未阅) + R.blocked (waiting/blocked 未阅) + S.stale
- *   (working 超阈值无续约 → 前端 applyStaleness 算出的卡住态). working/running 不上 tab
- *   圆点 (用户拍板: "完成、阻塞这样的状态才显示状态到 app 的 tab"), 避免在跑的 agent 把顶部 tab
- *   涂成一片主题绿与 D 撞色.
- *   特性保留: working/running 永不上 tab 圆点, 为了减少噪音 — 有必要的才提示用户. 运行中的视觉色
- *   (蓝通道, 与 accent 解耦) 只在 Sessions Overview chip / term header pill / A 头部 pill 等
- *   surface 渲染.
- * - 排序: D(100) > blocked(70) > S.stale(40) > 其他(30); 同优先级按 updatedAt 倒序.
- *   S 排最后 = 决策 1-(a): 只在没有 D/blocked 时进 TabBadges 主槽, 否则落副槽做小紫点.
- * - 仅返回未阅信号 (R unread 或 D unread), 已阅的不再在顶部 tab 上提示.
- * - 多 agent: 决策 4 仅显示主槽 1 + 副点 2, 这里把所有未阅点都返回, 由 TabBadges 现有"主槽1+副2"
- *   渲染约定裁切. "不能忽略任何一个 agent" 的兜底由方案待办项继续讨论.
- *
- * Note: formatDoneElapsed 在 derive 内部用 Date.now() — 仅在每次 store atom 变化时重算,
- * 暂不做分钟级 tick (同 A 头部), 后续可统一接 nowAtom.
+ * 旧未阅圆点设计要点：
+ * - 不主动 acquire block；workspace 级 hook 已让相关 block 持有订阅。
+ * - working/running 不进入旧圆点，避免把运行态误当未阅提醒。
+ * - D(100) > blocked(70) > S.stale(40)，仅返回未阅信号。
+ * - TabBadges 的 legacy 分支保留主图标 1 + 副点 2 的既有裁切。
  */
 
 /** R = blocked/阻塞, D = done/完成未阅, S = stale/卡住(长时间无更新). */
@@ -54,8 +44,20 @@ export interface TabAgentStatusDot {
     title: string;
 }
 
+/** All Agent states in a Tab, including idle / working / seen states. */
+export interface TabAgentStatusEntry {
+    blockId: string;
+    status: AgentStatus;
+    view: AgentStatusView;
+    provider: string;
+    sessionId?: string;
+    /** Block meta is passed through for legacy persona / provider resolution. */
+    meta: Record<string, unknown> | null;
+}
+
 // 按 tabId 缓存 derived atom — 见 getTabAgentStatusDotsAtom 注释 (回归修复 c2f8862a).
 const TabAgentStatusDotAtomCache = new Map<string, Atom<TabAgentStatusDot[]>>();
+const TabAgentStatusEntryAtomCache = new Map<string, Atom<TabAgentStatusEntry[]>>();
 
 /**
  * 测试专用: 清掉 getTabAgentStatusDotsAtom 的 tab atom 缓存.
@@ -64,6 +66,10 @@ const TabAgentStatusDotAtomCache = new Map<string, Atom<TabAgentStatusDot[]>>();
  */
 export function __resetTabAgentStatusDotAtomCacheForTests(): void {
     TabAgentStatusDotAtomCache.clear();
+}
+
+export function __resetTabAgentStatusEntryAtomCacheForTests(): void {
+    TabAgentStatusEntryAtomCache.clear();
 }
 
 
@@ -367,6 +373,72 @@ export function getTabAgentStatusDotsAtom(tabId: string): Atom<TabAgentStatusDot
     });
     TabAgentStatusDotAtomCache.set(tabId, rtn);
     return rtn;
+}
+
+/**
+ * 返回该 app tab 下全部 Agent 的呈现状态，而不是只返回未阅提醒。
+ *
+ * B / C / G 三种 Tab 编码共享这一份数据。旧 getTabAgentStatusDotsAtom 仍只负责
+ * D / R / S 未阅提醒与「强制可见」判定，两条管线刻意分开：working 可见不等于未阅。
+ */
+export function getTabAgentStatusEntriesAtom(tabId: string): Atom<TabAgentStatusEntry[]> {
+    if (tabId == null) {
+        return atom<TabAgentStatusEntry[]>([]);
+    }
+    const cached = TabAgentStatusEntryAtomCache.get(tabId);
+    if (cached != null) return cached;
+
+    const tabAtom = WOS.getWaveObjectAtom<Tab>(WOS.makeORef("tab", tabId));
+    const overview = SessionOverviewModel.getInstance();
+    const store = AgentStatusStore.getInstance();
+    const derived = atom<TabAgentStatusEntry[]>((get) => {
+        const tab = get(tabAtom);
+        const blockIds = tab?.blockids ?? [];
+        if (blockIds.length === 0) return [];
+
+        const ackedFpMap = get(overview.agentStatusAckedFpAtom) ?? {};
+        const doneAckedAtMap = get(agentStatusDoneAckStore.doneAckedAtAtom) ?? {};
+        get(ackBumpAtom);
+        get(overview.agentStatusAckedFpAtom);
+
+        const expanded = expandBlockIdsWithSubblocks(get, blockIds);
+        const entries: TabAgentStatusEntry[] = [];
+        for (const blockId of expanded) {
+            const block = get(WOS.getWaveObjectAtom<Block>(WOS.makeORef("block", blockId)));
+            if (!isAgentTerminalMeta(block?.meta ?? null)) continue;
+            const statusAtom = store.peekPresentedStatusAtom(blockId);
+            if (statusAtom == null) continue;
+            const status = get(statusAtom);
+            if (status == null) continue;
+
+            const ackedFpRaw = ackedFpMap[blockId] ?? null;
+            const ackedFp: AgentStatusFp | null = ackedFpRaw == null ? null : (ackedFpRaw as AgentStatusFp);
+            const view = deriveAgentStatusView({
+                status,
+                blockId,
+                ackedFp,
+                doneAckedAt: doneAckedAtMap[blockId] ?? 0,
+                nowMs: Date.now(),
+            });
+            if (view == null) continue;
+
+            entries.push({
+                blockId,
+                status,
+                view,
+                provider: status.provider,
+                sessionId: status.sessionId,
+                meta: (block?.meta ?? null) as Record<string, unknown> | null,
+            });
+        }
+
+        if (entries.some((entry) => entry.view.state === "done" || entry.view.state === "stale")) {
+            get(nowMinuteTickAtom);
+        }
+        return entries;
+    });
+    TabAgentStatusEntryAtomCache.set(tabId, derived);
+    return derived;
 }
 
 /**

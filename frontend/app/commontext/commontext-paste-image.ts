@@ -252,7 +252,7 @@ export async function materializePastedImages(
             continue;
         }
         try {
-            refs.push(buildPasteImageMarkdown(await write(image)));
+            refs.push(buildPasteImageMarkdown(await writer(image)));
         } catch (err) {
             failures.push(describePasteImageFailure(image, err instanceof Error ? err.message : String(err)));
         }

@@ -1,7 +1,7 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-import { getTabAgentStatusDotsAtom, getTabsWithUnreadDotsAtom } from "@/app/agent-status/agent-status-tab-aggregate";
+import { getTabAgentStatusEntriesAtom, getTabsWithUnreadDotsAtom } from "@/app/agent-status/agent-status-tab-aggregate";
 import { getTabBadgeAtom } from "@/app/store/badge";
 import { isAgentTerminalMeta, normalizeAgentProvider } from "@/app/view/term/agent-meta";
 import { resolveAgentSessionId } from "@/app/view/term/agent-session";
@@ -42,12 +42,14 @@ import {
 } from "./tab-more-model";
 import { openedThisLaunchTabIdsAtom } from "./tab-open-state";
 import { TabBadges } from "./tabbadges";
+import { normalizeTabAgentStatusMode, TabAgentStatusModeConfigKey } from "./tab-agent-status-mode";
 
 type TabMoreMenuEnv = WaveEnvSubset<{
     atoms: {
         staticTabId: WaveEnv["atoms"]["staticTabId"];
     };
     wos: WaveEnv["wos"];
+    getSettingsKeyAtom: WaveEnv["getSettingsKeyAtom"];
 }>;
 
 // 以 env 为一级键: 缓存只按 tabIds 做键会让新 env (preview / 测试里的 mock env) 复用
@@ -55,7 +57,7 @@ type TabMoreMenuEnv = WaveEnvSubset<{
 const TabMoreMetaAtomCache = new WeakMap<object, Map<string, Atom<Record<string, TabMoreMeta>>>>();
 
 /**
- * 为「更多」下拉构建 Tab 视觉元信息 (名称 / badges / agent 点 / flag 色).
+ * 为「更多」下拉构建 Tab 视觉元信息 (名称 / badges / Agent 状态 / flag 色).
  *
  * 与 VTabWrapper 同源, 但这里是"一次性把全部 Tab 读成一个 map"的派生 atom ——
  * 面板里可能同时渲染几十个 Tab, 逐个 useAtomValue 会破坏 hooks 稳定性 (tabIds 长度可变).
@@ -74,11 +76,14 @@ function getTabMoreMetaAtom(tabIds: readonly string[], env: TabMoreMenuEnv): Ato
     const entries = tabIds.map((tabId) => {
         const tabAtom = env.wos.getWaveObjectAtom<Tab>(makeORef("tab", tabId));
         const badgeAtom = getTabBadgeAtom(tabId, env);
-        const dotAtom = getTabAgentStatusDotsAtom(tabId);
-        return { tabId, tabAtom, badgeAtom, dotAtom };
+        const statusEntriesAtom = getTabAgentStatusEntriesAtom(tabId);
+        return { tabId, tabAtom, badgeAtom, statusEntriesAtom };
     });
     const derived = atom<Record<string, TabMoreMeta>>((get) => {
         const out: Record<string, TabMoreMeta> = {};
+        const agentStatusMode = normalizeTabAgentStatusMode(
+            get(env.getSettingsKeyAtom(TabAgentStatusModeConfigKey))
+        );
         for (const entry of entries) {
             const tab = get(entry.tabAtom);
             if (tab == null) {
@@ -102,7 +107,8 @@ function getTabMoreMetaAtom(tabIds: readonly string[], env: TabMoreMenuEnv): Ato
             out[entry.tabId] = {
                 name: tab.name ?? "",
                 badges: get(entry.badgeAtom),
-                agentDots: get(entry.dotAtom),
+                agentStatuses: get(entry.statusEntriesAtom),
+                agentStatusMode,
                 flagColor,
                 blockIds: blockRef.blockIds,
                 agentBlockIds: blockRef.agentBlockIds,
@@ -287,6 +293,9 @@ const TabMoreRowItem = memo(
                     <TabBadges
                         badges={row.badges}
                         agentDots={row.agentDots}
+                        agentStatuses={row.agentStatuses}
+                        agentStatusMode={row.agentStatusMode}
+                        maxAgentTokens={3}
                         flagColor={row.flagColor}
                         className="static top-auto left-auto h-[16px] w-[16px] translate-y-0 justify-start px-0 py-0 [&_i]:text-[10px]"
                     />

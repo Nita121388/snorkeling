@@ -1,0 +1,28 @@
+{
+  "id": "commontext-send-model-path",
+  "name": "commontext-send-model-path",
+  "title": "CommonText 发送 Agent 模型与路径选择",
+  "description": "为 CommonText 发送目标浮层增加 New Agent 同款模型选择与可见路径列表，并保留现有发送语义",
+  "status": "in_progress",
+  "dev_type": null,
+  "scope": null,
+  "package": "snorkeling-docs",
+  "priority": "P1",
+  "creator": "nita",
+  "assignee": "nita",
+  "createdAt": "2026-11-25",
+  "completedAt": null,
+  "branch": "main",
+  "base_branch": "snorkeling",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {
+    "loop_id": "N-1125-commontext-send-model-path"
+  }
+}

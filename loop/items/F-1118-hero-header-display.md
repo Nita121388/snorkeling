@@ -4,17 +4,19 @@ title: "Hero Block Header 显示 Hero 名而非据点哈希路径"
 type: bug
 priority: P2
 severity: S3
-status: open
+solution: fixed
+status: accepted
 origin: self
 source: "nita 2026-11-18 报：打开的 Hero，Agent Block Header 显示目录名 E:/primary/heros/hero-feaa3f86 不友好（哈希后缀 + 混合分隔符，看不出是哪个 Hero）"
 task: 11-18-hero-block-header-display
+feature: hero-identity
 order: 100
 touch: [frontend/app/workspace/hero-launch.ts, frontend/app/workspace/hero-launch.test.ts, frontend/app/view/term/term-model.ts, frontend/app/view/term/, frontend/app/block/block.tsx, frontend/app/block/, frontend/util/util.ts, frontend/i18n/**, docs/project/verify-ledger.md, .trellis/tasks/11-18-hero-block-header-display/**, .trellis/spec/**, loop/**]
 rollback: null
 budget: {minutes: 60, retries: 2}
 releaseCandidate: false
+score: {value: 5, by: nita, at: "2026-11-25T03:47:02Z", note: null}
 createdAt: "2026-11-18T03:45:29Z"
-feature: hero-identity
 ---
 
 # Hero Block Header 显示 Hero 名而非据点哈希路径

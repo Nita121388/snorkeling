@@ -450,6 +450,14 @@
             "left"
           ]
         },
+        "tab:agent-status-mode": {
+          "type": "string",
+          "enum": [
+            "avatars",
+            "rail",
+            "hybrid"
+          ]
+        },
         "ui:locale": {
           "type": "string",
           "enum": [

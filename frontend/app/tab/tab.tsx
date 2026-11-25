@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { getTabBadgeAtom } from "@/app/store/badge";
-import { getTabAgentStatusDotsAtom, getTabsWithUnreadDotsAtom } from "@/app/agent-status/agent-status-tab-aggregate";
-import type { TabAgentStatusDot } from "@/app/agent-status/agent-status-tab-aggregate";
+import { getTabAgentStatusEntriesAtom, getTabsWithUnreadDotsAtom } from "@/app/agent-status/agent-status-tab-aggregate";
+import type { TabAgentStatusEntry, TabAgentStatusDot } from "@/app/agent-status/agent-status-tab-aggregate";
 import { refocusNode } from "@/app/store/global";
 import { getTabModelByTabId } from "@/app/store/tab-model";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
@@ -21,6 +21,7 @@ import { useInfoCardHover, InfoCardPortal } from "@/app/element/info-card/info-c
 import { TabInfoCard } from "./tab-info-card";
 import "./tab.scss";
 import { TabBadges } from "./tabbadges";
+import { normalizeTabAgentStatusMode, TabAgentStatusModeConfigKey, type TabAgentStatusMode } from "./tab-agent-status-mode";
 import { buildTabContextMenu } from "./tabcontextmenu";
 
 export type TabEnv = WaveEnvSubset<{
@@ -56,6 +57,9 @@ interface TabVProps {
     hidden?: boolean;
     badges?: Badge[] | null;
     agentDots?: TabAgentStatusDot[] | null;
+    agentStatuses?: TabAgentStatusEntry[] | null;
+    agentStatusMode?: TabAgentStatusMode;
+    maxAgentTokens?: number;
     flagColor?: string | null;
     onClick: () => void;
     onClose: (event: React.MouseEvent<HTMLButtonElement, MouseEvent> | null) => void;
@@ -81,6 +85,9 @@ const TabV = forwardRef<HTMLDivElement, TabVProps>((props, ref) => {
         hidden: isHidden = false,
         badges,
         agentDots,
+        agentStatuses,
+        agentStatusMode,
+        maxAgentTokens,
         flagColor,
         onClick,
         onClose,
@@ -216,6 +223,8 @@ const TabV = forwardRef<HTMLDivElement, TabVProps>((props, ref) => {
             onContextMenu={onContextMenu}
             {...hover.targetProps}
             data-tab-id={tabId}
+            data-agent-status-mode={agentStatusMode}
+            data-agent-count={agentStatuses?.length ?? 0}
         >
             {showDivider && <div className="tab-divider" />}
             <div className="tab-inner">
@@ -230,7 +239,14 @@ const TabV = forwardRef<HTMLDivElement, TabVProps>((props, ref) => {
                 >
                     {displayName}
                 </div>
-                <TabBadges badges={badges} agentDots={agentDots} flagColor={flagColor} />
+                <TabBadges
+                    badges={badges}
+                    agentDots={agentDots}
+                    agentStatuses={agentStatuses}
+                    agentStatusMode={agentStatusMode}
+                    maxAgentTokens={maxAgentTokens}
+                    flagColor={flagColor}
+                />
                 <Button
                     className="ghost grey close"
                     onClick={onClose}
@@ -272,8 +288,11 @@ const TabInner = forwardRef<HTMLDivElement, TabProps>((props, ref) => {
     const env = useWaveEnv<TabEnv>();
     const [tabData, _] = env.wos.useWaveObjectValue<Tab>(makeORef("tab", id));
     const badges = useAtomValue(getTabBadgeAtom(id, env));
-    // C 层 agent-status 聚合点 (22 号方案决策 6B): D 走自有通道, 仅借 TabBadges 槽位渲染.
-    const agentDots = useAtomValue(getTabAgentStatusDotsAtom(id));
+    // C 层 agent-status：未阅判定仍走旧 atom；B / C / G 展示走全量 entries。
+    const agentStatuses = useAtomValue(getTabAgentStatusEntriesAtom(id));
+    const agentStatusMode = normalizeTabAgentStatusMode(
+        useAtomValue(env.getSettingsKeyAtom(TabAgentStatusModeConfigKey))
+    );
     const openedThisLaunchTabIds = useAtomValue(openedThisLaunchTabIdsAtom);
     const unreadTabsAtom = useMemo(() => getTabsWithUnreadDotsAtom([id]), [id]);
     const unreadTabIds = useAtomValue(unreadTabsAtom);
@@ -349,7 +368,9 @@ const TabInner = forwardRef<HTMLDivElement, TabProps>((props, ref) => {
             unopenedThisLaunch={unopenedThisLaunch}
             hidden={isHidden}
             badges={badges}
-            agentDots={agentDots}
+            agentStatuses={agentStatuses}
+            agentStatusMode={agentStatusMode}
+            maxAgentTokens={2}
             flagColor={flagColor}
             onClick={handleTabClick}
             onClose={onClose}

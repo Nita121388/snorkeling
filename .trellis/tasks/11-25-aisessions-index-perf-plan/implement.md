@@ -11,9 +11,14 @@
 - [x] 5. 追踪 `Summary` 503 与 `LiveSessionState` 空响应调用链。
 - [x] 6. 追踪 `DetailDelta(loadAll)` 的新鲜度缺失与写放大。
 - [ ] 7. 补搜索候选基准（bulk / 流式 / SQL 自定义函数）与 loadAll fake-provider 复现。
+      → 工具已编译：`tmp/aisessions-index-perf-bench/followup/followup.exe`；
+      卡点：observer 在 schema 建立前查询导致 `no such table: ai_session_messages`，
+      修法见 `NEXT-STEPS.md`。
 - [ ] 8. 汇总调查报告，明确实测/推断/未证实边界。
+      → 基线已固化到 `research/performance-baseline.md`；等第 7 项数字补齐后收口。
 - [ ] 9. 生成 HTML 整改计划（`collapse: true`，0 渲染错误）。
-- [ ] 10. 清理 `tmp/aisessions-index-perf-bench/` 全部副本与中间产物。
+      → 草稿 `tmp/aisessions-index-perf-plan.md` 已含 A–H 八节，待数字补齐后 `am render -o`。
+- [ ] 10. 清理 `tmp/aisessions-index-perf-bench/` 全部副本与中间产物（当前 13G，需在第 7/9 项之后）。
 
 ## 未来整改包顺序（本轮不执行）
 

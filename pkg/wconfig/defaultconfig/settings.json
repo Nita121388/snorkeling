@@ -5,6 +5,7 @@
     "ai:timeoutms": 60000,
     "app:defaultnewblock": "term",
     "app:tabbar": "top",
+    "tab:agent-status-mode": "hybrid",
     "app:theme": "system",
     "ui:locale": "auto",
     "app:confirmquit": true,

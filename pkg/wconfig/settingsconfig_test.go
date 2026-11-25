@@ -45,6 +45,16 @@ func TestAgentStatusOsNotifyConfigKeyTypes(t *testing.T) {
 	}
 }
 
+func TestTabAgentStatusModeConfigKeyType(t *testing.T) {
+	got := getConfigKeyType("tab:agent-status-mode")
+	if got == nil {
+		t.Fatal("config key tab:agent-status-mode is not registered in SettingsType")
+	}
+	if got != reflect.TypeOf("") {
+		t.Fatalf("config key tab:agent-status-mode has type %v, want string", got)
+	}
+}
+
 // A value that comes over the wire as a JSON number must convert into the *int64 field, which is
 // what the settings panel writes for the idle threshold and the cooldown.
 func TestConvertConfigValueForAgentOsNotifyNumbers(t *testing.T) {

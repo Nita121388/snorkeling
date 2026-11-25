@@ -36,7 +36,7 @@ export type VTabBarEnv = WaveEnvSubset<{
     };
     wos: WaveEnv["wos"];
     showContextMenu: WaveEnv["showContextMenu"];
-    getSettingsKeyAtom: SettingsKeyAtomFnType<"tab:confirmclose" | "app:tabbar" | "app:hideaibutton">;
+    getSettingsKeyAtom: SettingsKeyAtomFnType<"tab:confirmclose" | "tab:agent-status-mode" | "app:tabbar" | "app:hideaibutton">;
     mockSetWaveObj: WaveEnv["mockSetWaveObj"];
     isWindows: WaveEnv["isWindows"];
     isMacOS: WaveEnv["isMacOS"];

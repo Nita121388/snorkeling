@@ -4,17 +4,19 @@ title: "Hero Block Header 去重：保留左上 emoji，胶囊 Hero 名去掉 em
 type: fix-small
 priority: P2
 severity: S3
-status: open
+solution: fixed
+status: accepted
 origin: self
 source: "nita 2026-11-19 确认：保留 agent Block 左上角 emoji，胶囊内 Hero 名前缀 emoji 去掉"
 task: 11-18-hero-block-header-display
+feature: hero-identity
 order: 100
 touch: [frontend/app/workspace/hero-launch.ts, frontend/app/workspace/hero-launch.test.ts, frontend/app/block/block-title.ts, frontend/app/block/block-title.test.ts, frontend/app/view/term/term-model.ts, frontend/app/view/term/term-header-emoji-only.test.ts, docs/project/hero-system.md, docs/project/verify-ledger.md, loop/**]
 rollback: null
 budget: {minutes: 45, retries: 2}
 releaseCandidate: false
+score: {value: 5, by: nita, at: "2026-11-25T03:47:12Z", note: null}
 createdAt: "2026-11-19T05:31:38Z"
-feature: hero-identity
 ---
 
 # Hero Block Header 去重：保留左上 emoji，胶囊 Hero 名去掉 emoji
@@ -29,7 +31,7 @@ Hero 登场时同一个 emoji 写进 agent:emoji 与 hero:name，导致 Block he
 
 ## 验收判据
 
-- [x] `npx vitest run frontend/app/workspace/hero-launch.test.ts frontend/app/block/block-title.test.ts frontend/app/view/term/term-header-emoji-only.test.ts --reporter=basic && echo HERO_HEADER_EMOJI_PASS` → `HERO_HEADER_EMOJI_PASS`
+- [ ] `npx vitest run frontend/app/workspace/hero-launch.test.ts frontend/app/block/block-title.test.ts frontend/app/view/term/term-header-emoji-only.test.ts --reporter=basic && echo HERO_HEADER_EMOJI_PASS` → `HERO_HEADER_EMOJI_PASS`
 
 ## 记录
 

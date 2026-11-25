@@ -24,6 +24,7 @@ require (
 	github.com/mattn/go-sqlite3 v1.14.40
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/pkg/sftp v1.13.9
+	github.com/rivo/uniseg v0.4.7
 	github.com/sawka/txwrap v0.2.0
 	github.com/shirou/gopsutil/v4 v4.26.3
 	github.com/skeema/knownhosts v1.3.1
@@ -67,7 +68,6 @@ require (
 	github.com/ncruces/go-strftime v1.0.0 // indirect
 	github.com/power-devops/perfstat v0.0.0-20240221224432-82ca36839d55 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
-	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/sirupsen/logrus v1.9.3 // indirect
 	github.com/spf13/pflag v1.0.9 // indirect
 	github.com/tklauser/go-sysconf v0.3.16 // indirect

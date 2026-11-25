@@ -1,7 +1,10 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+import { RpcApi } from "@/app/store/wshclientapi";
+import { TabRpcClient } from "@/app/store/wshrpcutil";
 
 import {
     buildPasteImageFileName,
@@ -28,6 +31,11 @@ function makeItem(type: string, blob: Blob | null, kind = "file") {
 function makePng(size = 32): Blob {
     return makeFile("image/png", size);
 }
+
+afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+});
 
 describe("paste-image dispatch (image vs text)", () => {
     it("returns no blobs for a plain-text paste so native paste runs untouched", () => {
@@ -125,6 +133,28 @@ describe("attachment subdir（11-24 R9）", () => {
 });
 
 describe("materializePastedImages", () => {
+    it("uses the default writer when no writer is injected", async () => {
+        vi.stubGlobal("window", { api: { getDataDir: () => "/data" } });
+        vi.spyOn(Date, "now").mockReturnValue(1700000000000);
+        vi.spyOn(Math, "random").mockReturnValue(0.5);
+        const mkdir = vi.spyOn(RpcApi, "FileMkdirCommand").mockResolvedValue(undefined);
+        const write = vi.spyOn(RpcApi, "FileWriteCommand").mockResolvedValue(undefined);
+        const fileName = buildPasteImageFileName("image/png", 1700000000000, () => 0.5);
+
+        const out = await materializePastedImages([makePng()]);
+
+        expect(out.failures).toEqual([]);
+        expect(out.written).toBe(1);
+        expect(out.markdown).toBe(`![pasted image](/data/commontext-images/${fileName})`);
+        expect(mkdir).toHaveBeenCalledWith(TabRpcClient, {
+            info: { path: "wsh://local//data/commontext-images", mimetype: "directory" },
+        });
+        expect(write).toHaveBeenCalledWith(TabRpcClient, {
+            info: { path: `wsh://local//data/commontext-images/${fileName}`, mimetype: "image/png" },
+            data64: expect.any(String),
+        });
+    });
+
     it("writes every image in order and emits one reference each", async () => {
         const written: string[] = [];
         const out = await materializePastedImages([makePng(), makeFile("image/webp", 16, "b.webp")], async (blob) => {

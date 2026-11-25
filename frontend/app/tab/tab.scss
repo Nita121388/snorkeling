@@ -84,6 +84,33 @@
         }
     }
 
+    // B / G consume horizontal space on the left. Keep the name clear of the
+    // avatar stack instead of letting the absolutely-centered label slide under it.
+    &:has(.tab-agent-avatars[data-agent-visible="1"][data-agent-hidden="0"]) .name {
+        left: 30px;
+        width: calc(100% - 58px);
+        transform: none;
+        text-align: left;
+    }
+    &:has(.tab-agent-avatars[data-agent-visible="1"]:not([data-agent-hidden="0"])) .name {
+        left: 48px;
+        width: calc(100% - 76px);
+        transform: none;
+        text-align: left;
+    }
+    &:has(.tab-agent-avatars[data-agent-visible="2"][data-agent-hidden="0"]) .name {
+        left: 46px;
+        width: calc(100% - 74px);
+        transform: none;
+        text-align: left;
+    }
+    &:has(.tab-agent-avatars[data-agent-visible="2"]:not([data-agent-hidden="0"])) .name {
+        left: 64px;
+        width: calc(100% - 92px);
+        transform: none;
+        text-align: left;
+    }
+
     .wave-button {
         position: absolute;
         top: 50%;
@@ -148,6 +175,134 @@ body:not(.nohover) .tab.active:hover .tab-inner {
 // When in nohover mode, always show the close button on the active tab. This prevents the close button of the active tab from flickering when nohover is toggled.
 body.nohover .tab.active .close {
     visibility: visible;
+}
+
+// ── B / C / G Agent status encodings ──────────────────────────────────
+.tab-badges--agent-rail,
+.tab-badges--agent-hybrid {
+    top: auto;
+    right: 4px;
+    bottom: 0;
+    width: auto;
+    transform: none;
+    justify-content: flex-start;
+}
+
+.tab-agent-avatars {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    flex: 0 0 auto;
+}
+
+.tab-agent-avatar {
+    position: relative;
+    width: 16px;
+    height: 16px;
+    flex: 0 0 16px;
+    display: inline-grid;
+    place-items: center;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    color: var(--secondary-text-color);
+    background: rgb(from var(--main-text-color) r g b / 0.04);
+    line-height: 1;
+}
+
+.tab-agent-avatar-icon {
+    width: 12px;
+    height: 12px;
+    display: inline-grid;
+    place-items: center;
+    font-size: 11px;
+}
+
+.tab-agent-avatar-icon svg {
+    width: 12px;
+    height: 12px;
+}
+
+.tab-agent-avatar-emoji {
+    font-size: 11px;
+    line-height: 1;
+}
+
+.tab-agent-avatar-dot {
+    position: absolute;
+    right: -2px;
+    bottom: -2px;
+    width: 6px;
+    height: 6px;
+    border: 1px solid var(--main-bg-color);
+    border-radius: 50%;
+    background: var(--agent-status-color);
+}
+
+.tab-agent-avatar.is-seen {
+    opacity: 0.58;
+}
+
+.tab-agent-avatar.is-working .tab-agent-avatar-dot {
+    animation: session-row-live-dot-breathe 1.6s ease-in-out infinite;
+}
+
+.tab-agent-overflow {
+    min-width: 18px;
+    height: 16px;
+    display: inline-grid;
+    place-items: center;
+    padding: 0 3px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    color: var(--secondary-text-color);
+    background: rgb(from var(--main-text-color) r g b / 0.04);
+    font-family: Hack, monospace;
+    font-size: 9px;
+    line-height: 1;
+}
+
+.tab-agent-rail {
+    position: absolute;
+    left: 4px;
+    right: 4px;
+    bottom: 0;
+    height: 3px;
+    display: flex;
+    gap: 1px;
+    overflow: hidden;
+    border-radius: 2px 2px 0 0;
+}
+
+.tab-agent-rail-segment {
+    flex: 1 1 0;
+    min-width: 1px;
+    background: var(--agent-status-color);
+    opacity: 0.9;
+}
+
+.tab-agent-rail-segment.is-seen {
+    opacity: 0.38;
+}
+
+.tab-agent-rail-segment.is-working {
+    animation: tab-agent-rail-breathe 1.6s ease-in-out infinite;
+}
+
+@keyframes tab-agent-rail-breathe {
+    0%,
+    100% {
+        opacity: 0.55;
+    }
+    50% {
+        opacity: 1;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .tab-agent-avatar.is-working .tab-agent-avatar-dot,
+    .tab-agent-rail-segment.is-working {
+        animation: none;
+    }
 }
 
 @keyframes expandWidthAndFadeIn {

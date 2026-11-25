@@ -7,6 +7,7 @@ import { i18n } from "@/i18n/config";
 import { fireAndForget } from "@/util/util";
 import { makeORef } from "../store/wos";
 import type { TabEnv } from "./tab";
+import { normalizeTabAgentStatusMode, TabAgentStatusModeConfigKey, type TabAgentStatusMode } from "./tab-agent-status-mode";
 import { collapseTabIds } from "./tab-collapse-state";
 
 const TabReturnWorkspaceIdMetaKey = "tab:returnworkspaceid";
@@ -93,6 +94,42 @@ export function buildTabContextMenu(
         })),
     ];
     menu.push({ label: i18n.t("tab:contextMenu.flagTab"), type: "submenu", submenu: flagSubmenu }, { type: "separator" });
+    const currentAgentStatusMode = normalizeTabAgentStatusMode(
+        globalStore.get(env.getSettingsKeyAtom(TabAgentStatusModeConfigKey))
+    );
+    const setAgentStatusMode = (mode: TabAgentStatusMode) => {
+        fireAndForget(() => env.rpc.SetConfigCommand(TabRpcClient, { [TabAgentStatusModeConfigKey]: mode }));
+        recordTEvent("action:settabagentstatusmode");
+    };
+    const agentStatusModeSubmenu: ContextMenuItem[] = [
+        {
+            label: i18n.t("tab:contextMenu.agentStatusAvatars"),
+            type: "checkbox",
+            checked: currentAgentStatusMode === "avatars",
+            click: () => setAgentStatusMode("avatars"),
+        },
+        {
+            label: i18n.t("tab:contextMenu.agentStatusRail"),
+            type: "checkbox",
+            checked: currentAgentStatusMode === "rail",
+            click: () => setAgentStatusMode("rail"),
+        },
+        {
+            label: i18n.t("tab:contextMenu.agentStatusHybrid"),
+            type: "checkbox",
+            checked: currentAgentStatusMode === "hybrid",
+            click: () => setAgentStatusMode("hybrid"),
+        },
+    ];
+    menu.push(
+        {
+            label: i18n.t("tab:contextMenu.agentStatusDisplay"),
+            type: "submenu",
+            sublabel: i18n.t("tab:contextMenu.agentStatusAllTabs"),
+            submenu: agentStatusModeSubmenu,
+        },
+        { type: "separator" }
+    );
     const fullConfig = globalStore.get(env.atoms.fullConfigAtom);
     const backgrounds = fullConfig?.backgrounds ?? {};
     const bgKeys = Object.keys(backgrounds).filter((k) => backgrounds[k] != null);

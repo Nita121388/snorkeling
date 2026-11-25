@@ -35,6 +35,7 @@
 - `commontext/commontext-list-meta-sort/` — 同步状态：✅ 已落地（2026-11-05，`frontend/app/commontext/`，分支 `feat/commontext-list-meta-sort`）
 - `commontext/commontext-pinned-detail-insert.html` — （单文件原型）
 - `commontext/commontext-row-filter-polish/` — 同步状态：● 已落地（2026-11-21，列表行 44→52px 修裁切 + 徽章居右 + 筛选区单行化 + 排序 chip 菜单）
+- `commontext/commontext-send-agent-unify/` — 同步状态：▲ 设计活跃（2026-11-25）｜CommonText 发送目标浮层统一 Overview New Agent 的选择语言：命名 Agent chip + 模型下拉 + 可见滚动路径列表 + 左 2px accent 选中轨；保留聚焦/新建、Tab→路径联动、后台执行与动态发送文案；暗/亮/单色三主题可交互｜镜像源：commontext-send-button.tsx, overview-add-agent-modal.tsx, widgets.tsx
 - `commontext/commontext-send-agent-block/` — 同步状态：● 已落地（2026-11-10，`frontend/app/commontext/commontext-send-button.tsx` + `pending-input.ts` + `term.tsx`）
 - `commontext/commontext-send-compact/` — 同步状态：◐ 部分落地（2026-11-18，A 档常显 + 目录候选随 Tab；B 折叠档未实现）
 - `commontext/commontext-search-virtual.html` — （单文件原型）
@@ -89,6 +90,7 @@
 - `tabs-shell-launch/quick-launch.html` — （单文件原型）
 - `tabs-shell-launch/shell-settings/` — 同步状态：▲ 设计活跃（未实现）
 - `tabs-shell-launch/tab-card-v2/` — 同步状态：◐ 部分落地（2026-11-02 起，变体 #4 v-notion 已进 `tab-info-card.tsx` 与 `info-card.scss`；其余 7 个变体仅作参考）
+- `tabs-shell-launch/tab-agent-status/` — 同步状态：◐ 部分落地（2026-11-25，B/C/G 已实现）｜App Tab 显示每个 Agent 状态的七种编码：聚合计数 / 微头像栈 / 分段状态轨 / 状态轨+头像（推荐）/ 双层混合 / 激活展开 / 全量 chip；真实产品保留 B/C/G 与 Tab 右键全局设置，180px 宽度实验仅留在原型
 - `tabs-shell-launch/widget-quick-launch/` — 同步状态：● 已落地（真实组件已实现）
 
 ## vcs

@@ -2,12 +2,13 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { refocusNode } from "@/app/store/global";
-import type { TabAgentStatusDot } from "@/app/agent-status/agent-status-tab-aggregate";
+import type { TabAgentStatusEntry, TabAgentStatusDot } from "@/app/agent-status/agent-status-tab-aggregate";
 import { validateCssColor } from "@/util/color-validator";
 import { cn } from "@/util/util";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { TabBadges } from "./tabbadges";
+import type { TabAgentStatusMode } from "./tab-agent-status-mode";
 
 const RenameFocusDelayMs = 50;
 
@@ -18,6 +19,8 @@ export interface VTabItem {
     badges?: Badge[] | null;
     flagColor?: string | null;
     agentDots?: TabAgentStatusDot[] | null;
+    agentStatuses?: TabAgentStatusEntry[] | null;
+    agentStatusMode?: TabAgentStatusMode;
 }
 
 interface VTabProps {
@@ -155,6 +158,8 @@ export function VTab({
         <div
             draggable
             data-tabid={tab.id}
+            data-agent-status-mode={tab.agentStatusMode}
+            data-agent-count={tab.agentStatuses?.length ?? 0}
             onClick={onSelect}
             onDoubleClick={(event) => {
                 event.stopPropagation();
@@ -191,6 +196,9 @@ export function VTab({
             <TabBadges
                 badges={badges}
                 agentDots={tab.agentDots}
+                agentStatuses={tab.agentStatuses}
+                agentStatusMode={tab.agentStatusMode}
+                maxAgentTokens={5}
                 flagColor={flagColor}
                 className="mr-1 min-w-[16px] shrink-0 static top-auto left-auto z-auto h-[16px] w-auto translate-y-0 justify-start px-[2px] py-[1px] [&_i]:text-[10px]"
             />

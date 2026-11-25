@@ -515,3 +515,11 @@ emain-window 12 全绿；真机探针 6/6 PASS（弹窗开着时新建 Tab 生�
 - 真机验证台补断言的心法：播假 sessionId 的卡断不了方块条，要挂到度量轨段（那里挂真实会话卡，走真实 detail RPC）；无法真机覆盖的面一律显式 skip 写明单测锚点。
 - gotypes.d.ts 再生有 Origin 命名碰撞的不确定性（hero.Origin ↔ syncproto.Origin 翻转），无消费者，本次 checkout 还原未提交。
 - 0.0.139 发版照 snorkeling-release skill：bump→查远端号→commit→push→tag→push→workflow；发布信息中文分区式（含另一 agent 的 agent-cmd-resolve 修复，发版范围按 tag 区间如实写）。
+
+## 2026-11-25 晚 · AI Sessions 索引性能调查（只读，planning）
+
+- 任务 `11-25-aisessions-index-perf-plan`：零功能回退前提下查 3.42GB `index-v2.sqlite` 的瓶颈，交付 HTML 整改计划。已提交推送 `270fc19cd`。
+- 基准（tmp 一致性快照 3,420,934,144B/quick_check ok）：搜索 P50 4.32s 且拉 866MB 正文；最大会话 turn 扫描 30.3ms；最大正文详情 39.1ms；SaveMessages 424/504ms；删重复索引省 295.86MB、user 部分索引省 188MB（合计 -17.38% 到 2.83GB）；窄元数据整数 fk 44.88MB 让 turn 降到 9.2ms；初版三表 equijoin 详情 2,761ms（70.7× 回退，暂缓拆表）。
+- 结论方向：先修超时与写放大（Summary/LiveSessionState 无请求预算 join 60s 扫描；loadAll continuation 缺 mtime/size 导致每帧整会话重写），再动 schema；搜索不能拿 SQLite ASCII `lower()` 顶替 Go Unicode 子串语义。
+- 明天收尾三步写在任务目录 `NEXT-STEPS.md`：补完搜索候选/loadAll 基准（followup.exe 已编译，卡在 observer 打开空库、需先用 `aisessions.OpenSQLiteIndex` 热身 schema）、`am render` 生成 `collapse: true` 整改页、清理 13G tmp 副本（D 盘/E 盘仅剩 21G）。
+- 安全例外记档：备份期间运行中的 Snorkeling 改写过原库，只能证明快照一致、不能证明原库零触碰。

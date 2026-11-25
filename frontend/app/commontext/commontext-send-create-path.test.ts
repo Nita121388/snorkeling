@@ -22,6 +22,7 @@ const spies = vi.hoisted(() => ({
         submitted: true,
     })),
     createBlockInNewTab: vi.fn(async () => ({ blockid: "blk-new", tabid: "tab-new" })),
+    createAgentBlockDefForProfile: vi.fn((..._args: unknown[]) => ({ meta: { view: "term" } })),
     createBlockInTab: vi.fn(async () => "blk-existing-tab"),
     setActiveTab: vi.fn(),
     onStatus: vi.fn(),
@@ -67,7 +68,7 @@ vi.mock("@/app/workspace/use-agent-profile-options", () => ({
     useDetectedAgentProfileOptions: () => ({ options: [] }),
 }));
 vi.mock("@/app/workspace/agent-launch", () => ({
-    createAgentBlockDefForProfile: () => ({ meta: { view: "term" } }),
+    createAgentBlockDefForProfile: spies.createAgentBlockDefForProfile,
     getCurrentWorkspaceContextMeta: () => null,
     collectAgentLaunchTargetsInTab: () => [],
 }));
@@ -100,13 +101,14 @@ vi.mock("./commontext-send-target", () => ({
 
 import { executeCommonTextSend } from "./commontext-send-button";
 
-function createConfig() {
+function createConfig(model: string | null = null) {
     return {
         mode: "create",
         background: true,
         profile: "pi",
         tab: { kind: "new" },
         folder: null,
+        model,
     } as any;
 }
 
@@ -118,6 +120,25 @@ beforeEach(() => {
 });
 
 describe("CommonText create 发送路径", () => {
+    it.each([
+        { model: "gpt-5.2-codex", expected: "gpt-5.2-codex" },
+        { model: null, expected: undefined },
+    ])("模型 $model 作为第 7 个参数透传（null → undefined）", async ({ model, expected }) => {
+        const ok = await executeCommonTextSend({
+            text: "hello with model",
+            config: createConfig(model),
+            focusedAgent: null,
+            profiles,
+            onStatus: spies.onStatus,
+        });
+        expect(ok).toBe(true);
+        expect(spies.createAgentBlockDefForProfile).toHaveBeenCalledTimes(1);
+        const args = spies.createAgentBlockDefForProfile.mock.calls[0];
+        expect(args[6]).toBe(expected);
+        expect(args).toHaveLength(7);
+        expect(args[0]).toBe("pi");
+    });
+
     it("走 AgentSendCommand（submit/async/wait/waitms≥120s，文本走 text64）", async () => {
         const ok = await executeCommonTextSend({
             text: "hello world",

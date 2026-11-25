@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {
-    getTabAgentStatusDotsAtom,
+    getTabAgentStatusEntriesAtom,
     getTabsWithUnreadDotsAtom,
     useAcquireWorkspaceBlockStatuses,
 } from "@/app/agent-status/agent-status-tab-aggregate";
@@ -38,6 +38,7 @@ import {
 import { tabRecencyBumpAtom } from "./tab-recency-store";
 import { buildTabBarContextMenu, buildTabContextMenu } from "./tabcontextmenu";
 import { UpdateStatusBanner } from "./updatebanner";
+import { normalizeTabAgentStatusMode, TabAgentStatusModeConfigKey } from "./tab-agent-status-mode";
 import { VTab, VTabItem } from "./vtab";
 import { VTabBarEnv } from "./vtabbarenv";
 import { WorkspaceSwitcher } from "./workspaceswitcher";
@@ -157,7 +158,10 @@ function VTabWrapper({
     const env = useWaveEnv<VTabBarEnv>();
     const [tabData] = env.wos.useWaveObjectValue<Tab>(makeORef("tab", tabId));
     const badges = useAtomValue(getTabBadgeAtom(tabId, env));
-    const agentDots = useAtomValue(getTabAgentStatusDotsAtom(tabId));
+    const agentStatuses = useAtomValue(getTabAgentStatusEntriesAtom(tabId));
+    const agentStatusMode = normalizeTabAgentStatusMode(
+        useAtomValue(env.getSettingsKeyAtom(TabAgentStatusModeConfigKey))
+    );
     const renameRef = useRef<(() => void) | null>(null);
     const tabModel = getTabModelByTabId(tabId, env);
     const openedThisLaunchTabIds = useAtomValue(openedThisLaunchTabIdsAtom);
@@ -190,7 +194,8 @@ function VTabWrapper({
         id: tabId,
         name: tabData?.name ?? "",
         badges,
-        agentDots,
+        agentStatuses,
+        agentStatusMode,
         flagColor,
     };
 

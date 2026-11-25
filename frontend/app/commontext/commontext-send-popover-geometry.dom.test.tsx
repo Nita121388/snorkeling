@@ -23,21 +23,22 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { initI18n } from "@/i18n/config";
+import { loadAgentCatalog } from "@/app/workspace/agent-catalog";
 import { globalStore } from "@/app/store/jotaiStore";
 import { atom } from "jotai";
-import { CommontextSendButton } from "./commontext-send-button";
+import { CommontextSendButton, commontextSendConfigAtom, type CommontextSendConfig } from "./commontext-send-button";
 
 // ── 重型依赖置空：让真实组件的渲染路径只跑纯逻辑 ──
 vi.mock("@/app/store/global", async () => {
     const { atom: jotaiAtom } = await import("jotai");
     return {
         atoms: {
-            workspace: jotaiAtom<unknown>(null),
+            workspace: jotaiAtom({ oid: "ws-1", tabids: ["tab-1", "tab-2"] }),
             staticTabId: jotaiAtom("tab-1"),
             settingsAtom: jotaiAtom<unknown>(null),
         },
         createBlock: async () => "block-mock",
-        getApi: () => ({ getHomeDir: () => "", pickDirectory: async () => null }),
+        getApi: () => ({ getHomeDir: () => "C:/Users/test", pickDirectory: async () => null }),
         getFocusedBlockId: () => "",
         getBlockComponentModel: () => null,
     };
@@ -52,7 +53,12 @@ vi.mock("@/app/store/services", () => ({
 }));
 vi.mock("@/app/store/wos", () => ({
     makeORef: (otype: string, oid: string) => `${otype}:${oid}`,
-    getWaveObjectAtom: () => atom<unknown>(null),
+    getWaveObjectAtom: (orefOrType: string, maybeOid?: string) => {
+        const [otype, oid] = maybeOid == null ? orefOrType.split(":") : [orefOrType, maybeOid];
+        if (otype === "tab" && oid === "tab-1") return atom({ oid: "tab:tab-1", tabId: "tab-1", name: "Tab One" });
+        if (otype === "tab" && oid === "tab-2") return atom({ oid: "tab:tab-2", tabId: "tab-2", name: "Tab Two" });
+        return atom<unknown>(null);
+    },
 }));
 vi.mock("@/layout/index", () => ({ getLayoutModelForStaticTab: () => null }));
 vi.mock("@/layout/lib/inlineTabs", () => ({ getLayoutDataActiveBlockId: () => null }));
@@ -62,10 +68,48 @@ vi.mock("@/app/workspace/use-agent-profile-options", () => ({
         { name: "pi", label: "Pi", cmd: "pi", isDefault: false },
     ],
 }));
+vi.mock("@/app/workspace/agent-catalog", async (importOriginal) => {
+    const actual = await importOriginal<typeof import("@/app/workspace/agent-catalog")>();
+    return {
+        ...actual,
+        loadAgentCatalog: vi.fn(async () => [
+            {
+                name: "codex",
+                label: "Codex",
+                cmd: "codex",
+                default: true,
+                defaultModel: "gpt-5.2-codex",
+                models: [
+                    { id: "gpt-5.2-codex", label: "GPT-5.2 Codex", default: true },
+                    { id: "gpt-5.2", label: "GPT-5.2" },
+                ],
+            },
+            {
+                name: "pi",
+                label: "Pi",
+                cmd: "pi",
+                defaultModel: "deepseek-v4.1-flash",
+                models: [
+                    { id: "deepseek-v4.1-flash", label: "DeepSeek V4.1 Flash", default: true },
+                    { id: "pi-reasoning", label: "Pi Reasoning" },
+                ],
+            },
+        ]),
+    };
+});
 vi.mock("@/app/workspace/agent-launch", () => ({
-    collectAgentLaunchTargetsInTab: () => [],
+    collectAgentLaunchTargetsInTab: (tab: { tabId?: string }) =>
+        tab.tabId === "tab-2"
+            ? [
+                  { cwd: "E:/work/tab-two-agent", source: "agent" },
+                  { cwd: "E:/work/tab-two-files", source: "files" },
+              ]
+            : [
+                  { cwd: "E:/work/tab-one-agent", source: "agent" },
+                  { cwd: "E:/work/tab-one-files", source: "files" },
+              ],
     createAgentBlockDefForProfile: () => ({}),
-    getCurrentWorkspaceContextMeta: () => ({}),
+    getCurrentWorkspaceContextMeta: () => ({ "cmd:cwd": "E:/workspace/common" }),
 }));
 vi.mock("@/app/agent-persona/use-agent-personas", () => ({
     useAgentPersonas: () => ({}),
@@ -88,6 +132,14 @@ beforeAll(async () => {
 
 beforeEach(() => {
     Object.defineProperty(window, "innerWidth", { value: 1440, configurable: true, writable: true });
+    globalStore.set(commontextSendConfigAtom, {
+        mode: "focused",
+        background: true,
+        profile: null,
+        tab: { kind: "current" },
+        folder: null,
+        model: null,
+    } as CommontextSendConfig);
     container = document.createElement("div");
     document.body.appendChild(container);
     root = createRoot(container);
@@ -117,6 +169,9 @@ async function openPopover(): Promise<void> {
     });
     const popover = document.querySelector<HTMLElement>("[data-commontext-send-popover]");
     expect(popover).not.toBeNull();
+    await act(async () => {
+        await Promise.resolve();
+    });
 }
 
 /** 解析 "min(<px>, <vw>vw)" 表达式并按夹具视口宽求值（jsdom 不算 vw，这里补上）。 */
@@ -125,6 +180,169 @@ function evaluateMinPxVw(expr: string, viewportWidth: number): number | null {
     if (m == null) return null;
     return Math.min(Number(m[1]), (Number(m[2]) / 100) * viewportWidth);
 }
+
+function pathRows(): HTMLButtonElement[] {
+    return [...document.querySelectorAll<HTMLButtonElement>("[data-commontext-path-row]")];
+}
+
+function modelSelect(): HTMLSelectElement | null {
+    return document.querySelector<HTMLSelectElement>("[data-commontext-model-select]");
+}
+
+describe("CommonText 发送弹层 Agent / 模型 / 路径契约", () => {
+    it("命名 Agent chip 保留默认提示与选中语义", async () => {
+        await openPopover();
+        const chips = [...document.querySelectorAll<HTMLButtonElement>("[data-commontext-agent-chip]")];
+        expect(chips).toHaveLength(2);
+        expect(chips[0].textContent).toContain("Codex");
+        expect(chips[1].textContent).toContain("Pi");
+        expect(chips[0].getAttribute("aria-label")).toBe("Codex");
+        expect(chips[0].getAttribute("aria-pressed")).toBe("true");
+        expect(chips[0].title).toContain("(default)");
+        expect(chips[1].getAttribute("aria-pressed")).toBe("false");
+    });
+
+    it("模型目录来自 agent-catalog，模型与可见路径控件同时存在", async () => {
+        await openPopover();
+        expect(loadAgentCatalog).toHaveBeenCalled();
+        for (const selector of [
+            "[data-commontext-model-row]",
+            "[data-commontext-model-select]",
+            "[data-commontext-tab-row]",
+            "[data-commontext-path-list]",
+            "[data-commontext-send-footer] [role=switch]",
+        ]) {
+            expect(document.querySelector(selector), selector).not.toBeNull();
+        }
+        expect(pathRows().length).toBeGreaterThanOrEqual(2);
+    });
+
+    it("选择具体模型强制新建；切换 Agent 后模型回到自动并更换候选", async () => {
+        await openPopover();
+        const select = modelSelect();
+        expect(select).not.toBeNull();
+        const options = [...select!.querySelectorAll("option")];
+        expect(options[0].value).toBe("");
+        expect(options[0].textContent).toMatch(/auto/i);
+        expect(options.map((option) => option.value)).toEqual(["", "gpt-5.2-codex", "gpt-5.2"]);
+
+        await act(async () => {
+            select!.value = "gpt-5.2-codex";
+            select!.dispatchEvent(new Event("change", { bubbles: true }));
+        });
+        expect(globalStore.get(commontextSendConfigAtom).model).toBe("gpt-5.2-codex");
+        expect(globalStore.get(commontextSendConfigAtom).mode).toBe("create");
+        expect(document.querySelector<HTMLElement>("[data-commontext-send-submit]")?.textContent).toContain(
+            "Create & send"
+        );
+
+        const piChip = document.querySelector<HTMLButtonElement>('[data-commontext-agent-chip="pi"]');
+        expect(piChip).not.toBeNull();
+        await act(async () => {
+            piChip!.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+        });
+        expect(globalStore.get(commontextSendConfigAtom).model).toBeNull();
+        expect(modelSelect()?.value).toBe("");
+        expect([...modelSelect()!.querySelectorAll("option")].map((option) => option.value)).toEqual([
+            "",
+            "deepseek-v4.1-flash",
+            "pi-reasoning",
+        ]);
+    });
+
+    it("目录不可用时允许手填模型，输入具体模型同样强制新建", async () => {
+        vi.mocked(loadAgentCatalog).mockResolvedValueOnce([]);
+        await openPopover();
+        const input = document.querySelector<HTMLInputElement>("[data-commontext-model-select]");
+        expect(input).not.toBeNull();
+        expect(input?.placeholder).toMatch(/model ID/i);
+        const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+        await act(async () => {
+            setter?.call(input!, "custom-model");
+            input!.dispatchEvent(new Event("input", { bubbles: true }));
+        });
+        expect(globalStore.get(commontextSendConfigAtom).model).toBe("custom-model");
+        expect(globalStore.get(commontextSendConfigAtom).mode).toBe("create");
+        expect(document.querySelector<HTMLElement>("[data-commontext-send-submit]")?.textContent).toContain(
+            "Create & send"
+        );
+    });
+
+    it("路径列表默认推荐第一行；点击路径更新 footer 并强制新建", async () => {
+        await openPopover();
+        const rows = pathRows();
+        expect(rows).toHaveLength(4);
+        expect(rows.map((row) => row.textContent)).toEqual([
+            expect.stringContaining("E:/work/tab-one-agent"),
+            expect.stringContaining("E:/work/tab-one-files"),
+            expect.stringContaining("E:/workspace/common"),
+            expect.stringContaining("C:/Users/test"),
+        ]);
+        expect(rows[0].getAttribute("role")).toBe("option");
+        expect(rows[0].getAttribute("aria-selected")).toBe("true");
+        expect(rows[0].textContent).toMatch(/default|auto|follow/i);
+        expect(globalStore.get(commontextSendConfigAtom).folder).toBeNull();
+
+        await act(async () => {
+            rows[1].dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+        });
+        expect(globalStore.get(commontextSendConfigAtom).folder).toBe("E:/work/tab-one-files");
+        expect(globalStore.get(commontextSendConfigAtom).mode).toBe("create");
+        expect(document.querySelector<HTMLElement>("[data-commontext-send-footer]")?.textContent).toContain(
+            "E:/work/tab-one-files"
+        );
+    });
+
+    it("切 Tab 整体替换路径候选并回到该 Tab 的默认推荐行", async () => {
+        await openPopover();
+        const initialRows = pathRows();
+        expect(initialRows.length).toBeGreaterThanOrEqual(2);
+        await act(async () => {
+            initialRows[1].dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+        });
+        expect(globalStore.get(commontextSendConfigAtom).folder).toBe("E:/work/tab-one-files");
+
+        const tabTrigger = document.querySelector<HTMLButtonElement>("[data-commontext-tab-trigger]");
+        expect(tabTrigger).not.toBeNull();
+        await act(async () => {
+            tabTrigger!.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+        });
+        const tabTwo = [...document.querySelectorAll<HTMLButtonElement>("[data-commontext-send-picker] button")].find(
+            (button) => button.textContent?.includes("Tab Two")
+        );
+        expect(tabTwo).toBeDefined();
+        await act(async () => {
+            tabTwo!.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+        });
+
+        expect(globalStore.get(commontextSendConfigAtom).tab).toEqual({ kind: "existing", tabId: "tab-2" });
+        expect(globalStore.get(commontextSendConfigAtom).folder).toBeNull();
+        const resetRows = pathRows();
+        expect(resetRows.map((row) => row.textContent)).toEqual([
+            expect.stringContaining("E:/work/tab-two-agent"),
+            expect.stringContaining("E:/work/tab-two-files"),
+            expect.stringContaining("E:/workspace/common"),
+            expect.stringContaining("C:/Users/test"),
+        ]);
+        expect(resetRows[0].getAttribute("aria-selected")).toBe("true");
+        expect(document.querySelector<HTMLElement>("[data-commontext-send-footer]")?.textContent).toContain(
+            "E:/work/tab-two-agent"
+        );
+    });
+
+    it("长路径列表内部滚动，header / footer 不参与滚动", async () => {
+        await openPopover();
+        const popover = document.querySelector<HTMLElement>("[data-commontext-send-popover]");
+        const list = document.querySelector<HTMLElement>("[data-commontext-path-list]");
+        const footer = document.querySelector<HTMLElement>("[data-commontext-send-footer]");
+        expect(list).not.toBeNull();
+        expect(popover?.className).toContain("flex-col");
+        expect(list?.className).toContain("overflow-y-auto");
+        expect(list?.className).toContain("overflow-x-hidden");
+        expect(list?.className).toContain("overscroll-contain");
+        expect(footer?.className).toContain("shrink-0");
+    });
+});
 
 describe("CommonText 发送弹层几何放宽（追加需求）", () => {
     it("宽视口：弹层根节点宽度 ≥ 420px，且三行选择器垂直间距 ≥ 8px", async () => {
@@ -139,9 +357,15 @@ describe("CommonText 发送弹层几何放宽（追加需求）", () => {
         // 声明里同时带 vw 回落（窄视口不溢出的来源），数值断言不含糊
         expect(evaluateMinPxVw(popover.style.width, 1440)).toBeGreaterThanOrEqual(420);
 
-        // 目标卡 + 三行选择器常显（信息架构不变）
-        expect(document.querySelector("[data-commontext-send-target-card]")).not.toBeNull();
-        for (const row of ["[data-commontext-agent-row]", "[data-commontext-tab-row]", "[data-commontext-dir-row]"]) {
+        // 新信息架构删除重复目标卡；Agent / 模型 / Tab / 路径与后台执行分区常显
+        expect(document.querySelector("[data-commontext-send-target-card]")).toBeNull();
+        for (const row of [
+            "[data-commontext-agent-row]",
+            "[data-commontext-model-row]",
+            "[data-commontext-tab-row]",
+            "[data-commontext-dir-row]",
+            "[data-commontext-send-footer]",
+        ]) {
             expect(document.querySelector(row), row).not.toBeNull();
         }
 

@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="zh" data-theme="dark">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Tab 上的 Agent 状态 · 六种交互原型</title>
+    <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+    <header class="masthead">
+        <div class="brand-mark" aria-hidden="true">
+            <span></span><span></span><span></span><span></span>
+        </div>
+        <div class="masthead-copy">
+            <p class="eyebrow">Snorkeling · interaction study</p>
+            <h1>Tab 上的 Agent 状态</h1>
+            <p>把“只提醒未阅”扩展成“每个 Agent 都有状态”。七种编码，同一份真实约束。</p>
+        </div>
+        <div class="masthead-actions">
+            <span class="state-tag">▲ 设计活跃</span>
+            <button class="button ghost" id="theme-toggle" type="button">浅色主题</button>
+        </div>
+    </header>
+
+    <section class="control-deck" aria-label="原型控制">
+        <div class="control-group scheme-control">
+            <span class="control-label">方案</span>
+            <div class="segmented" id="scheme-control" role="group" aria-label="选择状态编码方案"></div>
+        </div>
+        <div class="control-group">
+            <span class="control-label">布局</span>
+            <div class="segmented compact" id="orientation-control" role="group" aria-label="Tab 布局方向">
+                <button type="button" data-orientation="horizontal" class="active" aria-pressed="true">水平</button>
+                <button type="button" data-orientation="vertical" aria-pressed="false">垂直</button>
+            </div>
+        </div>
+        <div class="control-group width-control">
+            <label class="control-label" for="width-range">Tab 宽度</label>
+            <div class="range-row">
+                <input id="width-range" type="range" min="100" max="130" value="130" step="1" />
+                <output id="width-output" for="width-range">130px</output>
+            </div>
+        </div>
+        <div class="control-group width-policy-control">
+            <span class="control-label">G 宽度策略</span>
+            <div class="segmented compact" id="width-policy-control" role="group" aria-label="G 方案宽度策略">
+                <button type="button" data-width-policy="fixed" class="active" aria-pressed="true">固定 130</button>
+                <button type="button" data-width-policy="elastic" aria-pressed="false">放宽 180</button>
+            </div>
+        </div>
+        <div class="control-group">
+            <label class="control-label" for="scenario-select">状态场景</label>
+            <select id="scenario-select">
+                <option value="mixed">混合状态</option>
+                <option value="working">全部进行中</option>
+                <option value="done">全部完成</option>
+                <option value="attention">异常优先</option>
+            </select>
+        </div>
+        <div class="control-group count-control">
+            <label class="control-label" for="count-range">Agent 数量</label>
+            <div class="range-row">
+                <input id="count-range" type="range" min="1" max="8" value="8" step="1" />
+                <output id="count-output" for="count-range">8</output>
+            </div>
+        </div>
+        <button class="button" id="tick-button" type="button">推进一次状态</button>
+    </section>
+
+    <main class="workbench">
+        <section class="stage-panel" aria-labelledby="stage-title">
+            <div class="panel-heading">
+                <div>
+                    <p class="section-kicker">LIVE SPECIMEN</p>
+                    <h2 id="stage-title">D · 双层混合</h2>
+                    <p id="stage-subtitle">Tab 本体显示紧凑汇总，悬浮卡显示每个 Agent。</p>
+                </div>
+                <div class="stage-badge" id="stage-badge">推荐</div>
+            </div>
+
+            <div class="app-window" id="app-window">
+                <div class="window-chrome">
+                    <div class="traffic-lights" aria-hidden="true"><span></span><span></span><span></span></div>
+                    <span class="window-title">snorkeling — tab status prototype</span>
+                    <span class="window-mode" id="window-mode">HORIZONTAL / 130PX</span>
+                </div>
+                <div class="app-shell" id="app-shell">
+                    <div class="tabbar" id="tabbar" role="tablist" aria-label="Workspace tabs"></div>
+                    <div class="workspace-content">
+                        <div class="content-grid" aria-hidden="true"></div>
+                        <div class="mock-block">
+                            <div class="mock-block-head">
+                                <span class="mock-provider">pi</span>
+                                <span>架构拆分</span>
+                                <span class="mock-status is-working">Thinking · 02:14</span>
+                            </div>
+                            <div class="mock-terminal">
+                                <p><span class="prompt">›</span> inspect tab status aggregate</p>
+                                <p class="muted">collectBlockDots() filters working / running</p>
+                                <p><span class="prompt">›</span> propose six encodings</p>
+                                <p class="ok">✓ status model ready</p>
+                                <p class="muted">waiting for next agent event…</p>
+                            </div>
+                        </div>
+                        <div class="stage-hint">悬浮或聚焦 Tab，打开 Agent 清单。点击清单行可定位 Block。</div>
+                    </div>
+                    <div class="tab-roster" id="tab-roster" hidden></div>
+                </div>
+            </div>
+
+            <div class="stage-footer">
+                <div class="legend" id="legend"></div>
+                <p class="mirror-note">镜像：<code>tab.tsx</code> · <code>tabbadges.tsx</code> · <code>tab-info-card.tsx</code></p>
+            </div>
+        </section>
+
+        <aside class="inspector" aria-label="方案检查器">
+            <section class="inspector-card scheme-card">
+                <p class="section-kicker">DESIGN READOUT</p>
+                <div class="scheme-title-row">
+                    <h2 id="scheme-title">双层混合</h2>
+                    <span class="cost-badge" id="cost-badge">空间成本：低</span>
+                </div>
+                <p id="scheme-description"></p>
+                <div class="tradeoff-grid">
+                    <div><span class="tradeoff-label">优点</span><p id="scheme-pros"></p></div>
+                    <div><span class="tradeoff-label">代价</span><p id="scheme-cons"></p></div>
+                </div>
+            </section>
+
+            <section class="inspector-card ledger-card">
+                <div class="card-heading">
+                    <div>
+                        <p class="section-kicker">AGENT LEDGER</p>
+                        <h3>每个 Agent 都在这里</h3>
+                    </div>
+                    <span class="count-badge" id="ledger-count">8</span>
+                </div>
+                <div class="ledger" id="ledger"></div>
+            </section>
+
+            <section class="inspector-card metrics-card">
+                <p class="section-kicker">MEASURED</p>
+                <div class="metric-grid">
+                    <div><strong id="metric-total">8</strong><span>Agent 总数</span></div>
+                    <div><strong id="metric-visible">2</strong><span>Tab 可见标记</span></div>
+                    <div><strong id="metric-hidden">6</strong><span>收进溢出区</span></div>
+                </div>
+                <div class="measure-row"><span>Tab 实测宽度</span><code id="metric-width">130px</code></div>
+                <div class="measure-row"><span>名称 / 状态 / 关闭</span><code id="metric-overlap">无重叠</code></div>
+            </section>
+        </aside>
+    </main>
+
+    <section class="comparison-section" aria-labelledby="comparison-title">
+        <div class="comparison-heading">
+            <div>
+                <p class="section-kicker">SIDE BY SIDE</p>
+                <h2 id="comparison-title">同一份数据，七种读法</h2>
+            </div>
+            <p>点击任意卡片切换主舞台。所有预览使用当前 Agent 数量与状态场景。</p>
+        </div>
+        <div class="comparison-grid" id="comparison-grid"></div>
+    </section>
+
+    <footer class="page-footer">
+        <span>原型只模拟前端展示，不连接真实 Agent 事件。</span>
+        <span>状态语义复用 <code>agent-status-view.ts</code>，布局约束来自 <code>tabbar.tsx</code>。</span>
+    </footer>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    <div class="context-menu" id="tab-context-menu" role="menu" aria-label="Tab 设置" hidden></div>
+    <script src="script.js"></script>
+</body>
+</html>

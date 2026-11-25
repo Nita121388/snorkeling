@@ -8,7 +8,12 @@ import { atom, createStore, PrimitiveAtom } from "jotai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ackBumpAtom, agentStatusDoneAckStore } from "./agent-status-done-ack-store";
 import { AgentStatusStore } from "./agent-status-store";
-import { __resetTabAgentStatusDotAtomCacheForTests, getTabAgentStatusDotsAtom } from "./agent-status-tab-aggregate";
+import {
+    __resetTabAgentStatusDotAtomCacheForTests,
+    __resetTabAgentStatusEntryAtomCacheForTests,
+    getTabAgentStatusDotsAtom,
+    getTabAgentStatusEntriesAtom,
+} from "./agent-status-tab-aggregate";
 import type { AgentStatus } from "./agent-status-types";
 import { statusFingerprint } from "./agent-status-unread";
 
@@ -317,5 +322,98 @@ describe("S-class (stale) tab dots", () => {
             ["R", "b-blocked"],
             ["S", "b-stale"],
         ]);
+    });
+});
+
+describe("Tab Agent status entries (B / C / G)", () => {
+    let lsMock: ReturnType<typeof makeLocalStorageMock>;
+
+    beforeEach(() => {
+        lsMock = makeLocalStorageMock();
+        vi.stubGlobal("window", lsMock.windowMock);
+        globalStore.set(ackBumpAtom, 0);
+        globalStore.set(agentStatusDoneAckStore.doneAckedAtAtom, {});
+        globalStore.set(SessionOverviewModel.getInstance().agentStatusAckedAtAtom, {});
+        globalStore.set(SessionOverviewModel.getInstance().agentStatusAckedFpAtom, {});
+        __resetTabAgentStatusDotAtomCacheForTests();
+        __resetTabAgentStatusEntryAtomCacheForTests();
+    });
+
+    afterEach(() => {
+        vi.restoreAllMocks();
+        vi.unstubAllGlobals();
+    });
+
+    function setup(tabId: string, statuses: Record<string, AgentStatus>, subblockids?: Record<string, string[]>, plainBlockIds: string[] = []) {
+        const tabAtom = atom({ blockids: Object.keys(statuses) } as unknown as Tab);
+        const statusAtoms = new Map<string, PrimitiveAtom<AgentStatus | null>>();
+        const blockAtoms = new Map<string, PrimitiveAtom<Block>>();
+        for (const [blockId, status] of Object.entries(statuses)) {
+            statusAtoms.set(blockId, atom<AgentStatus | null>(status));
+            blockAtoms.set(
+                blockId,
+                atom({
+                    blockid: blockId,
+                    subblockids: subblockids?.[blockId] ?? [],
+                    meta: plainBlockIds.includes(blockId)
+                        ? { view: "term" }
+                        : { "agent:provider": status.provider, "agent:sessionid": status.sessionId },
+                } as unknown as Block)
+            );
+        }
+        vi.spyOn(WOS, "getWaveObjectAtom").mockImplementation((oref: string) => {
+            if (oref === WOS.makeORef("tab", tabId)) return tabAtom as never;
+            const blockId = oref.slice(oref.indexOf(":") + 1);
+            return (blockAtoms.get(blockId) ?? atom({ blockid: blockId, subblockids: [] } as unknown as Block)) as never;
+        });
+        vi.spyOn(AgentStatusStore, "getInstance").mockReturnValue({
+            peekStatusAtom: (blockId: string) => statusAtoms.get(blockId) ?? null,
+            peekPresentedStatusAtom: (blockId: string) => statusAtoms.get(blockId) ?? null,
+        } as unknown as AgentStatusStore);
+        return statusAtoms;
+    }
+
+    it("includes every state, including working and idle, in stable Tab order", () => {
+        const now = Date.now();
+        const statuses = {
+            working: makeStatus({ blockId: "working", state: "working", phase: "thinking", updatedAt: now }),
+            done: makeStatus({ blockId: "done", state: "idle", phase: "none", prevState: "working", updatedAt: now }),
+            blocked: makeStatus({ blockId: "blocked", state: "blocked", updatedAt: now }),
+            idle: makeStatus({ blockId: "idle", state: "idle", phase: "none", prevState: "idle", updatedAt: now }),
+        };
+        setup("tab-all", statuses);
+
+        const entries = globalStore.get(getTabAgentStatusEntriesAtom("tab-all"));
+        expect(entries.map((entry) => entry.blockId)).toEqual(["working", "done", "blocked", "idle"]);
+        expect(entries.map((entry) => entry.view.state)).toEqual(["working", "done", "blocked", "idle"]);
+        expect(globalStore.get(getTabAgentStatusDotsAtom("tab-all")).map((dot) => dot.blockId)).toEqual(["done", "blocked"]);
+    });
+
+    it("keeps the entry after ack and only changes read to seen", () => {
+        const done = makeStatus({ blockId: "done", state: "idle", phase: "none", prevState: "working", updatedAt: Date.now() });
+        setup("tab-ack", { done });
+        const entriesAtom = getTabAgentStatusEntriesAtom("tab-ack");
+        expect(globalStore.get(entriesAtom)[0].view.read).toBe("unread");
+
+        agentStatusDoneAckStore.markDoneAcked("done", Date.now(), "test");
+
+        expect(globalStore.get(entriesAtom)).toHaveLength(1);
+        expect(globalStore.get(entriesAtom)[0].view.read).toBe("seen");
+    });
+
+    it("excludes non-Agent blocks even if the store has a fallback status for them", () => {
+        const plain = makeStatus({ blockId: "plain", state: "unknown", phase: "unknown", provider: "agent" });
+        const agent = makeStatus({ blockId: "agent", state: "working", phase: "thinking" });
+        setup("tab-filter", { plain, agent }, undefined, ["plain"]);
+        expect(globalStore.get(getTabAgentStatusEntriesAtom("tab-filter")).map((entry) => entry.blockId)).toEqual(["agent"]);
+    });
+
+    it("expands inline subblocks with the same collection rule as TabInfoCard", () => {
+        const parent = makeStatus({ blockId: "parent", state: "idle", phase: "none", prevState: "idle" });
+        const child = makeStatus({ blockId: "child", state: "working", phase: "tool", toolName: "Bash" });
+        setup("tab-inline", { parent, child }, { parent: ["child"] });
+
+        const entries = globalStore.get(getTabAgentStatusEntriesAtom("tab-inline"));
+        expect(entries.map((entry) => entry.blockId)).toEqual(["parent", "child"]);
     });
 });

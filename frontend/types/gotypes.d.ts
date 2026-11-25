@@ -2953,17 +2953,17 @@ declare global {
         "waveai:maxoutputtokens"?: number;
     };
 
-    // hero.Origin
-    type Origin = {
-        deviceId?: string;
-        deviceName?: string;
-        platform?: string;
-    };
-
     // syncproto.Origin
     type Origin = {
         deviceid?: string;
         devicename?: string;
+        platform?: string;
+    };
+
+    // hero.Origin
+    type Origin = {
+        deviceId?: string;
+        deviceName?: string;
         platform?: string;
     };
 
@@ -3985,6 +3985,7 @@ declare global {
         "app:disablectrlshiftdisplay"?: boolean;
         "app:focusfollowscursor"?: string;
         "app:tabbar"?: string;
+        "tab:agent-status-mode"?: string;
         "ui:locale"?: string;
         "app:theme"?: string;
         "feature:waveappbuilder"?: boolean;

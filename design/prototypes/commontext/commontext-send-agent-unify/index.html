@@ -1,0 +1,1206 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>CommonText 发送目标选择器 · New Agent 视觉统一原型</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --canvas: #222222;
+    --canvas-deep: #1b1c1b;
+    --modal: #232323;
+    --surface: rgba(255, 255, 255, 0.06);
+    --surface-soft: rgba(255, 255, 255, 0.035);
+    --surface-strong: rgba(255, 255, 255, 0.1);
+    --text: #f7f7f7;
+    --secondary: #c3c8c2;
+    --muted: #8c918c;
+    --border: rgba(255, 255, 255, 0.16);
+    --border-soft: rgba(255, 255, 255, 0.08);
+    --hover: rgba(255, 255, 255, 0.08);
+    --accent: #58c142;
+    --accent-hover: #6cd055;
+    --accent-soft: rgba(88, 193, 66, 0.12);
+    --accent-text: #b8f0aa;
+    --action: #58c142;
+    --action-text: #10210c;
+    --error: #e54d2e;
+    --shadow: 0 24px 60px rgba(0, 0, 0, 0.42);
+    --shadow-soft: 0 12px 30px rgba(0, 0, 0, 0.24);
+    --font-sans: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    --font-mono: "Hack", "JetBrains Mono", Consolas, monospace;
+  }
+
+  html[data-theme="light"] {
+    color-scheme: light;
+    --canvas: #f2eee5;
+    --canvas-deep: #e9e3d8;
+    --modal: #fffdf8;
+    --surface: #fffdf8;
+    --surface-soft: #f4f0e8;
+    --surface-strong: #ebe5da;
+    --text: #3a3227;
+    --secondary: #635c52;
+    --muted: #78726a;
+    --border: #dcd6c9;
+    --border-soft: #e7e1d6;
+    --hover: rgba(58, 50, 39, 0.07);
+    --accent: #9e60c5;
+    --accent-hover: #8c4cb1;
+    --accent-soft: rgba(158, 96, 197, 0.12);
+    --accent-text: #714393;
+    --action: #714393;
+    --action-text: #ffffff;
+    --error: #d32f2f;
+    --shadow: 0 24px 60px rgba(69, 48, 30, 0.2);
+    --shadow-soft: 0 12px 30px rgba(69, 48, 30, 0.12);
+  }
+
+  html[data-theme="monochrome"] {
+    color-scheme: light;
+    --canvas: #f7f6f3;
+    --canvas-deep: #efede8;
+    --modal: #ffffff;
+    --surface: #f1efe8;
+    --surface-soft: #f5f3ef;
+    --surface-strong: #e7e3dc;
+    --text: #1c1a16;
+    --secondary: #565148;
+    --muted: #726d63;
+    --border: rgba(0, 0, 0, 0.14);
+    --border-soft: rgba(0, 0, 0, 0.08);
+    --hover: rgba(0, 0, 0, 0.06);
+    --accent: #2b2723;
+    --accent-hover: #403b34;
+    --accent-soft: rgba(43, 39, 35, 0.1);
+    --accent-text: #1d1b17;
+    --action: #2b2723;
+    --action-text: #ffffff;
+    --error: #9c4a42;
+    --shadow: 0 24px 60px rgba(28, 26, 22, 0.18);
+    --shadow-soft: 0 12px 30px rgba(28, 26, 22, 0.1);
+  }
+
+  * { box-sizing: border-box; }
+  html { min-width: 320px; background: var(--canvas); }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background: var(--canvas);
+    color: var(--text);
+    font: 14px/1.5 var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+  button, input, textarea { font: inherit; }
+  button { color: inherit; }
+  button, [role="button"] { -webkit-tap-highlight-color: transparent; }
+  button:focus-visible, [role="button"]:focus-visible, input:focus-visible, textarea:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+  button:disabled { cursor: default; opacity: 0.5; }
+  svg { display: block; width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+  .svg-sprite { position: absolute; width: 0; height: 0; overflow: hidden; }
+  .sr-only {
+    position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+    overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+  }
+
+  .prototype-page {
+    width: min(1440px, 100%);
+    margin: 0 auto;
+    padding: 28px 32px 40px;
+  }
+  .prototype-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 24px;
+    margin-bottom: 22px;
+  }
+  .eyebrow {
+    margin: 0 0 7px;
+    color: var(--accent-text);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+  }
+  .prototype-header h1 {
+    margin: 0;
+    font-size: 22px;
+    font-weight: 650;
+    letter-spacing: -0.02em;
+  }
+  .prototype-header p {
+    max-width: 720px;
+    margin: 7px 0 0;
+    color: var(--secondary);
+    font-size: 12.5px;
+  }
+  .theme-switch {
+    display: inline-flex;
+    flex: 0 0 auto;
+    gap: 2px;
+    padding: 3px;
+    border: 1px solid var(--border-soft);
+    border-radius: 8px;
+    background: var(--surface-soft);
+  }
+  .theme-switch button {
+    height: 28px;
+    padding: 0 10px;
+    border: 0;
+    border-radius: 5px;
+    background: transparent;
+    color: var(--muted);
+    font-size: 11.5px;
+    cursor: pointer;
+  }
+  .theme-switch button:hover { color: var(--text); background: var(--hover); }
+  .theme-switch button.is-active { background: var(--modal); color: var(--text); box-shadow: var(--shadow-soft); }
+
+  .prototype-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 308px;
+    gap: 20px;
+    align-items: start;
+  }
+  .stage-column { min-width: 0; }
+  .stage-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    min-height: 42px;
+    margin-bottom: 10px;
+    padding: 6px 8px 6px 12px;
+    border: 1px solid var(--border-soft);
+    border-radius: 8px;
+    background: var(--surface-soft);
+  }
+  .toolbar-group { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .toolbar-label { color: var(--muted); font-size: 11px; white-space: nowrap; }
+  .segmented { display: inline-flex; gap: 2px; padding: 2px; border-radius: 6px; background: var(--surface); }
+  .segmented button {
+    height: 26px;
+    padding: 0 10px;
+    border: 0;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--secondary);
+    font-size: 11.5px;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .segmented button:hover { color: var(--text); }
+  .segmented button.is-active { background: var(--modal); color: var(--text); box-shadow: 0 1px 3px rgba(0,0,0,.16); }
+  .toolbar-button {
+    display: inline-flex; align-items: center; gap: 6px;
+    height: 28px; padding: 0 9px; border: 1px solid var(--border-soft); border-radius: 6px;
+    background: transparent; color: var(--secondary); font-size: 11.5px; cursor: pointer;
+  }
+  .toolbar-button:hover { background: var(--hover); color: var(--text); }
+  .toolbar-button svg { width: 13px; height: 13px; }
+  .annotation-toggle { display: inline-flex; align-items: center; gap: 7px; color: var(--secondary); font-size: 11.5px; cursor: pointer; }
+  .annotation-toggle input { accent-color: var(--accent); }
+
+  .app-stage {
+    position: relative;
+    min-height: 716px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--canvas-deep);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.03);
+  }
+  .app-topbar {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: 42px;
+    padding: 0 12px;
+    border-bottom: 1px solid var(--border-soft);
+    background: var(--canvas);
+  }
+  .app-tab {
+    display: inline-flex; align-items: center; gap: 7px;
+    height: 28px; padding: 0 10px; border-radius: 6px;
+    color: var(--muted); font-size: 11.5px;
+  }
+  .app-tab.is-active { background: var(--surface); color: var(--text); }
+  .app-tab svg { width: 12px; height: 12px; }
+  .app-tab-add { width: 26px; height: 26px; display: grid; place-items: center; border: 0; border-radius: 5px; background: transparent; color: var(--muted); cursor: pointer; }
+  .app-tab-add:hover { background: var(--hover); color: var(--text); }
+  .stage-caption {
+    position: absolute; top: 58px; left: 18px; z-index: 1;
+    color: var(--muted); font-size: 10px; letter-spacing: .08em; text-transform: uppercase;
+  }
+
+  .ghost-block {
+    position: absolute;
+    border: 1px solid var(--border-soft);
+    border-radius: 8px;
+    background: var(--surface-soft);
+    opacity: .62;
+    pointer-events: none;
+  }
+  .ghost-block.terminal { left: 22px; top: 92px; width: 38%; height: 250px; padding: 14px; }
+  .ghost-block.files { right: 22px; top: 360px; width: 34%; height: 230px; padding: 14px; }
+  .ghost-title { display: flex; align-items: center; gap: 7px; color: var(--secondary); font-size: 10.5px; }
+  .ghost-title svg { width: 12px; height: 12px; }
+  .ghost-lines { display: grid; gap: 9px; margin-top: 18px; }
+  .ghost-lines span { display: block; height: 6px; border-radius: 3px; background: var(--surface-strong); }
+  .ghost-lines span:nth-child(2n) { width: 72%; }
+  .ghost-lines span:nth-child(3n) { width: 86%; }
+  .ghost-files { display: grid; gap: 10px; margin-top: 16px; }
+  .ghost-file { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 10px; }
+  .ghost-file i { width: 10px; height: 12px; border: 1px solid var(--border); border-radius: 2px; }
+
+  .compose-modal {
+    position: absolute;
+    z-index: 2;
+    top: 104px;
+    left: 50%;
+    width: min(690px, calc(100% - 72px));
+    transform: translateX(-50%);
+    overflow: hidden;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--modal);
+    box-shadow: var(--shadow);
+  }
+  .compose-header {
+    display: flex; align-items: center; gap: 9px;
+    height: 48px; padding: 0 16px;
+    border-bottom: 1px solid var(--border-soft);
+  }
+  .compose-header-icon { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 6px; background: var(--accent-soft); color: var(--accent-text); }
+  .compose-header-icon svg { width: 13px; height: 13px; }
+  .compose-header h2 { margin: 0; font-size: 13px; font-weight: 600; }
+  .compose-header .count { margin-left: 3px; color: var(--muted); font-size: 10.5px; font-weight: 400; }
+  .icon-button {
+    display: grid; place-items: center; width: 24px; height: 24px; padding: 0;
+    border: 0; border-radius: 5px; background: transparent; color: var(--muted); cursor: pointer;
+  }
+  .icon-button:hover { background: var(--hover); color: var(--text); }
+  .compose-header .icon-button { margin-left: auto; }
+  .compose-body { padding: 16px; }
+  .compose-label { margin-bottom: 7px; color: var(--secondary); font-size: 10px; }
+  .compose-editor {
+    width: 100%; min-height: 154px; resize: none;
+    padding: 12px 13px; border: 1px solid var(--border); border-radius: 6px;
+    background: var(--surface-soft); color: var(--text); font-size: 13px; line-height: 1.75; outline: none;
+  }
+  .compose-editor:focus { border-color: var(--accent); }
+  .compose-tags { display: flex; align-items: center; gap: 6px; margin-top: 11px; }
+  .tag-chip { display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 8px; border-radius: 5px; background: var(--accent-soft); color: var(--accent-text); font-size: 10.5px; }
+  .tag-chip svg { width: 11px; height: 11px; }
+  .compose-footer {
+    display: flex; align-items: center; gap: 8px;
+    min-height: 54px; padding: 10px 16px;
+    border-top: 1px solid var(--border-soft);
+  }
+  .save-state { display: inline-flex; align-items: center; gap: 6px; margin-right: auto; color: var(--muted); font-size: 10.5px; }
+  .save-state .dot { width: 5px; height: 5px; border-radius: 50%; background: var(--accent); }
+  .button {
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    height: 30px; padding: 0 11px; border: 1px solid var(--border); border-radius: 6px;
+    background: var(--surface); color: var(--text); font-size: 11.5px; cursor: pointer;
+  }
+  .button:hover { background: var(--hover); }
+  .button svg { width: 13px; height: 13px; }
+  .split-button { display: inline-flex; height: 32px; overflow: hidden; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); }
+  .split-button button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 100%; border: 0; background: transparent; color: var(--text); font-size: 12px; cursor: pointer; }
+  .split-button button:hover { background: var(--hover); }
+  .split-button .main { padding: 0 11px; }
+  .split-button .caret { width: 28px; border-left: 1px solid var(--border-soft); color: var(--secondary); }
+  .split-button svg { width: 13px; height: 13px; }
+
+  .send-popover {
+    position: absolute;
+    z-index: 20;
+    display: flex;
+    flex-direction: column;
+    width: min(440px, calc(100% - 24px));
+    border: 1px solid color-mix(in srgb, var(--border) 78%, transparent);
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--modal) 96%, transparent);
+    box-shadow: var(--shadow);
+    backdrop-filter: blur(28px);
+    -webkit-backdrop-filter: blur(28px);
+  }
+  .send-popover[hidden] { display: none; }
+  .popover-header {
+    display: flex; align-items: center; gap: 8px; flex: 0 0 auto;
+    min-height: 42px; padding: 7px 10px 7px 12px;
+    border-bottom: 1px solid var(--border-soft);
+  }
+  .popover-title { display: flex; align-items: center; gap: 7px; min-width: 0; }
+  .popover-title > svg { width: 13px; height: 13px; color: var(--accent-text); }
+  .popover-title h2 { margin: 0; font-size: 12.5px; font-weight: 600; white-space: nowrap; }
+  .mode-switch { display: inline-flex; align-items: center; gap: 2px; margin-left: auto; }
+  .mode-chip {
+    position: relative; display: inline-flex; align-items: center; gap: 4px;
+    height: 24px; padding: 0 7px; border: 0; border-radius: 5px;
+    background: transparent; color: var(--muted); font-size: 10.5px; cursor: pointer;
+  }
+  .mode-chip svg { width: 10px; height: 10px; }
+  .mode-chip:hover { background: var(--surface-soft); color: var(--secondary); }
+  .mode-chip.is-selected { background: var(--accent-soft); color: var(--text); }
+  .mode-chip.is-selected::before { content: ""; position: absolute; left: 0; top: 4px; bottom: 4px; width: 2px; border-radius: 999px; background: var(--accent); }
+
+  .popover-body { flex: 1 1 auto; min-height: 0; max-height: min(440px, calc(100vh - 250px)); overflow-y: auto; overscroll-behavior: contain; }
+  .popover-section { padding: 12px; }
+  .popover-section + .popover-section { border-top: 1px solid var(--border-soft); }
+  .section-heading { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .section-heading h3 { margin: 0; color: var(--muted); font-size: 10px; font-weight: 500; }
+  .section-note { margin-left: auto; color: var(--muted); font-size: 9.5px; }
+  .section-note.is-accent { color: var(--accent-text); }
+
+  .agent-chips { display: flex; flex-wrap: wrap; gap: 3px; }
+  .agent-chip {
+    position: relative; display: inline-flex; align-items: center; gap: 6px;
+    height: 30px; padding: 0 9px; border: 0; border-radius: 6px;
+    background: transparent; color: var(--muted); font-size: 11.5px; font-weight: 500; cursor: pointer;
+    transition: background-color 120ms ease, color 120ms ease;
+  }
+  .agent-chip:hover { background: var(--surface-soft); color: var(--secondary); }
+  .agent-chip.is-selected { background: var(--accent-soft); color: var(--text); }
+  .agent-chip.is-selected::before { content: ""; position: absolute; left: 0; top: 4px; bottom: 4px; width: 2px; border-radius: 999px; background: var(--accent); }
+  .agent-mark { display: grid; place-items: center; width: 15px; height: 15px; border-radius: 4px; font-size: 9px; font-weight: 700; line-height: 1; }
+  .agent-mark.claude { background: rgba(217, 119, 87, .18); color: #e69a7c; }
+  .agent-mark.codex { background: rgba(74, 144, 226, .18); color: #82b7f2; }
+  .agent-mark.gemini { background: rgba(174, 114, 255, .18); color: #c6a1ff; }
+  .agent-mark.opencode { background: rgba(88, 193, 66, .16); color: #9ddd8b; }
+  html[data-theme="light"] .agent-mark.claude { color: #a44f2d; }
+  html[data-theme="light"] .agent-mark.codex { color: #2f65a5; }
+  html[data-theme="light"] .agent-mark.gemini { color: #7141ad; }
+  html[data-theme="light"] .agent-mark.opencode { color: #397c2d; }
+  .default-dot { position: absolute; top: 4px; right: 4px; width: 4px; height: 4px; border-radius: 50%; background: var(--accent); }
+
+  .model-select-wrap { position: relative; margin-top: 8px; }
+  .model-select {
+    width: 100%; height: 28px; padding: 0 28px 0 9px;
+    appearance: none; border: 1px solid var(--border); border-radius: 6px;
+    background: var(--surface-soft); color: var(--text); font: inherit; font-size: 11px; outline: none; cursor: pointer;
+  }
+  .model-select:hover { border-color: color-mix(in srgb, var(--accent) 38%, var(--border)); }
+  .model-select:focus { border-color: var(--accent); }
+  .model-select-wrap > svg { position: absolute; right: 8px; top: 9px; width: 10px; height: 10px; color: var(--muted); pointer-events: none; }
+
+  .path-heading { display: flex; align-items: center; gap: 8px; margin: 11px 0 5px; color: var(--muted); font-size: 10px; }
+  .path-heading span:last-child { margin-left: auto; color: var(--accent-text); font-size: 9.5px; }
+  .path-list { display: flex; flex-direction: column; max-height: 154px; overflow-y: auto; overscroll-behavior: contain; }
+  .path-row {
+    position: relative; display: flex; align-items: center; gap: 9px; width: 100%;
+    min-height: 34px; margin-bottom: 2px; padding: 6px 8px 6px 10px;
+    border: 0; border-radius: 6px; background: transparent; color: var(--text); text-align: left; cursor: pointer;
+  }
+  .path-row:hover { background: var(--hover); }
+  .path-row.is-selected { background: var(--accent-soft); }
+  .path-row.is-selected::before { content: ""; position: absolute; left: 0; top: 5px; bottom: 5px; width: 2px; border-radius: 999px; background: var(--accent); }
+  .path-row-icon { display: grid; place-items: center; flex: 0 0 16px; width: 16px; color: var(--muted); }
+  .path-row-icon svg { width: 12px; height: 12px; }
+  .path-row-body { display: flex; flex: 1; min-width: 0; flex-direction: column; }
+  .path-row-detail { overflow: hidden; color: var(--text); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+  .path-row-sub { margin-top: 1px; overflow: hidden; color: var(--muted); font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+  .path-row-note { flex: 0 0 auto; color: var(--muted); font-size: 9px; white-space: nowrap; }
+  .path-row-note.is-accent { color: var(--accent-text); }
+  .path-browse {
+    display: flex; align-items: center; gap: 7px; width: 100%; height: 30px; margin-top: 3px; padding: 0 10px;
+    border: 1px dashed var(--border); border-radius: 6px; background: transparent; color: var(--secondary); font-size: 10.5px; cursor: pointer;
+  }
+  .path-browse:hover { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-text); }
+  .path-browse svg { width: 11px; height: 11px; }
+
+  .field-list { display: grid; gap: 7px; }
+  .field-row { display: flex; align-items: center; gap: 7px; min-width: 0; }
+  .field-label { flex: 0 0 38px; color: var(--muted); font-size: 10px; }
+  .picker {
+    display: flex; align-items: center; gap: 7px; min-width: 0; flex: 1;
+    height: 32px; padding: 0 8px; border: 1px solid var(--border); border-radius: 6px;
+    background: var(--surface-soft); color: var(--text); font-size: 11.5px; cursor: pointer; text-align: left;
+  }
+  .picker:hover { border-color: color-mix(in srgb, var(--accent) 38%, var(--border)); background: var(--surface); }
+  .picker[aria-expanded="true"] { border-color: var(--accent); }
+  .picker > svg { flex: 0 0 auto; width: 12px; height: 12px; color: var(--secondary); }
+  .picker-value { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .picker-value.is-mono { font-family: var(--font-mono); font-size: 10.5px; }
+  .picker-note { margin-left: auto; color: var(--muted); font-size: 9.5px; white-space: nowrap; }
+  .picker-note.is-accent { color: var(--accent-text); }
+  .picker .chevron { width: 9px; height: 9px; color: var(--muted); }
+  .square-button {
+    display: grid; place-items: center; flex: 0 0 auto; width: 32px; height: 32px;
+    border: 1px dashed var(--border); border-radius: 6px; background: transparent; color: var(--secondary); cursor: pointer;
+  }
+  .square-button:hover { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-text); }
+  .square-button svg { width: 12px; height: 12px; }
+
+  .background-row { display: flex; align-items: center; gap: 9px; flex: 0 0 auto; padding: 10px 12px; border-top: 1px solid var(--border-soft); }
+  .switch {
+    position: relative; flex: 0 0 auto; width: 28px; height: 16px; padding: 0;
+    border: 0; border-radius: 999px; background: var(--accent); cursor: pointer;
+  }
+  .switch::after { content: ""; position: absolute; top: 2px; left: 14px; width: 12px; height: 12px; border-radius: 50%; background: #fff; transition: left 140ms ease; }
+  .switch[aria-checked="false"] { background: var(--surface-strong); box-shadow: inset 0 0 0 1px var(--border); }
+  .switch[aria-checked="false"]::after { left: 2px; }
+  .background-copy { min-width: 0; }
+  .background-copy strong { display: block; color: var(--secondary); font-size: 10.5px; font-weight: 500; }
+  .background-copy small { display: block; margin-top: 1px; color: var(--muted); font-size: 9.5px; }
+
+  .popover-footer {
+    display: flex; align-items: center; gap: 6px; flex: 0 0 auto;
+    min-height: 48px; padding: 8px 10px 8px 12px;
+    border-top: 1px solid var(--border-soft);
+  }
+  .target-crumb { display: flex; align-items: center; gap: 4px; min-width: 0; flex: 1; color: var(--muted); font-size: 9.5px; }
+  .target-crumb span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .target-crumb .crumb-agent { color: var(--secondary); font-weight: 500; }
+  .target-crumb .crumb-folder { font-family: var(--font-mono); font-size: 9px; }
+  .footer-button { height: 28px; padding: 0 9px; border: 1px solid var(--border); border-radius: 6px; background: transparent; color: var(--secondary); font-size: 10.5px; cursor: pointer; }
+  .footer-button:hover { background: var(--hover); color: var(--text); }
+  .send-button { display: inline-flex; align-items: center; gap: 5px; height: 28px; padding: 0 10px; border: 0; border-radius: 6px; background: var(--action); color: var(--action-text); font-size: 10.5px; font-weight: 600; cursor: pointer; white-space: nowrap; }
+  .send-button:hover { background: var(--accent-hover); }
+  .send-button svg { width: 11px; height: 11px; }
+
+  .dropdown-menu {
+    position: fixed;
+    z-index: 100;
+    display: none;
+    width: min(350px, calc(100vw - 24px));
+    max-height: 280px;
+    overflow-y: auto;
+    padding: 4px;
+    border: 1px solid var(--border);
+    border-radius: 9px;
+    background: var(--modal);
+    box-shadow: var(--shadow);
+  }
+  .dropdown-menu.is-open { display: grid; gap: 2px; }
+  .menu-label { padding: 5px 8px 3px; color: var(--muted); font-size: 9px; letter-spacing: .06em; text-transform: uppercase; }
+  .menu-item {
+    display: flex; align-items: center; gap: 8px; min-width: 0;
+    width: 100%; padding: 7px 8px; border: 0; border-radius: 6px;
+    background: transparent; color: var(--text); font-size: 11px; text-align: left; cursor: pointer;
+  }
+  .menu-item:hover { background: var(--hover); }
+  .menu-item.is-selected { background: var(--accent-soft); }
+  .menu-item svg { flex: 0 0 auto; width: 12px; height: 12px; color: var(--secondary); }
+  .menu-item .menu-value { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .menu-item .menu-value.is-mono { font-family: var(--font-mono); font-size: 10px; }
+  .menu-item .menu-note { margin-left: auto; color: var(--muted); font-size: 9px; white-space: nowrap; }
+  .menu-item .menu-note.is-accent { color: var(--accent-text); }
+  .menu-separator { height: 1px; margin: 3px 4px; background: var(--border-soft); }
+
+  .toast {
+    position: fixed;
+    z-index: 200;
+    left: 50%;
+    bottom: 24px;
+    display: flex; align-items: center; gap: 8px;
+    max-width: min(520px, calc(100vw - 32px));
+    padding: 10px 13px;
+    transform: translate(-50%, 12px);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--modal);
+    box-shadow: var(--shadow);
+    color: var(--text);
+    font-size: 11.5px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 160ms ease, transform 160ms ease;
+  }
+  .toast.is-visible { opacity: 1; transform: translate(-50%, 0); }
+  .toast svg { width: 14px; height: 14px; color: var(--accent-text); }
+
+  .design-panel { display: grid; gap: 12px; }
+  .panel-card { padding: 16px; border: 1px solid var(--border-soft); border-radius: 9px; background: var(--surface-soft); }
+  .panel-card h2 { margin: 0 0 7px; font-size: 14px; font-weight: 600; }
+  .panel-card > p { margin: 0; color: var(--secondary); font-size: 11.5px; line-height: 1.7; }
+  .principle-list { display: grid; gap: 12px; margin: 16px 0 0; padding: 0; list-style: none; }
+  .principle-list li { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 9px; }
+  .principle-icon { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 6px; background: var(--accent-soft); color: var(--accent-text); }
+  .principle-icon svg { width: 12px; height: 12px; }
+  .principle-list strong { display: block; color: var(--text); font-size: 11.5px; font-weight: 550; }
+  .principle-list span { display: block; margin-top: 2px; color: var(--muted); font-size: 10.5px; line-height: 1.55; }
+
+  .reference-card { padding: 13px; border: 1px solid var(--border); border-radius: 9px; background: var(--modal); box-shadow: var(--shadow-soft); }
+  .reference-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+  .reference-head strong { font-size: 11px; font-weight: 600; }
+  .reference-head span { color: var(--muted); font-size: 9px; }
+  .reference-label { margin-bottom: 6px; color: var(--muted); font-size: 9px; }
+  .reference-chips { display: flex; flex-wrap: wrap; gap: 3px; }
+  .reference-chip { position: relative; display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 8px; border-radius: 5px; color: var(--muted); font-size: 10px; }
+  .reference-chip.is-selected { background: var(--accent-soft); color: var(--text); }
+  .reference-chip.is-selected::before { content: ""; position: absolute; left: 0; top: 4px; bottom: 4px; width: 2px; border-radius: 99px; background: var(--accent); }
+  .reference-chip .agent-mark { width: 12px; height: 12px; border-radius: 3px; font-size: 7px; }
+  .reference-input { height: 26px; margin-top: 8px; padding: 0 8px; display: flex; align-items: center; border: 1px solid var(--border); border-radius: 5px; background: var(--surface-soft); color: var(--muted); font-size: 9.5px; }
+  .reference-path { position: relative; display: flex; align-items: center; gap: 7px; height: 28px; margin-top: 5px; padding: 0 8px; border-radius: 5px; color: var(--secondary); font-size: 9.5px; }
+  .reference-path.is-selected { background: var(--accent-soft); color: var(--text); }
+  .reference-path.is-selected::before { content: ""; position: absolute; left: 0; top: 5px; bottom: 5px; width: 2px; border-radius: 99px; background: var(--accent); }
+  .reference-path svg { width: 11px; height: 11px; color: var(--muted); }
+  .reference-path span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .reference-footer { display: flex; justify-content: flex-end; gap: 6px; margin-top: 10px; padding-top: 9px; border-top: 1px solid var(--border-soft); }
+  .reference-footer span { height: 22px; padding: 0 8px; display: inline-flex; align-items: center; border-radius: 5px; color: var(--muted); font-size: 9px; }
+  .reference-footer .primary { background: var(--action); color: var(--action-text); }
+
+  .scope-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 13px; }
+  .scope-grid h3 { margin: 0 0 6px; color: var(--muted); font-size: 9px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
+  .scope-grid ul { display: grid; gap: 5px; margin: 0; padding: 0; list-style: none; }
+  .scope-grid li { position: relative; padding-left: 11px; color: var(--secondary); font-size: 10px; line-height: 1.5; }
+  .scope-grid li::before { content: ""; position: absolute; left: 0; top: 6px; width: 4px; height: 4px; border-radius: 50%; background: var(--accent); }
+  .scope-grid .not-scope li::before { background: var(--muted); }
+  .anchor-list { display: grid; gap: 7px; margin-top: 12px; }
+  .anchor-list code { display: block; overflow: hidden; padding: 6px 8px; border: 1px solid var(--border-soft); border-radius: 5px; background: var(--canvas); color: var(--secondary); font-family: var(--font-mono); font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+
+  .prototype-footnote { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 12px; color: var(--muted); font-size: 10px; }
+  .prototype-footnote kbd { padding: 1px 5px; border: 1px solid var(--border); border-bottom-width: 2px; border-radius: 4px; background: var(--surface-soft); color: var(--secondary); font: 9px var(--font-mono); }
+
+  .mark { position: relative; }
+  .send-popover.mark { position: absolute; }
+  body.show-marks .mark { outline: 1px dashed color-mix(in srgb, var(--accent) 58%, transparent); outline-offset: 3px; border-radius: 7px; }
+  body.show-marks .mark::after {
+    content: attr(data-mark); position: absolute; z-index: 30; left: -7px; top: -7px;
+    display: grid; place-items: center; width: 16px; height: 16px; border-radius: 50%;
+    background: var(--accent); color: #fff; font-size: 9px; font-weight: 700; line-height: 1;
+    box-shadow: 0 0 0 2px var(--modal);
+  }
+  body.show-marks .popover-section.mark::after { left: 4px; top: 4px; }
+
+  @media (max-width: 1180px) {
+    .prototype-page { padding: 24px; }
+    .prototype-layout { grid-template-columns: minmax(0, 1fr) 280px; gap: 16px; }
+    .app-stage { min-height: 720px; }
+    .compose-modal { width: min(640px, calc(100% - 40px)); }
+  }
+  @media (max-width: 980px) {
+    .prototype-layout { grid-template-columns: 1fr; }
+    .design-panel { grid-template-columns: 1fr 1fr; }
+    .design-panel .panel-card:last-child { grid-column: 1 / -1; }
+    .app-stage { min-height: 700px; }
+  }
+  @media (max-width: 680px) {
+    .prototype-page { padding: 18px 12px 28px; }
+    .prototype-header { flex-direction: column; gap: 14px; }
+    .prototype-header h1 { font-size: 19px; }
+    .theme-switch { align-self: flex-start; }
+    .stage-toolbar { align-items: flex-start; flex-direction: column; }
+    .toolbar-group { width: 100%; justify-content: space-between; }
+    .app-stage { min-height: 780px; }
+    .compose-modal { top: 74px; width: calc(100% - 24px); }
+    .compose-body { padding: 12px; }
+    .compose-editor { min-height: 180px; }
+    .compose-footer { padding: 10px 12px; }
+    .save-state { display: none; }
+    .compose-footer .button:first-of-type { margin-right: auto; }
+    .send-popover { width: calc(100% - 24px); }
+    .popover-title h2 { font-size: 12px; }
+    .mode-chip { padding: 0 6px; }
+    .design-panel { grid-template-columns: 1fr; }
+    .design-panel .panel-card:last-child { grid-column: auto; }
+    .prototype-footnote { align-items: flex-start; flex-direction: column; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { scroll-behavior: auto !important; transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
+  }
+</style>
+</head>
+<body>
+<svg class="svg-sprite" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+  <symbol id="i-paper-plane" viewBox="0 0 24 24"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="m18 6-12 12M6 6l12 12"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-bullseye" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></symbol>
+  <symbol id="i-chevron-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+  <symbol id="i-columns" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16M15 4v16"/></symbol>
+  <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/></symbol>
+  <symbol id="i-ellipsis" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></symbol>
+  <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></symbol>
+  <symbol id="i-tag" viewBox="0 0 24 24"><path d="M20 13 13 20a2 2 0 0 1-2.8 0L3 12.8V4h8.8L20 11.2a2 2 0 0 1 0 1.8Z"/><path d="M7.5 7.5h.01"/></symbol>
+  <symbol id="i-terminal" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m7 9 3 3-3 3M13 15h4"/></symbol>
+  <symbol id="i-home" viewBox="0 0 24 24"><path d="m3 11 9-8 9 8M5 10v10h14V10M9 20v-6h6v6"/></symbol>
+  <symbol id="i-reset" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></symbol>
+  <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 7h8M16 7h4M4 17h4M12 17h8"/><circle cx="14" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></symbol>
+  <symbol id="i-layout" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M9 9v11"/></symbol>
+  <symbol id="i-arrow-right" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
+</svg>
+
+<div class="prototype-page">
+  <header class="prototype-header">
+    <div>
+      <p class="eyebrow">CommonText / Design Prototype</p>
+      <h1>发送目标选择器 · 与 New Agent 统一选择语言</h1>
+      <p>保留现有发送行为，把 Agent、模型、路径、分段与按钮统一到 Overview New Agent 的视觉语法。可直接点击、切换主题与场景验证。</p>
+    </div>
+    <div class="theme-switch" role="group" aria-label="主题">
+      <button type="button" data-theme-choice="dark" class="is-active" aria-pressed="true">深色</button>
+      <button type="button" data-theme-choice="light" aria-pressed="false">浅色</button>
+      <button type="button" data-theme-choice="monochrome" aria-pressed="false">单色</button>
+    </div>
+  </header>
+
+  <main class="prototype-layout">
+    <section class="stage-column" aria-label="可交互原型">
+      <div class="stage-toolbar">
+        <div class="toolbar-group">
+          <span class="toolbar-label">场景</span>
+          <div class="segmented" role="group" aria-label="发送场景">
+            <button type="button" data-scenario="focused" class="is-active" aria-pressed="true">聚焦 Agent</button>
+            <button type="button" data-scenario="create" aria-pressed="false">新建 Agent</button>
+          </div>
+        </div>
+        <div class="toolbar-group">
+          <label class="annotation-toggle"><input id="annotation-toggle" type="checkbox" /> 设计标注</label>
+          <button type="button" class="toolbar-button" id="reset-button"><svg><use href="#i-reset"/></svg>重置</button>
+        </div>
+      </div>
+
+      <div class="app-stage" id="app-stage">
+        <div class="app-topbar" aria-hidden="true">
+          <span class="app-tab is-active"><svg><use href="#i-terminal"/></svg>snorkeling</span>
+          <span class="app-tab"><svg><use href="#i-folder"/></svg>docs</span>
+          <span class="app-tab"><svg><use href="#i-layout"/></svg>overview</span>
+          <button class="app-tab-add" type="button" tabindex="-1" aria-label="新建标签页"><svg><use href="#i-plus"/></svg></button>
+        </div>
+        <div class="stage-caption" aria-hidden="true">Workspace / CommonText</div>
+
+        <div class="ghost-block terminal" aria-hidden="true">
+          <div class="ghost-title"><svg><use href="#i-terminal"/></svg>Agent · Codex</div>
+          <div class="ghost-lines"><span></span><span></span><span></span><span></span><span></span><span></span></div>
+        </div>
+        <div class="ghost-block files" aria-hidden="true">
+          <div class="ghost-title"><svg><use href="#i-folder"/></svg>E:/code/snorkeling</div>
+          <div class="ghost-files">
+            <span class="ghost-file"><i></i>frontend/</span><span class="ghost-file"><i></i>pkg/</span><span class="ghost-file"><i></i>design/</span><span class="ghost-file"><i></i>HANDOFF.md</span>
+          </div>
+        </div>
+
+        <section class="compose-modal" aria-label="CommonText 编辑弹窗示意">
+          <header class="compose-header">
+            <span class="compose-header-icon"><svg><use href="#i-tag"/></svg></span>
+            <h2>CommonText <span class="count">12 条</span></h2>
+            <button type="button" class="icon-button" aria-label="关闭 CommonText"><svg><use href="#i-x"/></svg></button>
+          </header>
+          <div class="compose-body">
+            <div class="compose-label">常用文本</div>
+            <textarea class="compose-editor" aria-label="常用文本内容" spellcheck="false">请先阅读 HANDOFF.md，确认当前批次与未决项。
+然后对照 design/prototypes 中的最新原型，给出可执行的实现建议。
+注意保留现有行为，只统一视觉与交互语言。</textarea>
+            <div class="compose-tags">
+              <span class="tag-chip"><svg><use href="#i-tag"/></svg>#snorkeling</span>
+              <span class="tag-chip"><svg><use href="#i-tag"/></svg>#design</span>
+            </div>
+          </div>
+          <footer class="compose-footer">
+            <span class="save-state"><span class="dot"></span>已自动保存</span>
+            <button type="button" class="button" id="copy-button"><svg><use href="#i-copy"/></svg>复制</button>
+            <div class="split-button" aria-label="发送">
+              <button type="button" class="main" id="quick-send-button"><svg><use href="#i-paper-plane"/></svg>发送</button>
+              <button type="button" class="caret" id="send-trigger" aria-label="打开发送目标选择器" aria-expanded="true" aria-controls="send-popover"><svg><use href="#i-chevron-down"/></svg></button>
+            </div>
+          </footer>
+        </section>
+
+        <section class="send-popover mark" id="send-popover" data-mark="1" role="dialog" aria-modal="false" aria-labelledby="send-popover-title">
+          <header class="popover-header">
+            <div class="popover-title">
+              <svg><use href="#i-paper-plane"/></svg>
+              <h2 id="send-popover-title">发送到 Agent</h2>
+            </div>
+            <div class="mode-switch" role="group" aria-label="目标模式">
+              <button type="button" class="mode-chip is-selected" data-mode="focused" aria-pressed="true"><svg><use href="#i-bullseye"/></svg>聚焦块</button>
+              <button type="button" class="mode-chip" data-mode="create" aria-pressed="false"><svg><use href="#i-plus"/></svg>新建</button>
+            </div>
+            <button type="button" class="icon-button" id="close-popover" aria-label="关闭发送目标选择器"><svg><use href="#i-x"/></svg></button>
+          </header>
+
+          <div class="popover-body">
+            <section class="popover-section mark" data-mark="2" aria-labelledby="agent-section-title">
+              <div class="section-heading">
+                <h3 id="agent-section-title">选择 agent 类型</h3>
+                <span class="section-note" id="default-agent-note">Codex 为默认</span>
+              </div>
+              <div class="agent-chips" id="agent-chips" role="group" aria-label="选择 agent 类型"></div>
+              <div class="model-select-wrap">
+                <select class="model-select" id="model-select" aria-label="模型"></select>
+                <svg aria-hidden="true"><use href="#i-chevron-down"/></svg>
+              </div>
+            </section>
+
+            <section class="popover-section mark" data-mark="3" aria-labelledby="location-section-title">
+              <div class="section-heading">
+                <h3 id="location-section-title">选择目标位置</h3>
+                <span class="section-note is-accent" id="mode-note">跟随聚焦块</span>
+              </div>
+              <div class="field-list">
+                <div class="field-row">
+                  <span class="field-label">标签页</span>
+                  <button type="button" class="picker" id="tab-trigger" aria-haspopup="menu" aria-expanded="false" aria-controls="tab-menu">
+                    <svg><use href="#i-columns"/></svg>
+                    <span class="picker-value" id="tab-value">snorkeling</span>
+                    <span class="picker-note" id="tab-note">当前</span>
+                    <svg class="chevron"><use href="#i-chevron-down"/></svg>
+                  </button>
+                  <button type="button" class="square-button" id="new-tab-button" aria-label="新建标签页" title="新建 Tab"><svg><use href="#i-plus"/></svg></button>
+                </div>
+              </div>
+              <div class="path-heading"><span>选择一个路径。</span><span id="path-note">随 Tab</span></div>
+              <div class="path-list" id="path-list" role="listbox" aria-label="选择项目目录"></div>
+              <button type="button" class="path-browse" id="browse-folder-button"><svg><use href="#i-ellipsis"/></svg>浏览其他目录…</button>
+            </section>
+
+            <section class="background-row mark" data-mark="4" aria-label="后台执行设置">
+              <button type="button" class="switch" id="background-switch" role="switch" aria-checked="true" aria-label="后台执行"></button>
+              <div class="background-copy">
+                <strong>后台执行</strong>
+                <small id="background-hint">不切换标签页，也不抢焦点</small>
+              </div>
+            </section>
+          </div>
+
+          <footer class="popover-footer mark" data-mark="5">
+            <div class="target-crumb" id="target-crumb" aria-hidden="true">
+              <span class="crumb-agent" id="crumb-agent">Codex</span><span>·</span><span id="crumb-tab">snorkeling</span><span>·</span><span class="crumb-folder" id="crumb-folder">E:/code/snorkeling</span>
+            </div>
+            <button type="button" class="footer-button" id="cancel-button">取消</button>
+            <button type="button" class="send-button" id="send-button"><svg><use href="#i-paper-plane"/></svg><span id="send-button-label">发送</span></button>
+          </footer>
+        </section>
+
+        <div class="dropdown-menu" id="tab-menu" role="menu" aria-label="选择目标标签页"></div>
+      </div>
+
+      <div class="prototype-footnote">
+        <span>模型与路径选择对齐 New Agent；不新增 Vendor、搜索或定时能力。</span>
+        <span><kbd>Esc</kbd> 关闭菜单或浮层 · 所有控件可键盘聚焦</span>
+      </div>
+    </section>
+
+    <aside class="design-panel" aria-label="设计说明">
+      <section class="panel-card">
+        <p class="eyebrow">Design intent</p>
+        <h2>同一套选择语言</h2>
+        <p>让用户在两处用同一种方式做选择：看得见名字、选中状态明确、位置与动作稳定。</p>
+        <ul class="principle-list">
+          <li><span class="principle-icon"><svg><use href="#i-sliders"/></svg></span><div><strong>命名 chip 取代纯 logo</strong><span>30px 高、6px 圆角、左侧 2px accent 条，与 New Agent 一致。</span></div></li>
+          <li><span class="principle-icon"><svg><use href="#i-layout"/></svg></span><div><strong>保留 CommonText 的信息骨架</strong><span>聚焦块 / 新建、Agent、Tab、目录、后台执行一个不少。</span></div></li>
+          <li><span class="principle-icon"><svg><use href="#i-columns"/></svg></span><div><strong>模型下拉 + 可见路径列表</strong><span>28px 模型选择、可滚动路径行、左 2px 选中轨，直接沿用 New Agent 形态。</span></div></li>
+          <li><span class="principle-icon"><svg><use href="#i-arrow-right"/></svg></span><div><strong>落点只表达一次</strong><span>删除重复目标卡，把完整落点收进 footer 的路径摘要。</span></div></li>
+        </ul>
+      </section>
+
+      <section class="reference-card" aria-label="New Agent 视觉参照">
+        <div class="reference-head"><strong>New Agent 参照</strong><span>Overview / 现有组件</span></div>
+        <div class="reference-label">选择 agent 类型</div>
+        <div class="reference-chips">
+          <span class="reference-chip"><span class="agent-mark claude">C</span>Claude Code</span>
+          <span class="reference-chip is-selected"><span class="agent-mark codex">C</span>Codex</span>
+          <span class="reference-chip"><span class="agent-mark gemini">✦</span>Gemini</span>
+        </div>
+        <div class="reference-input">自动（可能按项目偏好）</div>
+        <div class="reference-label" style="margin-top:10px">选择一个路径。</div>
+        <div class="reference-path is-selected"><svg><use href="#i-terminal"/></svg><span>E:/code/snorkeling</span></div>
+        <div class="reference-path"><svg><use href="#i-folder"/></svg><span>E:/code/snorkeling/frontend</span></div>
+        <div class="reference-footer"><span>取消</span><span class="primary">创建</span></div>
+      </section>
+
+      <section class="panel-card">
+        <h2>边界与落地锚点</h2>
+        <div class="scope-grid">
+          <div><h3>保留</h3><ul><li>三种发送语义</li><li>Tab → 目录联动</li><li>后台执行开关</li><li>动态确认文案</li></ul></div>
+          <div class="not-scope"><h3>本包不做</h3><ul><li>Vendor 选择</li><li>搜索 / 历史</li><li>定时发送</li><li>默认项设置</li></ul></div>
+        </div>
+        <div class="anchor-list">
+          <code>frontend/app/commontext/commontext-send-button.tsx</code>
+          <code>frontend/app/commontext/commontext-send-target.ts</code>
+          <code>frontend/app/session-overview/overview-add-agent-modal.tsx</code>
+          <code>frontend/app/workspace/widgets.tsx</code>
+        </div>
+      </section>
+    </aside>
+  </main>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite"><svg><use href="#i-check"/></svg><span id="toast-message"></span></div>
+<div class="sr-only" id="live-summary" aria-live="polite"></div>
+
+<script>
+(() => {
+  "use strict";
+
+  const agents = [
+    { id: "claude", label: "Claude Code", mark: "C", tone: "claude" },
+    { id: "codex", label: "Codex", mark: "C", tone: "codex", isDefault: true },
+    { id: "gemini", label: "Gemini", mark: "✦", tone: "gemini" },
+    { id: "opencode", label: "OpenCode", mark: "○", tone: "opencode" },
+  ];
+  const modelsByAgent = {
+    claude: [
+      { id: "claude-sonnet-4-5", label: "Claude Sonnet 4.5" },
+      { id: "claude-opus-4-1", label: "Claude Opus 4.1" },
+    ],
+    codex: [
+      { id: "gpt-5.2-codex", label: "GPT-5.2 Codex" },
+      { id: "gpt-5.2", label: "GPT-5.2" },
+    ],
+    gemini: [
+      { id: "gemini-2.5-pro", label: "Gemini 2.5 Pro" },
+      { id: "gemini-2.5-flash", label: "Gemini 2.5 Flash" },
+    ],
+    opencode: [
+      { id: "opencode-default", label: "OpenCode Default" },
+      { id: "opencode-fast", label: "OpenCode Fast" },
+    ],
+  };
+  const tabs = [
+    { id: "current", name: "snorkeling", note: "当前", icon: "terminal" },
+    { id: "docs", name: "docs", note: "已存在", icon: "folder" },
+    { id: "overview", name: "overview", note: "已存在", icon: "layout" },
+    { id: "new", name: "新 Tab", note: "将创建", icon: "plus" },
+  ];
+  const foldersByTab = {
+    current: [
+      { path: "E:/code/snorkeling", note: "本 Tab · Agent 块", icon: "terminal", isDefault: true },
+      { path: "E:/code/snorkeling/frontend", note: "本 Tab · Files 块", icon: "folder" },
+      { path: "E:/primary/projects/loop", note: "项目", icon: "folder" },
+      { path: "E:/primary", note: "当前工作区", icon: "home" },
+    ],
+    docs: [
+      { path: "E:/code/snorkeling/docs", note: "本 Tab · Files 块", icon: "folder", isDefault: true },
+      { path: "E:/code/snorkeling/design/prototypes", note: "本 Tab · Files 块", icon: "folder" },
+      { path: "E:/primary/projects/loop", note: "项目", icon: "folder" },
+    ],
+    overview: [
+      { path: "E:/primary/projects/loop", note: "本 Tab · Agent 块", icon: "terminal", isDefault: true },
+      { path: "E:/code/snorkeling", note: "项目", icon: "folder" },
+      { path: "E:/primary", note: "当前工作区", icon: "home" },
+    ],
+    new: [
+      { path: "E:/primary", note: "当前工作区", icon: "home", isDefault: true },
+      { path: "C:/Users/chemclin", note: "主目录", icon: "home" },
+    ],
+  };
+
+  const focusedAgent = { profile: "codex", tab: "current", folder: "E:/code/snorkeling" };
+  const initialState = {
+    theme: "dark",
+    mode: "focused",
+    agent: focusedAgent.profile,
+    tab: focusedAgent.tab,
+    folder: null,
+    model: null,
+    background: true,
+    open: true,
+    menu: null,
+  };
+  let state = { ...initialState };
+  let toastTimer = null;
+
+  const $ = (selector) => document.querySelector(selector);
+  const $$ = (selector) => Array.from(document.querySelectorAll(selector));
+  const icon = (name) => `<svg aria-hidden="true"><use href="#i-${name}"/></svg>`;
+  const agentById = (id) => agents.find((agent) => agent.id === id) ?? agents[0];
+  const tabById = (id) => tabs.find((tab) => tab.id === id) ?? tabs[0];
+  const pathCandidates = () => foldersByTab[state.tab] ?? foldersByTab.new;
+  const effectiveFolder = () => state.folder ?? pathCandidates()[0].path;
+  const modelOptions = () => modelsByAgent[state.agent] ?? [];
+  const modelLabel = () => modelOptions().find((model) => model.id === state.model)?.label ?? "自动";
+  const isFocused = () => state.mode === "focused";
+
+  function renderAgents() {
+    const host = $("#agent-chips");
+    host.innerHTML = agents.map((agent) => `
+      <button type="button" class="agent-chip${state.agent === agent.id ? " is-selected" : ""}"
+              data-agent="${agent.id}" aria-pressed="${state.agent === agent.id}" title="${agent.label}${agent.isDefault ? "（默认）" : ""}">
+        <span class="agent-mark ${agent.tone}">${agent.mark}</span>
+        <span>${agent.label}</span>
+        ${agent.isDefault ? '<span class="default-dot" aria-hidden="true"></span>' : ""}
+      </button>
+    `).join("");
+    host.querySelectorAll("[data-agent]").forEach((button) => {
+      button.addEventListener("click", () => {
+        state.agent = button.dataset.agent;
+        state.model = null;
+        if (isFocused() && state.agent !== focusedAgent.profile) state.mode = "create";
+        state.menu = null;
+        render();
+      });
+    });
+  }
+
+  function renderMenus() {
+    const tabMenu = $("#tab-menu");
+    tabMenu.innerHTML = `
+      <div class="menu-label">选择目标 Tab</div>
+      ${tabs.map((tab) => `
+        <button type="button" class="menu-item${state.tab === tab.id ? " is-selected" : ""}" data-tab="${tab.id}" role="menuitemradio" aria-checked="${state.tab === tab.id}">
+          ${icon(tab.icon)}<span class="menu-value">${tab.name}</span><span class="menu-note${state.tab === tab.id ? " is-accent" : ""}">${tab.note}</span>
+        </button>
+      `).join("")}
+    `;
+    tabMenu.querySelectorAll("[data-tab]").forEach((button) => {
+      button.addEventListener("click", () => {
+        state.tab = button.dataset.tab;
+        state.folder = null;
+        state.mode = "create";
+        state.menu = null;
+        render();
+      });
+    });
+  }
+
+  function renderModel() {
+    const options = modelOptions();
+    if (state.model != null && !options.some((model) => model.id === state.model)) state.model = null;
+    $("#model-select").innerHTML = `
+      <option value="">自动（可能按项目偏好）</option>
+      ${options.map((model) => `<option value="${model.id}">${model.label}</option>`).join("")}
+    `;
+    $("#model-select").value = state.model ?? "";
+  }
+
+  function renderPaths() {
+    const selected = effectiveFolder();
+    $("#path-note").textContent = state.folder == null ? "随 Tab" : "已选择";
+    $("#path-list").innerHTML = pathCandidates().map((candidate) => {
+      const isSelected = candidate.path === selected;
+      return `
+        <button type="button" class="path-row${isSelected ? " is-selected" : ""}" data-path="${candidate.path}" role="option" aria-selected="${isSelected}">
+          <span class="path-row-icon">${icon(candidate.icon)}</span>
+          <span class="path-row-body">
+            <span class="path-row-detail">${candidate.path}</span>
+            ${candidate.note ? `<span class="path-row-sub">${candidate.note}</span>` : ""}
+          </span>
+          <span class="path-row-note${isSelected && state.folder == null ? " is-accent" : ""}">${isSelected && state.folder == null ? "默认" : ""}</span>
+        </button>
+      `;
+    }).join("");
+    $("#path-list").querySelectorAll("[data-path]").forEach((button) => {
+      button.addEventListener("click", () => {
+        state.folder = button.dataset.path;
+        state.mode = "create";
+        render();
+      });
+    });
+  }
+
+  function render() {
+    document.documentElement.dataset.theme = state.theme;
+    $$("[data-theme-choice]").forEach((button) => {
+      const active = button.dataset.themeChoice === state.theme;
+      button.classList.toggle("is-active", active);
+      button.setAttribute("aria-pressed", String(active));
+    });
+    $$("[data-scenario]").forEach((button) => {
+      const active = button.dataset.scenario === state.mode;
+      button.classList.toggle("is-active", active);
+      button.setAttribute("aria-pressed", String(active));
+    });
+    $$("[data-mode]").forEach((button) => {
+      const active = button.dataset.mode === state.mode;
+      button.classList.toggle("is-selected", active);
+      button.setAttribute("aria-pressed", String(active));
+    });
+
+    renderAgents();
+    renderModel();
+    renderMenus();
+    renderPaths();
+
+    const agent = agentById(state.agent);
+    const tab = tabById(state.tab);
+    const folder = effectiveFolder();
+    $("#tab-value").textContent = tab.name;
+    $("#tab-note").textContent = tab.note;
+    $("#tab-note").classList.toggle("is-accent", state.tab === "new");
+    $("#mode-note").textContent = isFocused() ? "跟随聚焦块" : "新建 Agent Block";
+    $("#mode-note").classList.toggle("is-accent", !isFocused());
+    $("#default-agent-note").textContent = `${agentById("codex").label} 为默认`;
+
+    $("#background-switch").setAttribute("aria-checked", String(state.background));
+    $("#background-hint").textContent = state.background ? "不切换标签页，也不抢焦点" : "发送后跳转到目标标签页";
+    $("#crumb-agent").textContent = agent.label;
+    $("#crumb-tab").textContent = tab.name;
+    $("#crumb-folder").textContent = folder;
+    $("#send-button-label").textContent = isFocused() ? "发送" : "新建并发送";
+
+    $("#send-popover").hidden = !state.open;
+    $("#send-trigger").setAttribute("aria-expanded", String(state.open));
+    $("#tab-trigger").setAttribute("aria-expanded", String(state.menu === "tab"));
+    $("#tab-menu").classList.toggle("is-open", state.menu === "tab");
+
+    $("#live-summary").textContent = `${isFocused() ? "发送到聚焦块" : "新建 Agent 并发送"}，${agent.label}，模型 ${modelLabel()}，${tab.name}，${folder}，${state.background ? "后台执行" : "发送后跳转"}`;
+    requestAnimationFrame(positionPopover);
+  }
+
+  function positionPopover() {
+    const popover = $("#send-popover");
+    if (!state.open || popover.hidden) return;
+    const stage = $("#app-stage");
+    const trigger = $("#send-trigger");
+    const stageRect = stage.getBoundingClientRect();
+    const triggerRect = trigger.getBoundingClientRect();
+    const width = popover.offsetWidth;
+    if (window.innerWidth <= 680) {
+      popover.style.maxHeight = `${Math.max(320, window.innerHeight - stageRect.top - 54 - 12)}px`;
+    } else {
+      popover.style.maxHeight = "";
+    }
+    const height = popover.offsetHeight;
+    const gutter = 12;
+    let left = triggerRect.right - stageRect.left - width + 4;
+    let top = triggerRect.top - stageRect.top - height - 8;
+    if (window.innerWidth <= 680) {
+      left = (stage.clientWidth - width) / 2;
+      top = 54;
+    } else {
+      if (top < 54) top = Math.max(54, triggerRect.bottom - stageRect.top + 8);
+      left = Math.min(Math.max(gutter, left), stage.clientWidth - width - gutter);
+      top = Math.min(Math.max(54, top), stage.clientHeight - height - gutter);
+    }
+    popover.style.left = `${left}px`;
+    popover.style.top = `${Math.max(54, top)}px`;
+  }
+
+  function positionMenu(kind) {
+    if (state.menu !== kind || kind !== "tab") return;
+    const trigger = $("#tab-trigger");
+    const menu = $("#tab-menu");
+    const rect = trigger.getBoundingClientRect();
+    const menuRect = menu.getBoundingClientRect();
+    const left = Math.min(Math.max(12, rect.left), window.innerWidth - menuRect.width - 12);
+    let top = rect.bottom + 6;
+    if (top + menuRect.height > window.innerHeight - 12) top = rect.top - menuRect.height - 6;
+    menu.style.left = `${left}px`;
+    menu.style.top = `${Math.max(12, top)}px`;
+  }
+
+  function setMode(mode) {
+    state.mode = mode;
+    if (mode === "focused") {
+      state.agent = focusedAgent.profile;
+      state.tab = focusedAgent.tab;
+      state.folder = null;
+      state.model = null;
+    }
+    state.menu = null;
+    render();
+  }
+
+  function toggleMenu(kind) {
+    state.menu = state.menu === kind ? null : kind;
+    render();
+    positionMenu(kind);
+  }
+
+  function openPopover() {
+    state.open = true;
+    state.menu = null;
+    render();
+  }
+
+  function closePopover() {
+    state.open = false;
+    state.menu = null;
+    render();
+    $("#send-trigger").focus();
+  }
+
+  function showToast(message) {
+    window.clearTimeout(toastTimer);
+    $("#toast-message").textContent = message;
+    $("#toast").classList.add("is-visible");
+    toastTimer = window.setTimeout(() => $("#toast").classList.remove("is-visible"), 2400);
+  }
+
+  $$("[data-theme-choice]").forEach((button) => button.addEventListener("click", () => {
+    state.theme = button.dataset.themeChoice;
+    render();
+  }));
+  $$("[data-scenario]").forEach((button) => button.addEventListener("click", () => setMode(button.dataset.scenario)));
+  $$("[data-mode]").forEach((button) => button.addEventListener("click", () => setMode(button.dataset.mode)));
+  $("#annotation-toggle").addEventListener("change", (event) => document.body.classList.toggle("show-marks", event.target.checked));
+  $("#reset-button").addEventListener("click", () => {
+    state = { ...initialState };
+    document.body.classList.remove("show-marks");
+    $("#annotation-toggle").checked = false;
+    render();
+    showToast("已恢复默认场景");
+  });
+
+  $("#tab-trigger").addEventListener("click", () => toggleMenu("tab"));
+  $("#model-select").addEventListener("change", (event) => {
+    state.model = event.target.value || null;
+    if (state.model != null && isFocused()) state.mode = "create";
+    render();
+  });
+  $("#new-tab-button").addEventListener("click", () => {
+    state.tab = "new";
+    state.folder = null;
+    state.mode = "create";
+    state.menu = null;
+    render();
+  });
+  $("#browse-folder-button").addEventListener("click", () => showToast("原型示意：这里会打开系统目录选择器"));
+  $("#background-switch").addEventListener("click", () => {
+    state.background = !state.background;
+    render();
+  });
+
+  $("#send-trigger").addEventListener("click", () => state.open ? closePopover() : openPopover());
+  $("#close-popover").addEventListener("click", closePopover);
+  $("#cancel-button").addEventListener("click", closePopover);
+  $("#quick-send-button").addEventListener("click", () => showToast(`已按当前配置发送给 ${agentById(state.agent).label}`));
+  $("#copy-button").addEventListener("click", () => showToast("已复制常用文本"));
+  $("#send-button").addEventListener("click", () => {
+    const agent = agentById(state.agent);
+    const tab = tabById(state.tab);
+    showToast(isFocused() ? `已发送到聚焦 ${agent.label}` : `已新建 ${agent.label} 并发送到 ${tab.name}`);
+    closePopover();
+  });
+
+  document.addEventListener("pointerdown", (event) => {
+    if (state.menu == null) return;
+    const menu = $("#tab-menu");
+    const trigger = $("#tab-trigger");
+    if (!menu.contains(event.target) && !trigger.contains(event.target)) {
+      state.menu = null;
+      render();
+    }
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape") return;
+    if (state.menu != null) {
+      event.preventDefault();
+      state.menu = null;
+      render();
+      return;
+    }
+    if (state.open) {
+      event.preventDefault();
+      closePopover();
+    }
+  });
+  window.addEventListener("resize", () => {
+    positionPopover();
+    positionMenu(state.menu);
+  });
+
+  render();
+  requestAnimationFrame(() => {
+    positionPopover();
+    $("#send-popover").animate(
+      [{ opacity: 0, scale: 0.97 }, { opacity: 1, scale: 1 }],
+      { duration: 160, easing: "cubic-bezier(.16,1,.3,1)" }
+    );
+  });
+})();
+</script>
+</body>
+</html>

@@ -16,7 +16,7 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { initI18n } from "@/i18n/config";
-import { executeCommonTextSend, type CommontextSendConfig } from "./commontext-send-button";
+import { executeCommonTextSend, previewSendTarget, type CommontextSendConfig } from "./commontext-send-button";
 import type { AgentBlockInfo } from "./commontext-send-target";
 
 vi.mock("@/app/store/wshclientapi", () => ({
@@ -60,13 +60,14 @@ const LocalAgent: AgentBlockInfo = {
 
 const RemoteAgent: AgentBlockInfo = { ...LocalAgent, blockId: "b2", connection: "ssh://mac" };
 
-const FocusedConfig: CommontextSendConfig = {
+const FocusedConfig = {
     mode: "focused",
     background: true,
     profile: null,
     tab: { kind: "current" },
     folder: null,
-};
+    model: null,
+} as CommontextSendConfig;
 
 const Profiles = [
     { name: "pi", label: "Pi", cmd: "pi", isDefault: true },
@@ -86,6 +87,53 @@ beforeEach(async () => {
     await initI18n("en");
     agentSend.mockReset();
     pasteSend.mockReset();
+});
+
+describe("previewSendTarget 模型选择", () => {
+    it("具体模型强制新建，即使 Agent / Tab / Folder 与聚焦块全等", () => {
+        const config = { ...FocusedConfig, model: "gpt-5.2-codex" } as CommontextSendConfig;
+        const preview = previewSendTarget({
+            config,
+            focusedAgent: LocalAgent,
+            profiles: Profiles,
+            workspaceCwd: LocalAgent.cwd ?? undefined,
+        });
+        expect(preview.kind).toBe("create");
+        expect(preview).toMatchObject({
+            profileName: "pi",
+            profileLabel: "Pi",
+            folder: "E:/code/snorkeling",
+            cwd: "E:/code/snorkeling",
+        });
+    });
+
+    it("自动模型保留聚焦块判定", () => {
+        const preview = previewSendTarget({
+            config: FocusedConfig,
+            focusedAgent: LocalAgent,
+            profiles: Profiles,
+            workspaceCwd: LocalAgent.cwd ?? undefined,
+        });
+        expect(preview.kind).toBe("existing");
+    });
+
+    it("旧运行时配置省略 model 时仍按自动模型判定", () => {
+        const legacyConfig = {
+            mode: "focused",
+            background: true,
+            profile: null,
+            tab: { kind: "current" },
+            folder: null,
+        } as CommontextSendConfig;
+        expect(
+            previewSendTarget({
+                config: legacyConfig,
+                focusedAgent: LocalAgent,
+                profiles: Profiles,
+                workspaceCwd: LocalAgent.cwd ?? undefined,
+            }).kind
+        ).toBe("existing");
+    });
 });
 
 describe("executeCommonTextSend existing 路径（派发不等待）", () => {

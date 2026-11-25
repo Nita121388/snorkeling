@@ -1,7 +1,8 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-import type { TabAgentStatusDot } from "@/app/agent-status/agent-status-tab-aggregate";
+import type { TabAgentStatusDot, TabAgentStatusEntry } from "@/app/agent-status/agent-status-tab-aggregate";
+import type { TabAgentStatusMode } from "./tab-agent-status-mode";
 
 /**
  * Tab 栏「更多」下拉的行模型 (纯函数, 无 React / 无 DOM).
@@ -21,6 +22,8 @@ export interface TabMoreMeta {
     name: string;
     badges?: Badge[] | null;
     agentDots?: TabAgentStatusDot[] | null;
+    agentStatuses?: TabAgentStatusEntry[] | null;
+    agentStatusMode?: TabAgentStatusMode;
     flagColor?: string | null;
     /** 该 Tab 的顶层 block + inline 子 block id (悬浮卡解析 agent block 用). */
     blockIds?: string[];

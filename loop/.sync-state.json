@@ -1,8 +1,8 @@
 {
-  "lastAttemptAt": "2026-11-18T08:30:59.932Z",
-  "lastOkAt": "2026-11-18T08:30:59.932Z",
-  "failures": 0,
-  "error": null,
+  "lastAttemptAt": "2026-11-25T08:49:22.727Z",
+  "lastOkAt": "2026-11-25T03:00:25.417Z",
+  "failures": 1131,
+  "error": "hub 拒收（400）：{\"error\":\"不在同步白名单内：map/features/acs.md\"}",
   "lastOkManifest": [
     {
       "path": "INBOX-ARCHIVE/2026-11.md",
@@ -11,13 +11,13 @@
     },
     {
       "path": "INBOX.md",
-      "sha256": "23925f7434d30fc05ef48840626f37ef1ee45ebb7f9b60f5ccf2e5cf85bc4ff8",
-      "size": 2374
+      "sha256": "b3c0f7f20c91dfc236cd2c358f86330b52ab3521685c9970ee8d81a975510334",
+      "size": 3987
     },
     {
       "path": "LEDGER-2026-11.jsonl",
-      "sha256": "af2ac86e261e5dc42f068049c5f8843dce3cb80a6a913adb2fbe0990ff9cbee1",
-      "size": 111103
+      "sha256": "74290da163faf50103cc182155017d87296741e6f00de082c7812902cd6c4a06",
+      "size": 201631
     },
     {
       "path": "README.md",
@@ -220,6 +220,56 @@
       "size": 457
     },
     {
+      "path": "gates/F-1120-overview-add-agent-card.json",
+      "sha256": "fb0b699054717edd75de3576ec443df55307ce967d8d05bde104107dafed6fe8",
+      "size": 359
+    },
+    {
+      "path": "gates/F-1121-agent-resume.json",
+      "sha256": "e5bd3f15cc4791626182cc34d7917976d1d04986fdbadbe5aec044d3d9878b30",
+      "size": 450
+    },
+    {
+      "path": "gates/F-1121-agent-roundtrip.json",
+      "sha256": "ff5943923d05aa7c0c164964835ae858bd937caecc67633c11227d1278beaba8",
+      "size": 453
+    },
+    {
+      "path": "gates/F-1122-overview-card-send.json",
+      "sha256": "484063338f1843a772eec86e960041ba6d74580094626d9a4b58c6711a673ee8",
+      "size": 324
+    },
+    {
+      "path": "gates/F-1122-overview-new-tab.json",
+      "sha256": "7b09f85c53766efd1f59e1c9ed18a0839f524a0f6511800c701fda268546b9b9",
+      "size": 322
+    },
+    {
+      "path": "gates/F-1122-overview-tab-grouping.json",
+      "sha256": "22d70d66fc60b437c4a1baf2dc29753171833751aaafce151b331f17d7cc70b6",
+      "size": 327
+    },
+    {
+      "path": "gates/F-1123-agentsend-submit-budget.json",
+      "sha256": "3caa98770f4cab1972354c86ae7f372df306f8ebcd2af770ec3e29c98b95a99d",
+      "size": 329
+    },
+    {
+      "path": "gates/F-1123-board-card-actions.json",
+      "sha256": "4f53345c9a7f83d3dadeb4dafb5b7c1fc10b2a3d8602e99f687b409c428e2b2c",
+      "size": 324
+    },
+    {
+      "path": "gates/F-1123-commontext-create-send.json",
+      "sha256": "eb7e0b1fa86644330ee121c3d96736e6f98ca3e6a3c62ca27188697d7beebba2",
+      "size": 328
+    },
+    {
+      "path": "gates/F-1124-agent-path-links.json",
+      "sha256": "9f22ad7392a53e4703142b3add2ae09dedff0ac0db15f0b616a11773fa69a84c",
+      "size": 322
+    },
+    {
       "path": "gates/N-1105-cleanup-46to22.json",
       "sha256": "1f5b134ad5b650357d34542665641a139abeb73d68330e686016b708df04d244",
       "size": 124
@@ -345,13 +395,128 @@
       "size": 243
     },
     {
+      "path": "gates/N-1119-agent-card-display.json",
+      "sha256": "50cd6cefc0b52e5e92a389722119e8fe285dfe576c0cf5918d10149a4254481b",
+      "size": 489
+    },
+    {
+      "path": "gates/N-1119-hero-header-dup-emoji.json",
+      "sha256": "cff6f2e9ee622cb075648808a81f7649b5a3d0e025cea843cc0ec92af1d23b1f",
+      "size": 112
+    },
+    {
+      "path": "gates/N-1120-fsmonitor-no-daemon.json",
+      "sha256": "a071d535b9b15a6094fce196049b9d2953dc084aa4874948b2a3e76c64c0a2ae",
+      "size": 451
+    },
+    {
+      "path": "gates/N-1120-property-status-to-select.json",
+      "sha256": "01e988572fafa7ae07f3df39493a7b4fcb111f5c234111cc2e9217198a30e338",
+      "size": 116
+    },
+    {
+      "path": "gates/N-1120-wsh-session-emoji-unwired.json",
+      "sha256": "a7a762cf6d663f54168815bbc37697bfb0a732f72a4ea6e7f43de34a7a7e1709",
+      "size": 588
+    },
+    {
+      "path": "gates/N-1123-hero-group-emoji.json",
+      "sha256": "9877dfdddcc188c9bdacbaeed58f0c67a1ed75bcde4ab31e77421426b0ebe1ff",
+      "size": 328
+    },
+    {
+      "path": "gates/N-1123-hero-sched-core.json",
+      "sha256": "82ffad2ffd7acd4c4779d617f4e664ce27a47552f9b0bffbb942d5315679223b",
+      "size": 453
+    },
+    {
+      "path": "gates/N-1123-hero-sched-ui.json",
+      "sha256": "3367db96a0fe81ac3ca250acebda956e073f78e52e514ce1678b554003c5bac2",
+      "size": 325
+    },
+    {
+      "path": "gates/N-1123-overview-drag.json",
+      "sha256": "7051d3396315be1d171515f8bab0dcdbf196a434fe8d80659eebad516387194e",
+      "size": 325
+    },
+    {
+      "path": "gates/N-1123-schedtask-modal.json",
+      "sha256": "95f3148a256b4ab2b093eaee8a92fd8504e5c84b81c19e3e6ecb952fd98f5ca4",
+      "size": 327
+    },
+    {
+      "path": "gates/N-1124-agent-cmd-resolve2.json",
+      "sha256": "56bceffad9aae5864688a82ffcb6d321f2e4948ed94ab9dbb701d21f63254d36",
+      "size": 112
+    },
+    {
+      "path": "gates/N-1124-agentsend-false-fail.json",
+      "sha256": "e663225634c7e63740df8a9ea9efb96f411c6f3e72abc285cfe480bf2750c974",
+      "size": 111
+    },
+    {
+      "path": "gates/N-1124-agentsend-image-paste.json",
+      "sha256": "b81ac5f91c0d8a459c9dbed64c82f22bdd93355f397223116c5443793b311499",
+      "size": 112
+    },
+    {
+      "path": "gates/N-1124-agentsend-status-dispatch.json",
+      "sha256": "db13a615002e0c068c682a59999589ca1ce80e4c4fde78a89ccac01b912051da",
+      "size": 116
+    },
+    {
+      "path": "gates/N-1124-folder-index-badges-3.json",
+      "sha256": "b164c69ef53d943ce017f35f6eb572bd81d9562977f7188f7f072092f9cf749f",
+      "size": 333
+    },
+    {
+      "path": "gates/N-1124-hero-restore-header.json",
+      "sha256": "959f3a122c02631e56459a36255ae1d205ee924c5b155bb0365d27824db23a14",
+      "size": 110
+    },
+    {
+      "path": "gates/N-1124-idxbadges-agent-surface.json",
+      "sha256": "bd0be1701a9e3abd8231bac65003f4f42729b6f5af64dd044910993fbb1ee0fc",
+      "size": 335
+    },
+    {
+      "path": "gates/N-1124-idxbadges-decoration-protocol.json",
+      "sha256": "1dd6a6517129184c20dee4dfbefa886153978f1cd7bf9dbf07ca2b51bfa8c74e",
+      "size": 341
+    },
+    {
+      "path": "gates/N-1124-overview-agent-fuse.json",
+      "sha256": "ba9676de4856ee618f98a7c7388e463f50b54fcddbcbb566ee86c77bccb02a83",
+      "size": 110
+    },
+    {
+      "path": "gates/N-1124-overview-agent-logo-only3.json",
+      "sha256": "dcab812d1e930f07ea052e5ed2f7cdf9faaff4376946f12ec44fe7218473a065",
+      "size": 116
+    },
+    {
+      "path": "gates/N-1124-overview-input-memory.json",
+      "sha256": "89aba10887869ef905001890d294b5c2fc18259e598db7a1d06a6a5dce66d653",
+      "size": 112
+    },
+    {
+      "path": "gates/N-1124-schedtask-entry-fix.json",
+      "sha256": "7eba9ee3e935146dace85e7bb7841cd17a7d6715452a142e3cf2a140ff0c5a99",
+      "size": 235
+    },
+    {
+      "path": "gates/N-1125-commontext-send-model-path.json",
+      "sha256": "b3c0d60fb94f5722e0300ca63a023376540c6f09ae03e84e43d3d4ab6dc1c009",
+      "size": 128
+    },
+    {
       "path": "gates/_dropped.jsonl",
-      "sha256": "98ab9adc902c7b65972a5c7e870fae24e0fbce0c2a38103b2b6c7ec35ad2e74f",
-      "size": 3136
+      "sha256": "8948e26fdf8726db80c2656ae7af8a39cfe72649bf99029a44ddf049fdcb85bd",
+      "size": 4001
     },
     {
       "path": "gates/_meta.json",
-      "sha256": "1d14a351e5245f4f7ace0e59e21fded949cbf4208abba0b8c6184382ed39a5a0",
+      "sha256": "78c2d88f6514ead41611526c0b627f9615d2ec858a7843b303bf965ecaa807ab",
       "size": 85
     },
     {
@@ -368,6 +533,11 @@
       "path": "items/F-1107-commontext-sync-meta.md",
       "sha256": "85bc0551d1ce2d88916f24672257db1294cc4e24619148916f7ff67d53466633",
       "size": 1632
+    },
+    {
+      "path": "items/F-1109-agent-block-launch.md",
+      "sha256": "70119f610625d3e56d0793ae8dd5b12de0a4094651240feee844b69a7fb09e5c",
+      "size": 3223
     },
     {
       "path": "items/F-1109-commontext-sync-watermark.md",
@@ -440,6 +610,11 @@
       "size": 3258
     },
     {
+      "path": "items/F-1118-agent-block-send.md",
+      "sha256": "f0baf1e58a1074f6a2d2bc997bb4609cbc6e778dfaca4643ec1e152d4c5fd5c4",
+      "size": 2451
+    },
+    {
       "path": "items/F-1118-hero-header-display.md",
       "sha256": "514cefe7f460cd7d9e8238f1e007d913b6f2140e8303190776cc2120651b5749",
       "size": 1802
@@ -448,6 +623,56 @@
       "path": "items/F-1118-tab-collapse-active.md",
       "sha256": "1bc3b9317aab59047b8b39dca8db43ff203129827c45210c88c48deec1d25625",
       "size": 2356
+    },
+    {
+      "path": "items/F-1120-overview-add-agent-card.md",
+      "sha256": "b1dc1890d6aa969ad5e1caa570baee1edf79a8d39f1cc99a448032cecc729ac9",
+      "size": 2827
+    },
+    {
+      "path": "items/F-1121-agent-resume.md",
+      "sha256": "6851203b998220a9555bcaf83d1aa730e7128288e9dfee743246586ec269ff4c",
+      "size": 2888
+    },
+    {
+      "path": "items/F-1121-agent-roundtrip.md",
+      "sha256": "0ca9f0212d5a57e18935e2f8652a6458e8b295fb9ec9a1cfe9afa447ea04161f",
+      "size": 2738
+    },
+    {
+      "path": "items/F-1122-overview-card-send.md",
+      "sha256": "632694e7e07635cc91582a203c0aad3bfb78f549b455f943b26f8777fab4e240",
+      "size": 1507
+    },
+    {
+      "path": "items/F-1122-overview-new-tab.md",
+      "sha256": "5bdcfe622c42e0b92015e837d242c69dd6d3fd1f97beb600f5ff78d1a566c07c",
+      "size": 1450
+    },
+    {
+      "path": "items/F-1122-overview-tab-grouping.md",
+      "sha256": "b6bfe6bb01b0fd610553bc49f2d3a9e068eed4627fb87287a13c4de9ac39252e",
+      "size": 1761
+    },
+    {
+      "path": "items/F-1123-agentsend-submit-budget.md",
+      "sha256": "0d3abc037c047b9da0a348d6420f80d2eb82db05438117c82b4d59492c6b2814",
+      "size": 1965
+    },
+    {
+      "path": "items/F-1123-board-card-actions.md",
+      "sha256": "a5cb0ee94f7569bdf4c163ee4f3f49ad60cf49e4b616e1656438c97b355e526e",
+      "size": 1730
+    },
+    {
+      "path": "items/F-1123-commontext-create-send.md",
+      "sha256": "078c20156cb4f8d0059e13c618225e03aa4f6c13d57927b68698ccd6754bf1e8",
+      "size": 1636
+    },
+    {
+      "path": "items/F-1124-agent-path-links.md",
+      "sha256": "bcfe6486ada7f1864f4b2e2bf3d1006fffac98ed77446ecf598fa5f6e702b29b",
+      "size": 2367
     },
     {
       "path": "items/N-1105-cleanup-46to22.md",
@@ -481,8 +706,8 @@
     },
     {
       "path": "items/N-1105-tab-hover-clip.md",
-      "sha256": "e8051928b4f763d0da4756918bbf38acea4ca239eebd786a2dd94992c37afc77",
-      "size": 1895
+      "sha256": "428f84f945a18c9adc25def2d303da436bb71285d803eb016a9384a0f6095f9b",
+      "size": 2307
     },
     {
       "path": "items/N-1106-agent-tag-catalog.md",
@@ -585,6 +810,141 @@
       "size": 1487
     },
     {
+      "path": "items/N-1119-agent-card-display.md",
+      "sha256": "fc7f77c9f1e27bfbd56ab115ffc949de85d0fe7756bea9fe446caa89eb6d1281",
+      "size": 2618
+    },
+    {
+      "path": "items/N-1119-emoji-p0.md",
+      "sha256": "c9de4a0dd158e1f318df5c3164173d49f2452f087b07e145d31f571a0e0243de",
+      "size": 2587
+    },
+    {
+      "path": "items/N-1119-hero-header-dup-emoji.md",
+      "sha256": "d10d0d84d9e2303e14cb4b9043c07198d8eda7a8b20b0e5c77ccd03da133bc78",
+      "size": 2218
+    },
+    {
+      "path": "items/N-1119-prop-ui-add-option.md",
+      "sha256": "deb50fa28a794392f995474a19dc7b393e0c9b1c250807059225120dd2f216ae",
+      "size": 1532
+    },
+    {
+      "path": "items/N-1119-scheduled-task-agent.md",
+      "sha256": "aeade9b9b6eefbef3bf04ce226aabafed22c9a4c03a40387d8510be04b9c6d6f",
+      "size": 2201
+    },
+    {
+      "path": "items/N-1120-aisessions-detail-binding-mismatch.md",
+      "sha256": "1f2155a2bb39400121589f22b330d3da715fba076f60f041f3e988ebdf8b3fb0",
+      "size": 3450
+    },
+    {
+      "path": "items/N-1120-fsmonitor-no-daemon.md",
+      "sha256": "2b98eaf3e48162af165536ba813929c4b7ea2dd0b1bb7a49ba2a2c8dcc9b2c34",
+      "size": 2354
+    },
+    {
+      "path": "items/N-1120-property-status-to-select.md",
+      "sha256": "ecdc11c611334fc666f2c75d35d1e038f54008d54470a1d3c2b9dccdf16a28ca",
+      "size": 4001
+    },
+    {
+      "path": "items/N-1120-wsh-session-emoji-unwired.md",
+      "sha256": "b2075a209e9135d842c3635243e1a7b42500ebd88c6400faab001419d468907b",
+      "size": 2767
+    },
+    {
+      "path": "items/N-1123-hero-group-emoji.md",
+      "sha256": "4dc8e38c88908b614c5e13998dadad0c58848ee6d5a1468f03a79f6c7a702504",
+      "size": 1469
+    },
+    {
+      "path": "items/N-1123-hero-sched-core.md",
+      "sha256": "a22448aa8cb88095d27237d6a66eea0d2100805349f70f2fa3198cbd2d2a633c",
+      "size": 1695
+    },
+    {
+      "path": "items/N-1123-hero-sched-ui.md",
+      "sha256": "f64077a27bb2f192df6c3273d1e4a469d95c64a282c365206ca677006bbcff70",
+      "size": 1746
+    },
+    {
+      "path": "items/N-1123-overview-drag.md",
+      "sha256": "5ce390a4c5bc81ebde15b10ad17d057edb7dcfdcced564ef3e16e65b10e4e05d",
+      "size": 1729
+    },
+    {
+      "path": "items/N-1123-schedtask-modal.md",
+      "sha256": "2478014b1e8a273b2676eea2236fff96b26104b58ff3a725763cd218693e40ff",
+      "size": 1800
+    },
+    {
+      "path": "items/N-1124-agent-cmd-resolve2.md",
+      "sha256": "46f53247bb5b4343fea0833ac8a3c8da354a6505bae1e6879d3f87b2018b2514",
+      "size": 1706
+    },
+    {
+      "path": "items/N-1124-agentsend-false-fail.md",
+      "sha256": "ff39c081320148ddfb5c389bd1a58def59cca435629ba5d93dae9dfd5915699c",
+      "size": 1391
+    },
+    {
+      "path": "items/N-1124-agentsend-image-paste.md",
+      "sha256": "bf7283fb5faad55b3721aeb21d4d7fc0be08b9f2cc1be7ebc63dc08e39b40ea7",
+      "size": 1496
+    },
+    {
+      "path": "items/N-1124-agentsend-status-dispatch.md",
+      "sha256": "0e47574f9a21ed795be2c0032b2461c26a0b2f51b31bd113521dfb77982d462c",
+      "size": 1645
+    },
+    {
+      "path": "items/N-1124-folder-index-badges-3.md",
+      "sha256": "215c918e2ea433294400e73fbba6d1bc6adffa6e7dcf5acc0f2ce943aac48412",
+      "size": 2010
+    },
+    {
+      "path": "items/N-1124-hero-restore-header.md",
+      "sha256": "27bfdd892623b23fa8290dd4eb306624225cc0b158f29fca741545547c1cef32",
+      "size": 4760
+    },
+    {
+      "path": "items/N-1124-idxbadges-agent-surface.md",
+      "sha256": "fc9a9e6853fa5a27b36135796a62d76430351859a868071cc075a4223807e592",
+      "size": 1480
+    },
+    {
+      "path": "items/N-1124-idxbadges-decoration-protocol.md",
+      "sha256": "d4b77eff74c548acc3a4ff4c803b94aff07ff782d454dc4a26166992bcf563fe",
+      "size": 1600
+    },
+    {
+      "path": "items/N-1124-overview-agent-fuse.md",
+      "sha256": "b7f2754bfa9b2bb31f747d6b94f0dcb73387205c085720b4eb9bb55fc0f43814",
+      "size": 1769
+    },
+    {
+      "path": "items/N-1124-overview-agent-logo-only3.md",
+      "sha256": "dc2ed5749d2f57ae7f5b9280a2d850efc8c36f99761821c027aed573f0defd22",
+      "size": 969
+    },
+    {
+      "path": "items/N-1124-overview-input-memory.md",
+      "sha256": "7f6eae964c0155e748067311177e267bc82900effade13b8eaf0c0d73b1923e0",
+      "size": 1668
+    },
+    {
+      "path": "items/N-1124-schedtask-entry-fix.md",
+      "sha256": "71f91ec62e2a6aeeff6e192eaa8dd76695d2df531d9c18f74c29a6a0fbfece16",
+      "size": 1514
+    },
+    {
+      "path": "items/N-1125-commontext-send-model-path.md",
+      "sha256": "aed3cddcb735f4d7da55135e6c03ef57eaeb7a02ab6f76f20c3e2b3918b2aa47",
+      "size": 1694
+    },
+    {
       "path": "items/archive/2026-11/F-1112-persona-aisessions.md",
       "sha256": "0db294123be25b7d69c22ce151b54dc3fdbc82243654ea8052835c58e7a133e7",
       "size": 1043
@@ -640,6 +1000,41 @@
       "size": 2455
     },
     {
+      "path": "items/archive/2026-11/N-1124-agent-cmd-resolve.md",
+      "sha256": "612a63a272f0921c497e7cbf271594f644611dafb40c828a93b392ce0aa30c7d",
+      "size": 1432
+    },
+    {
+      "path": "items/archive/2026-11/N-1124-agent-local-cmd-resolve.md",
+      "sha256": "a390f04d83ef7210aa8d221f927e62ed0c5bcad93ea24de0aa3282c33fcc0fc8",
+      "size": 1418
+    },
+    {
+      "path": "items/archive/2026-11/N-1124-folder-index-badges-2.md",
+      "sha256": "f263afe2a84ecc917f9fad1065f3e6103afb848696b4dddc0455ef834c2a7aa5",
+      "size": 1753
+    },
+    {
+      "path": "items/archive/2026-11/N-1124-folder-index-badges.md",
+      "sha256": "127e9fff386ef173123e93d707e626e887209fe22cd7ad65d05b8a9a78ea6ac9",
+      "size": 657
+    },
+    {
+      "path": "items/archive/2026-11/N-1124-overview-agent-logo-only.md",
+      "sha256": "a06c6e477d38d7deefee3f570bb17e9d3a50dff23fbc09763d1fe21bd404f7fe",
+      "size": 894
+    },
+    {
+      "path": "items/archive/2026-11/N-1124-overview-agent-logo-only2.md",
+      "sha256": "2fecd73f49d3649bf4757bd5bc2638d3a9a8330a8a518e1336fd099336266127",
+      "size": 1001
+    },
+    {
+      "path": "items/archive/2026-11/N-1124-x-probe.md",
+      "sha256": "5d8e5c76cc32bc5370fb673e235dc359973a5c8c66b8b11e0af8d3d13e7c46cd",
+      "size": 414
+    },
+    {
       "path": "red/F-1109-commontext-sync-watermark.txt",
       "sha256": "49104d5e4f20378b9abaad54e86e4218d4093d2c8525831b911834e02b25cee1",
       "size": 2478
@@ -680,6 +1075,56 @@
       "size": 10941
     },
     {
+      "path": "red/F-1120-overview-add-agent-card.txt",
+      "sha256": "c270df1b63136b0316ae41ea2c6aa1439c265c416ec31b709bf077ec147b5d86",
+      "size": 937
+    },
+    {
+      "path": "red/F-1121-agent-resume.txt",
+      "sha256": "21b0d17b0ee9a71b465cefa31c47ae05ba3bb8f16070b1b5b2da8f900643f57a",
+      "size": 2248
+    },
+    {
+      "path": "red/F-1121-agent-roundtrip.txt",
+      "sha256": "1a3beac0a8bb3dea6f804f75d42b47a73a1b2adf1a9e9868c50d8386de1636b5",
+      "size": 1260
+    },
+    {
+      "path": "red/F-1122-overview-card-send.txt",
+      "sha256": "3e62acc097215694a6adde93f3b39bbc9b12ca8474d8197ae7e4f8ec0e02564c",
+      "size": 377
+    },
+    {
+      "path": "red/F-1122-overview-new-tab.txt",
+      "sha256": "db855ff02daf85a1b3fb6e07cc726d6648e328e891b1f58a2e0a30b3ec3e74e6",
+      "size": 369
+    },
+    {
+      "path": "red/F-1122-overview-tab-grouping.txt",
+      "sha256": "74d41a3bb2d5f0961902ea12dcab513505ba72a5943518cf03253341e763356c",
+      "size": 1675
+    },
+    {
+      "path": "red/F-1123-agentsend-submit-budget.txt",
+      "sha256": "d853e2e7ea8c3b7561784474d08e04877d4ce2ba0dc077f5e217d30567b4e5ed",
+      "size": 747
+    },
+    {
+      "path": "red/F-1123-board-card-actions.txt",
+      "sha256": "89a9062a6b7628056e65a07c99a0201730941c361c7d3ba6122da0fb39c92939",
+      "size": 413
+    },
+    {
+      "path": "red/F-1123-commontext-create-send.txt",
+      "sha256": "24fa258cbf53fc414423d54ba0e5e528de474d293aee9a9be07d9bb05e36290e",
+      "size": 1356
+    },
+    {
+      "path": "red/F-1124-agent-path-links.txt",
+      "sha256": "a0535a4feafcc3e67b293a23e74a33049ecd201d9cd1bdec3f83f7e9cef1f327",
+      "size": 3669
+    },
+    {
       "path": "red/N-1108-agent-chip-phase-duration.txt",
       "sha256": "c6a3e79c20c72dd4081e57457c9fc8413e0019362e42839fecde538946c5bb94",
       "size": 639
@@ -708,6 +1153,121 @@
       "path": "red/N-1117-tab-collapse-to-more.txt",
       "sha256": "26012a68b929d6a65162615dd2f80edb71cae4aa5b8fdeebfe3c97b40c7fc491",
       "size": 1308
+    },
+    {
+      "path": "red/N-1119-agent-card-display.txt",
+      "sha256": "125fadaaf71790beaf1b6eef3e033ca297f7017cf2907e22d7eac31ea1a5e120",
+      "size": 4439
+    },
+    {
+      "path": "red/N-1119-hero-header-dup-emoji.txt",
+      "sha256": "48533076a3b924b8c438a76560ab0fe326f6658cd0cce58624eb42eff65c9efd",
+      "size": 121748
+    },
+    {
+      "path": "red/N-1120-aisessions-detail-binding-mismatch.txt",
+      "sha256": "d54ca59630ac2871a6894fe6ea9f6092cd1a6690b78a1cdc0af55412f7b447e1",
+      "size": 3089
+    },
+    {
+      "path": "red/N-1120-fsmonitor-no-daemon.txt",
+      "sha256": "f19905106c5f7612ceb45bce691fab936e31fe26542126765b2254f1fa04055d",
+      "size": 864
+    },
+    {
+      "path": "red/N-1120-property-status-to-select.txt",
+      "sha256": "e057655006fdc5aaf92a2edb0a8e37d8e21fc8320f3209a049573d80ac563ea3",
+      "size": 3079
+    },
+    {
+      "path": "red/N-1120-wsh-session-emoji-unwired.txt",
+      "sha256": "8bf4989b9dd01e2f07f3a39b3a186694c4bfea0591612f2c5ef2c89d31ac9343",
+      "size": 1242
+    },
+    {
+      "path": "red/N-1123-hero-group-emoji.txt",
+      "sha256": "3f8718bf2e83dab1cec86fee4573a543e567d280c03bc8a8edc38a74613c82c4",
+      "size": 1301
+    },
+    {
+      "path": "red/N-1123-hero-sched-core.txt",
+      "sha256": "6c52fbb27076f4eb3a23990ef190091084cf9e312d012bab004747d0a6ae56e2",
+      "size": 1496
+    },
+    {
+      "path": "red/N-1123-hero-sched-ui.txt",
+      "sha256": "38d1ec43bd5407f3a2f77c8491ed3d884a24357d9b9d5bded1086f8a05943a15",
+      "size": 2034
+    },
+    {
+      "path": "red/N-1123-overview-drag.txt",
+      "sha256": "975ed29963c9cac73e0d97240b10ae23b49b8f2fbc62a952359423cdfc84cc32",
+      "size": 2311
+    },
+    {
+      "path": "red/N-1123-schedtask-modal.txt",
+      "sha256": "7623b4377c08b66e365298b1b42a6179c209fb6ae06a6385593bd3c9747409fd",
+      "size": 1888
+    },
+    {
+      "path": "red/N-1124-agent-cmd-resolve2-red.md",
+      "sha256": "db8858ab7bcf081b16b8a7fcd73773ef388ae440a3974d4befe083863bd17ddb",
+      "size": 750
+    },
+    {
+      "path": "red/N-1124-agentsend-false-fail.txt",
+      "sha256": "d0fc42936d298266befdd834ad7afd578abe1c7f22222cbb18738eee2b6cb9ca",
+      "size": 8213
+    },
+    {
+      "path": "red/N-1124-agentsend-image-paste.txt",
+      "sha256": "5e34280a1bb6cdb98bc22e5b577715286ac2a5e0e63be487179a9dfe538d4bbd",
+      "size": 630
+    },
+    {
+      "path": "red/N-1124-agentsend-status-dispatch.txt",
+      "sha256": "44e990b8075b66da29cf68da199a029a9b674bd54f803f8f7d792a750055b7df",
+      "size": 798
+    },
+    {
+      "path": "red/N-1124-folder-index-badges-2.txt",
+      "sha256": "bc33954c6ada9cb768cbeba03bbe954b955db6e2e621d17733352d5c54018853",
+      "size": 5352
+    },
+    {
+      "path": "red/N-1124-hero-restore-header.txt",
+      "sha256": "57f9549d1bf1223ee3919681287a23c1a1503f3c95c468061e498c037f5673b2",
+      "size": 1729
+    },
+    {
+      "path": "red/N-1124-idxbadges-agent-surface.txt",
+      "sha256": "82a5d95b61db0d11af20ec7d4ad02306cfe2f6c72a0aa392f51e35e2b2399a87",
+      "size": 761
+    },
+    {
+      "path": "red/N-1124-idxbadges-decoration-protocol.txt",
+      "sha256": "8001bf17675eb256de2b8544728ca3cd1781308909a27d735846d3679f81b1ea",
+      "size": 812
+    },
+    {
+      "path": "red/N-1124-overview-agent-fuse.txt",
+      "sha256": "64ecf2c10139c9f6c9f06a2bd2e7dd79a5ce152380f0555bee8dea2242db863f",
+      "size": 1126
+    },
+    {
+      "path": "red/N-1124-overview-agent-logo-only2.txt",
+      "sha256": "adb0e71a90eb8dd63013fefe9c62f64fddccbc4b06fb00184cb5fa65b266ffad",
+      "size": 1417
+    },
+    {
+      "path": "red/N-1124-overview-input-memory.txt",
+      "sha256": "2b3816af74c3511ce812b487924a1eee75aadb2ace9496906a6cffa3cf2cd829",
+      "size": 511
+    },
+    {
+      "path": "red/N-1124-schedtask-entry-fix.txt",
+      "sha256": "b36b270320363713ca41688d9c8525a84ca5b66aa43f6145df5df9f7825ab50e",
+      "size": 9011
     }
   ]
 }
