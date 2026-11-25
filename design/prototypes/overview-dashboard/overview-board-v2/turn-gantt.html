@@ -1,0 +1,847 @@
+<!doctype html>
+<html lang="zh-CN">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Overview 时间线 G3 · 按对话轮拆分甘特原型</title>
+        <style>
+            :root {
+                --bg: #0f1014;
+                --panel: #15171d;
+                --card: #1b1e26;
+                --border: #2a2e3a;
+                --text: #e6e6e6;
+                --sub: #9b9da6;
+                --accent: #6aa6ff;
+                --tool: #d29922;
+                --done: #6aa6ff;
+                --bar-radius: 4px;
+            }
+            * {
+                box-sizing: border-box;
+            }
+            body {
+                margin: 0;
+                background: radial-gradient(1200px 700px at 50% 0%, #1a1d27, var(--bg));
+                color: var(--text);
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter", sans-serif;
+            }
+            header {
+                padding: 24px 32px 8px;
+                display: flex;
+                gap: 16px;
+                align-items: flex-start;
+                flex-wrap: wrap;
+            }
+            header h1 {
+                margin: 0 0 6px;
+                font-size: 20px;
+            }
+            header p {
+                margin: 0;
+                color: var(--sub);
+                font-size: 12px;
+                line-height: 1.7;
+                max-width: 780px;
+            }
+            code {
+                color: #9fc4ff;
+                font-size: 11px;
+            }
+            .controls {
+                margin-left: auto;
+                display: flex;
+                gap: 8px;
+                align-items: center;
+                flex-wrap: wrap;
+            }
+            .badge {
+                padding: 5px 9px;
+                border: 1px solid rgba(106, 166, 255, 0.35);
+                border-radius: 6px;
+                color: var(--accent);
+                font-size: 10px;
+                font-weight: 600;
+            }
+            .seg {
+                display: inline-flex;
+                border: 1px solid var(--border);
+                border-radius: 7px;
+                overflow: hidden;
+            }
+            .seg button {
+                padding: 6px 10px;
+                border: none;
+                background: transparent;
+                color: var(--sub);
+                font-size: 11px;
+                font-weight: 600;
+                cursor: pointer;
+            }
+            .seg button + button {
+                border-left: 1px solid var(--border);
+            }
+            .seg button.is-active {
+                color: var(--accent);
+                background: rgba(106, 166, 255, 0.12);
+            }
+            main {
+                padding: 8px 32px 64px;
+            }
+            .stats {
+                display: flex;
+                gap: 18px;
+                flex-wrap: wrap;
+                padding: 8px 14px;
+                margin-bottom: 8px;
+                border: 1px solid var(--border);
+                border-radius: 8px;
+                background: var(--card);
+                color: var(--sub);
+                font-size: 10.5px;
+            }
+            .stats b {
+                color: var(--text);
+                font-variant-numeric: tabular-nums;
+            }
+            .stats .hot b {
+                color: var(--tool);
+            }
+            .board {
+                border: 1px solid var(--border);
+                border-radius: 12px;
+                background: var(--panel);
+                overflow: hidden;
+            }
+            .axis-head {
+                display: grid;
+                grid-template-columns: 250px 1fr;
+                border-bottom: 1px solid var(--border);
+                background: rgba(255, 255, 255, 0.015);
+            }
+            .axis-head .label {
+                padding: 10px 14px;
+                color: var(--sub);
+                font-size: 10px;
+                font-weight: 700;
+                letter-spacing: 0.08em;
+                text-transform: uppercase;
+                border-right: 1px solid var(--border);
+            }
+            .axis {
+                position: relative;
+                height: 34px;
+            }
+            .tick {
+                position: absolute;
+                top: 0;
+                bottom: 0;
+                border-left: 1px solid rgba(255, 255, 255, 0.06);
+                padding-left: 6px;
+                color: var(--sub);
+                font-size: 9px;
+                line-height: 34px;
+                white-space: nowrap;
+            }
+            .row {
+                display: grid;
+                grid-template-columns: 250px 1fr;
+                border-top: 1px solid rgba(255, 255, 255, 0.045);
+            }
+            .row:hover {
+                background: rgba(255, 255, 255, 0.02);
+            }
+            .row-id {
+                display: flex;
+                gap: 8px;
+                align-items: center;
+                padding: 9px 14px;
+                border-right: 1px solid var(--border);
+                min-width: 0;
+            }
+            .avatar {
+                width: 20px;
+                height: 20px;
+                flex: 0 0 auto;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                border-radius: 6px;
+                background: rgba(255, 255, 255, 0.06);
+                font-size: 13px;
+            }
+            .row-text {
+                min-width: 0;
+            }
+            .row-title {
+                font-size: 12px;
+                font-weight: 600;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+            }
+            .row-sub {
+                font-size: 10px;
+                color: var(--sub);
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+            }
+            .track {
+                position: relative;
+                height: 46px;
+            }
+            .track::before {
+                content: "";
+                position: absolute;
+                inset: 0;
+                background-image: linear-gradient(90deg, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+                background-size: var(--tick-gap, 12.5%) 100%;
+            }
+            /* 条：外框圆角固定 4px；内部段是铺排矩形（不各自圆角），拼接处靠 1px 缝分隔。 */
+            .bar {
+                position: absolute;
+                top: 14px;
+                height: 18px;
+                border-radius: var(--bar-radius);
+                overflow: hidden;
+                display: flex;
+                gap: 1px;
+                box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.07) inset;
+            }
+            .bar-seg {
+                height: 100%;
+                border-radius: 0;
+                flex: 0 0 auto;
+                min-width: 2px;
+                opacity: 0.95;
+                position: relative;
+            }
+            .bar-seg.idle {
+                background: #3b4250;
+            }
+            /* 思考段：主色 + 细斜纹 = 「估算」的视觉标记 */
+            .bar-seg.think {
+                background: linear-gradient(180deg, #4bd166, #2f9d47),
+                    repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.18) 0 3px, transparent 3px 7px);
+                background-blend-mode: overlay;
+            }
+            /* 回复生成：同族纯色（同样含思考，但长度可信） */
+            .bar-seg.reply {
+                background: linear-gradient(180deg, #63c77c, #3f9e57);
+            }
+            /* 工具执行：琥珀色，精确段 */
+            .bar-seg.tool {
+                background: linear-gradient(180deg, #e5b13d, #b8862a);
+            }
+            /* 合并段（降采样）：中性斜纹 */
+            .bar-seg.merged {
+                background: repeating-linear-gradient(135deg, #474e5c 0 5px, #565e6d 5px 10px);
+            }
+            .bar-seg.unknown {
+                background: repeating-linear-gradient(135deg, #2b303b 0 6px, #343a46 6px 12px);
+            }
+            .bar-seg.current-idle {
+                background: #4b5563;
+            }
+            .bar-seg:hover {
+                filter: brightness(1.35);
+            }
+            .done-tick {
+                position: absolute;
+                top: 6px;
+                bottom: 6px;
+                width: 1px;
+                background: var(--done);
+                opacity: 0.9;
+            }
+            .done-tick::after {
+                content: "";
+                position: absolute;
+                left: -2px;
+                top: -3px;
+                width: 5px;
+                height: 5px;
+                border-radius: 50%;
+                background: var(--done);
+            }
+            .now-line {
+                position: absolute;
+                top: 0;
+                bottom: 0;
+                width: 1px;
+                background: var(--accent);
+                opacity: 0.7;
+            }
+            .now-line::after {
+                content: "now";
+                position: absolute;
+                top: -1px;
+                left: 3px;
+                font-size: 9px;
+                color: var(--accent);
+            }
+            .legend {
+                display: flex;
+                gap: 14px;
+                flex-wrap: wrap;
+                padding: 10px 14px;
+                border-top: 1px solid var(--border);
+                color: var(--sub);
+                font-size: 10px;
+            }
+            .legend i {
+                display: inline-block;
+                width: 12px;
+                height: 10px;
+                border-radius: 2px;
+                margin-right: 5px;
+                vertical-align: -1px;
+            }
+            #tip {
+                position: fixed;
+                z-index: 50;
+                pointer-events: none;
+                max-width: 300px;
+                padding: 8px 10px;
+                border: 1px solid var(--border);
+                border-radius: 8px;
+                background: rgba(16, 18, 24, 0.97);
+                box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+                font-size: 11px;
+                line-height: 1.65;
+                display: none;
+                white-space: pre-line;
+            }
+            #tip b {
+                color: var(--text);
+            }
+            #tip .est {
+                color: var(--tool);
+                font-weight: 600;
+            }
+            .notes {
+                margin-top: 18px;
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+                gap: 14px;
+            }
+            .note {
+                border: 1px solid var(--border);
+                border-radius: 10px;
+                padding: 14px 16px;
+                background: var(--card);
+            }
+            .note h3 {
+                margin: 0 0 8px;
+                font-size: 13px;
+            }
+            .note p,
+            .note li {
+                margin: 0 0 6px;
+                color: var(--sub);
+                font-size: 11px;
+                line-height: 1.7;
+            }
+            .note ul {
+                margin: 0;
+                padding-left: 16px;
+            }
+            .tag {
+                display: inline-block;
+                padding: 1px 7px;
+                border: 1px solid var(--border);
+                border-radius: 999px;
+                font-size: 10px;
+                color: var(--sub);
+                margin-left: 6px;
+            }
+            .tag.ok {
+                color: #4bd166;
+                border-color: rgba(75, 209, 102, 0.4);
+            }
+            .tag.warn {
+                color: #e5b13d;
+                border-color: rgba(229, 177, 61, 0.4);
+            }
+            .tag.new {
+                color: #6aa6ff;
+                border-color: rgba(106, 166, 255, 0.4);
+            }
+            table {
+                width: 100%;
+                border-collapse: collapse;
+                font-size: 10.5px;
+                color: var(--sub);
+            }
+            td,
+            th {
+                border-top: 1px solid rgba(255, 255, 255, 0.06);
+                padding: 4px 6px;
+                text-align: left;
+            }
+            th {
+                color: var(--text);
+                font-weight: 600;
+            }
+        </style>
+    </head>
+    <body>
+        <header>
+            <div>
+                <h1>Overview · 时间线 G3：按对话轮拆分</h1>
+                <p>
+                    每行 = 一个会话，条内按<b>对话轮</b>拆成四类段：<b>空闲</b>（轮与轮之间）、
+                    <b>思考（估算）</b>、<b>工具执行（精确）</b>、<b>回复生成</b>，每轮末尾一个<b>完成点</b>。
+                    段全部由 SQLite 索引里的消息时间戳算出，不需要新埋点。切到 <b>30m</b> 窗口看轮级细节；
+                    切换「降采样」对比段数封顶前后的 DOM 压力（看顶部统计）。
+                </p>
+            </div>
+            <div class="controls">
+                <span class="badge">圆角固定 4px</span>
+                <div class="seg" id="range-seg">
+                    <button data-range="0.5">30m</button>
+                    <button data-range="2" class="is-active">2h</button>
+                    <button data-range="8">8h</button>
+                    <button data-range="24">24h</button>
+                </div>
+                <div class="seg" id="down-seg">
+                    <button data-down="1" class="is-active">段数封顶 开</button>
+                    <button data-down="0">段数封顶 关</button>
+                </div>
+            </div>
+        </header>
+
+        <main>
+            <div class="stats" id="stats"></div>
+            <div class="board">
+                <div class="axis-head">
+                    <div class="label">Agent 会话（按最后活动倒序）</div>
+                    <div class="axis" id="axis"></div>
+                </div>
+                <div id="rows"></div>
+                <div class="legend">
+                    <span><i style="background: #3b4250"></i>空闲（轮间隔）</span>
+                    <span title="估算：上一条消息 → 下一条含工具调用的 assistant 条目。含网络/API 延迟与正文生成。"
+                        ><i style="background: linear-gradient(180deg, #4bd166, #2f9d47)"></i>思考（估算，斜纹）</span
+                    >
+                    <span><i style="background: linear-gradient(180deg, #e5b13d, #b8862a)"></i>工具执行（精确）</span>
+                    <span><i style="background: linear-gradient(180deg, #63c77c, #3f9e57)"></i>回复生成</span>
+                    <span><i style="background: #6aa6ff; height: 12px; width: 2px"></i>完成点（每轮）</span>
+                    <span
+                        title="相邻窄段合并：段数超过每行上限（60）时，把最窄的相邻段并成一个中性斜纹段"
+                        ><i style="background: repeating-linear-gradient(135deg, #474e5c 0 5px, #565e6d 5px 10px)"></i>合并段（降采样）</span
+                    >
+                    <span><i style="background: repeating-linear-gradient(135deg, #2b303b 0 6px, #343a46 6px 12px)"></i>未知（降级行）</span>
+                </div>
+            </div>
+
+            <div class="notes">
+                <div class="note">
+                    <h3>段公式（唯一事实源）</h3>
+                    <table>
+                        <tr><th>段</th><th>计算</th><th>精度</th></tr>
+                        <tr><td>思考</td><td><code>t(assistant+toolCall) − t(上一条消息)</code></td><td class="tag warn">估算</td></tr>
+                        <tr><td>工具</td><td><code>t(toolResult) − t(assistant+toolCall)</code></td><td class="tag ok">精确</td></tr>
+                        <tr><td>回复</td><td><code>t(末条 assistant 文本) − t(最后 toolResult)</code></td><td class="tag ok">精确</td></tr>
+                        <tr><td>空闲</td><td><code>t(下轮 user) − t(本轮末条)</code></td><td class="tag ok">精确</td></tr>
+                        <tr><td>完成点</td><td><code>t(本轮末条)</code></td><td class="tag ok">精确</td></tr>
+                    </table>
+                    <p style="margin-top: 8px">
+                        真机验证（2026-11-25，真实会话 192 条消息）：<code>toolResult → assistant+toolCall</code> 中位
+                        <b>9.5~12.4s</b>（思考+决策）、<code>assistant → toolResult</code> 中位 <b>0.5s</b>（工具）、
+                        <code>assistant → user</code> 中位 <b>135s</b>（空闲）。assistant→toolResult 中位只有 0.5s
+                        证明 assistant 条目时间戳 = <b>生成完成/工具发起时刻</b>，所以「上一条 → assistant+toolCall」
+                        这段间隔就是模型侧（思考）耗时。
+                    </p>
+                </div>
+                <div class="note">
+                    <h3>误差成分（思考段必须标"估算"）</h3>
+                    <ul>
+                        <li>思考段混有 <b>网络/API 延迟</b>与正文生成（该 assistant 条目同时带 text 时无法剔除）。</li>
+                        <li>一个 assistant 条目带多个 toolCall（并行工具）时只算一次，不拆分。</li>
+                        <li>回复段同样是"模型侧耗时"（含思考），与思考同族配色，但没有斜纹标记。</li>
+                        <li>用户输入耗时不可见（发生在两条消息之间，归入空闲段）。</li>
+                    </ul>
+                </div>
+                <div class="note">
+                    <h3>性能设计 <span class="tag new">硬约束</span></h3>
+                    <ul>
+                        <li><b>后端一次扫描</b>：SQLite 索引 <code>WHERE timestamp &gt;= windowStart</code> 归并成纯数字段数组
+                            <code>[{kind, fromMs, toMs}]</code> + 完成点数组，RPC 不传任何文本。</li>
+                        <li><b>批读</b>：一次 ≤20 会话，每会话 ≤200 轮；只对可见行（≤40）取数。</li>
+                        <li><b>段数封顶</b>：每行渲染段 ≤60（超限合并最窄相邻段）；完成点 >30 抽稀；段 CSS 最小宽 2px。</li>
+                        <li><b>渐进渲染</b>：首帧画 G2.1 粗条，段数据到达原地换段，DOM 结构不变、无布局抖动。</li>
+                        <li><b>降级</b>：索引 stale/缺失的会话（下方「旧会话」行）保留两段式，永不阻塞首屏。</li>
+                    </ul>
+                    <p id="dom-note" style="margin-top: 8px"></p>
+                </div>
+                <div class="note">
+                    <h3>视觉与交互约定</h3>
+                    <ul>
+                        <li>条外框圆角 <b>4px</b>（固定）；内部段是铺排矩形、不各自圆角，段间 1px 缝——多段拼接不糊。</li>
+                        <li>思考段细斜纹 = "估算"；工具段琥珀 = "精确"；完成点 = 蓝色细竖刻度 + 圆点。</li>
+                        <li>条内不渲染文字，所有信息走 tooltip（避免窄段塞文字造成回流）。</li>
+                        <li>轮级细节需要 <b>30m/1h</b> 细窗口：2h 窗口里 10s 思考段只有 ~1.5px，这是物理上限不是 bug。</li>
+                    </ul>
+                </div>
+            </div>
+        </main>
+
+        <div id="tip"></div>
+
+        <script>
+            // ---- 合成数据：按真机比例（think 中位 ~10s / tool 中位 ~0.5s / idle 中位 2min~2h） ----
+            const NOW = Date.now();
+            const H = 3600_000;
+            const MIN = 60_000;
+            const S = 1000;
+            // 设计常量：与正式实现承诺一致
+            const MAX_SEGS_PER_ROW = 60; // 每行渲染段上限
+            const MAX_TICKS_PER_ROW = 30; // 每行完成点上限
+
+            // 每轮：userAgo 起始；steps = think/tool 交替时长（ms），reply = 末条回复生成时长
+            const sessions = [
+                {
+                    id: "a1",
+                    emoji: "🦊",
+                    title: "重构 auth 中间件依赖链",
+                    sub: "snorkeling · Claude · 34 msgs · working",
+                    live: true,
+                    turns: [
+                        { userAgo: 2.1 * H, steps: [["think", 18 * S], ["tool", 0.6 * S], ["think", 9 * S], ["tool", 0.4 * S], ["think", 12 * S]], reply: 22 * S },
+                        { userAgo: 1.95 * H, steps: [["think", 8 * S], ["tool", 0.5 * S], ["think", 15 * S], ["tool", 0.9 * S]], reply: 16 * S },
+                        { userAgo: 1.4 * H, steps: [["think", 11 * S], ["tool", 0.4 * S], ["think", 14 * S], ["tool", 0.5 * S], ["think", 10 * S], ["tool", 0.3 * S]], reply: 12 * S },
+                        { userAgo: 1.05 * H, steps: [["think", 20 * S], ["tool", 1.2 * S], ["think", 9 * S]], reply: 30 * S },
+                        { userAgo: 0.52 * H, steps: [["think", 7 * S], ["tool", 0.3 * S], ["think", 13 * S], ["tool", 0.6 * S]], reply: 18 * S },
+                        { userAgo: 0.06 * H, steps: [["think", 12 * S], ["tool", 0.5 * S], ["think", 16 * S]], reply: 24 * S },
+                    ],
+                },
+                {
+                    id: "a2",
+                    emoji: "🐧",
+                    title: "跑 overview-timeline 真机验证",
+                    sub: "snorkeling · Codex · 21 msgs · working",
+                    live: true,
+                    turns: [
+                        { userAgo: 1.7 * H, steps: [["think", 12 * S], ["tool", 95 * S], ["think", 20 * S]], reply: 26 * S },
+                        { userAgo: 1.2 * H, steps: [["think", 9 * S], ["tool", 140 * S], ["think", 15 * S], ["tool", 1.1 * S]], reply: 14 * S },
+                        { userAgo: 0.9 * H, steps: [["think", 14 * S], ["tool", 62 * S]], reply: 31 * S },
+                    ],
+                },
+                {
+                    id: "a3",
+                    emoji: "🐢",
+                    title: "夜间队列取件 F-1125",
+                    sub: "loop · pi · 9 msgs · idle",
+                    live: true,
+                    turns: [
+                        { userAgo: 4.6 * H, steps: [["think", 10 * S], ["tool", 0.7 * S]], reply: 12 * S },
+                        { userAgo: 2.4 * H, steps: [["think", 16 * S], ["tool", 2.5 * S], ["think", 9 * S]], reply: 20 * S },
+                        { userAgo: 0.5 * H, steps: [["think", 8 * S]], reply: 18 * S },
+                    ],
+                },
+                {
+                    // 压测行：25 轮密集小步 → 原始段数 ~130，触发段数封顶合并
+                    id: "a4",
+                    emoji: "🐝",
+                    title: "压测：批量小步会话（演示降采样）",
+                    sub: "snorkeling · pi · 187 msgs · working",
+                    live: true,
+                    turns: (() => {
+                        const turns = [];
+                        let ago = 1.55 * H;
+                        for (let i = 0; i < 25; i++) {
+                            const steps = [
+                                ["think", (7 + (i % 5) * 2) * S],
+                                ["tool", ((i % 3) * 0.4 + 0.3) * S],
+                                ["think", (9 + (i % 4) * 3) * S],
+                                ["tool", ((i % 2) * 0.3 + 0.4) * S],
+                            ];
+                            turns.push({ userAgo: ago, steps, reply: (10 + (i % 6) * 3) * S });
+                            ago -= 3.6 * MIN; // 轮间隔 ~2~4 分钟
+                        }
+                        return turns;
+                    })(),
+                },
+                {
+                    id: "a5",
+                    emoji: "🧊",
+                    title: "旧会话（消息索引 stale）",
+                    sub: "legacy · Claude · 128 msgs · idle",
+                    live: false,
+                    // G2.1 降级行：只有两段式（unknown 历史 + 当前态）
+                    degraded: { startAgo: 5.2 * H, endAgo: 3.4 * H, unknownAgo: 1.2 * H },
+                },
+            ];
+
+            let rangeH = 2;
+            let capEnabled = true;
+
+            const fmtDur = (ms) => {
+                if (ms < 1000) return `${Math.max(0.1, (ms / 1000).toFixed(1))}s`;
+                const s = ms / 1000;
+                if (s < 60) return `${s.toFixed(1)}s`;
+                const m = Math.floor(s / 60);
+                const rs = Math.round(s % 60);
+                if (m < 60) return rs ? `${m}m${rs}s` : `${m}m`;
+                const h = Math.floor(m / 60);
+                const rm = m % 60;
+                return rm ? `${h}h${rm}m` : `${h}h`;
+            };
+            const fmtClock = (ts) => {
+                const d = new Date(ts);
+                return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+            };
+
+            // 会话 → 绝对时间事件流（按真机公式；正式实现在后端 Go 做同样的事）
+            function buildStream(session) {
+                if (session.degraded) return null;
+                const out = [];
+                let prevEnd = 0;
+                for (const turn of session.turns) {
+                    const start = NOW - turn.userAgo;
+                    if (prevEnd && start > prevEnd) out.push({ kind: "idle", from: prevEnd, to: start });
+                    let t = start;
+                    for (const [kind, ms] of turn.steps) {
+                        out.push({ kind, from: t, to: t + ms });
+                        t += ms;
+                    }
+                    if (turn.reply) {
+                        out.push({ kind: "reply", from: t, to: t + turn.reply });
+                        t += turn.reply;
+                    }
+                    out.push({ kind: "done", at: t });
+                    prevEnd = t;
+                }
+                if (session.live && prevEnd < NOW) out.push({ kind: "idle", from: prevEnd, to: NOW });
+                return out;
+            }
+
+            // 窗口裁剪 + 段数封顶（核心性能机制：每行渲染段 ≤ MAX_SEGS_PER_ROW）
+            function layout(stream, windowStart, windowMs) {
+                const segs = [];
+                const ticks = [];
+                for (const ev of stream) {
+                    if (ev.kind === "done") {
+                        if (ev.at >= windowStart) ticks.push(ev.at);
+                        continue;
+                    }
+                    const from = Math.max(ev.from, windowStart);
+                    if (ev.to <= windowStart) continue;
+                    segs.push({ kind: ev.kind, from, to: ev.to, mergedCount: 1 });
+                }
+                let rawSegCount = segs.length;
+                if (capEnabled && segs.length > MAX_SEGS_PER_ROW) {
+                    // 反复合并「最窄的相邻段」，直到 ≤ 上限：保宽段、并窄段
+                    while (segs.length > MAX_SEGS_PER_ROW) {
+                        let bestIdx = -1;
+                        let bestW = Infinity;
+                        for (let i = 0; i < segs.length; i++) {
+                            const w = segs[i].to - segs[i].from;
+                            if (w < bestW) {
+                                bestW = w;
+                                bestIdx = i;
+                            }
+                        }
+                        // 并入左右邻居中较窄的那个（同 kind 时保持原色，否则变 merged）
+                        const left = bestIdx > 0 ? segs[bestIdx - 1] : null;
+                        const right = bestIdx < segs.length - 1 ? segs[bestIdx + 1] : null;
+                        const target = !right ? left : !left ? right : right.to - right.from < left.to - left.from ? right : left;
+                        const removed = segs.splice(bestIdx, 1)[0];
+                        target.from = Math.min(target.from, removed.from);
+                        target.to = Math.max(target.to, removed.to);
+                        target.mergedCount += removed.mergedCount;
+                        if (target.kind !== removed.kind) target.kind = "merged";
+                    }
+                }
+                // 完成点抽稀
+                let shownTicks = ticks;
+                let tickThinned = false;
+                if (capEnabled && ticks.length > MAX_TICKS_PER_ROW) {
+                    const step = Math.ceil(ticks.length / MAX_TICKS_PER_ROW);
+                    shownTicks = ticks.filter((_, i) => i % step === 0);
+                    tickThinned = true;
+                }
+                return { segs, ticks: shownTicks, rawSegCount, rawTickCount: ticks.length, tickThinned };
+            }
+
+            function render() {
+                const windowMs = rangeH * H;
+                const windowStart = NOW - windowMs;
+
+                const axis = document.getElementById("axis");
+                axis.innerHTML = "";
+                const tickCount = rangeH <= 2 ? 8 : 7;
+                for (let i = 0; i <= tickCount; i++) {
+                    const left = (i / tickCount) * 100;
+                    const at = windowStart + (windowMs / tickCount) * i;
+                    const d = new Date(at);
+                    const label =
+                        rangeH < 2
+                            ? `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`
+                            : rangeH < 24
+                              ? `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`
+                              : `${d.getMonth() + 1}/${d.getDate()}`;
+                    const el = document.createElement("span");
+                    el.className = "tick";
+                    el.style.left = `${left}%`;
+                    el.textContent = label;
+                    axis.appendChild(el);
+                }
+
+                const rowsEl = document.getElementById("rows");
+                rowsEl.innerHTML = "";
+                const labels = {
+                    idle: "空闲（轮间隔）",
+                    think: "思考〔估算〕",
+                    tool: "工具执行（精确）",
+                    reply: "回复生成",
+                    merged: "合并段（降采样）",
+                };
+                const estNotes = {
+                    think: "\n估算：模型往返（含思考+网络+正文生成）",
+                };
+
+                for (const session of sessions) {
+                    const row = document.createElement("div");
+                    row.className = "row";
+
+                    const idEl = document.createElement("div");
+                    idEl.className = "row-id";
+                    idEl.innerHTML = `<span class="avatar">${session.emoji}</span>
+                        <span class="row-text">
+                            <span class="row-title">${session.title}</span>
+                            <span class="row-sub">${session.sub}</span>
+                        </span>`;
+                    row.appendChild(idEl);
+
+                    const track = document.createElement("div");
+                    track.className = "track";
+                    track.style.setProperty("--tick-gap", `${100 / tickCount}%`);
+
+                    if (session.degraded) {
+                        // G2.1 降级：unknown 历史 + 当前 idle，两段式
+                        const d = session.degraded;
+                        const from = Math.max(NOW - d.startAgo, windowStart);
+                        const split = NOW - d.unknownAgo;
+                        const to = NOW - d.endAgo;
+                        if (to > windowStart) {
+                            const bar = document.createElement("div");
+                            bar.className = "bar";
+                            const leftPct = ((from - windowStart) / windowMs) * 100;
+                            const widthPct = Math.max(0.9, ((to - from) / windowMs) * 100);
+                            bar.style.left = `min(${leftPct}%, calc(100% - 8px))`;
+                            bar.style.width = `max(${widthPct}%, 8px)`;
+                            const span = Math.max(1, to - from);
+                            const s1 = document.createElement("span");
+                            s1.className = "bar-seg unknown";
+                            s1.style.width = `${Math.max(0, ((split - from) / span) * 100)}%`;
+                            s1.dataset.tip = "未知历史\n当时在干什么不知道（索引 stale，无 turn 数据）";
+                            const s2 = document.createElement("span");
+                            s2.className = "bar-seg current-idle";
+                            s2.style.width = `${Math.max(0, ((to - split) / span) * 100)}%`;
+                            s2.dataset.tip = `空闲（当前态）\n最后活动 ${fmtDur(NOW - to)} 前 · 降级渲染（G2.1 两段式）`;
+                            bar.appendChild(s1);
+                            bar.appendChild(s2);
+                            track.appendChild(bar);
+                        }
+                    } else {
+                        const stream = buildStream(session);
+                        const { segs, ticks, rawSegCount, rawTickCount, tickThinned } = layout(stream, windowStart, windowMs);
+                        const visible = segs.filter((s) => s.to > windowStart);
+                        if (visible.length) {
+                            const bar = document.createElement("div");
+                            bar.className = "bar";
+                            const first = visible[0];
+                            const last = visible[visible.length - 1];
+                            const leftPct = ((first.from - windowStart) / windowMs) * 100;
+                            const rightPct = ((last.to - windowStart) / windowMs) * 100;
+                            bar.style.left = `min(${leftPct}%, calc(100% - 8px))`;
+                            bar.style.width = `max(${rightPct - leftPct}%, 8px)`;
+                            const totalMs = visible.reduce((acc, s) => acc + (s.to - s.from), 0) || 1;
+                            for (const seg of visible) {
+                                const el = document.createElement("span");
+                                el.className = `bar-seg ${seg.kind}`;
+                                el.style.width = `${Math.max(0, ((seg.to - seg.from) / totalMs) * 100)}%`;
+                                el.dataset.tip =
+                                    `${labels[seg.kind] ?? seg.kind}\n${fmtDur(seg.to - seg.from)}\n${fmtClock(seg.from)} → ${fmtClock(seg.to)}` +
+                                    (seg.mergedCount > 1 ? `\n${seg.mergedCount} 段合并（窄段降采样）` : "") +
+                                    (estNotes[seg.kind] ?? "");
+                                bar.appendChild(el);
+                            }
+                            // 完成点（抽稀后）
+                            for (const at of ticks) {
+                                const tick = document.createElement("span");
+                                tick.className = "done-tick";
+                                const relPct = ((at - first.from) / totalMs) * 100;
+                                tick.style.left = `${relPct}%`;
+                                tick.dataset.tip = `完成点\n${fmtClock(at)} · 回复完成` + (tickThinned ? "（已抽稀）" : "");
+                                bar.appendChild(tick);
+                            }
+                            track.appendChild(bar);
+                        }
+                        track.dataset.raw = `${rawSegCount}→${segs.length}`;
+                    }
+
+                    const nowLine = document.createElement("span");
+                    nowLine.className = "now-line";
+                    nowLine.style.left = "100%";
+                    track.appendChild(nowLine);
+
+                    row.appendChild(track);
+                    rowsEl.appendChild(row);
+                }
+
+                const segTotal = rowsEl.querySelectorAll(".bar-seg").length;
+                const tickTotal = rowsEl.querySelectorAll(".done-tick").length;
+                const domStats = document.getElementById("stats");
+                domStats.innerHTML = `
+                    <span>窗口 <b>${rangeH < 1 ? "30m" : rangeH + "h"}</b></span>
+                    <span>行数 <b>${sessions.length}</b></span>
+                    <span>段节点 <b>${segTotal}</b></span>
+                    <span>完成点节点 <b>${tickTotal}</b></span>
+                    <span class="hot">段数封顶 <b>${capEnabled ? "开" : "关"}</b>（≤${MAX_SEGS_PER_ROW}/行，完成点≤${MAX_TICKS_PER_ROW}）</span>
+                    <span>圆角 <b>4px</b></span>`;
+                document.getElementById("dom-note").textContent = capEnabled
+                    ? `当前：${sessions.length} 行 / ${segTotal} 段节点 / ${tickTotal} 完成点。第 4 行（🐝 压测，25 轮）原始段数 ~130，封顶后压到 ≤${MAX_SEGS_PER_ROW} —— 切到「封顶 关」看未压缩的 DOM 压力。`
+                    : `封顶已关：段节点 ${segTotal} 个。真实产品里 7d 窗口 + 高频会话不封顶会到数千节点/屏，这是「每行封顶 60 段」要解决的问题。`;
+            }
+
+            // ---- tooltip（条内不渲染文字，全部走这里） ----
+            const tip = document.getElementById("tip");
+            document.addEventListener("mousemove", (event) => {
+                const node = event.target.closest?.("[data-tip]");
+                if (!node) {
+                    tip.style.display = "none";
+                    return;
+                }
+                tip.innerHTML = node.dataset.tip.replace(/〔估算〕/g, '<span class="est">〔估算〕</span>').replace(/\n/g, "<br />");
+                tip.style.display = "block";
+                const x = Math.min(event.clientX + 14, window.innerWidth - tip.offsetWidth - 8);
+                const y = Math.min(event.clientY + 14, window.innerHeight - tip.offsetHeight - 8);
+                tip.style.left = `${x}px`;
+                tip.style.top = `${y}px`;
+            });
+
+            document.querySelectorAll("#range-seg button").forEach((btn) => {
+                btn.addEventListener("click", () => {
+                    document.querySelectorAll("#range-seg button").forEach((b) => b.classList.remove("is-active"));
+                    btn.classList.add("is-active");
+                    rangeH = Number(btn.dataset.range);
+                    render();
+                });
+            });
+            document.querySelectorAll("#down-seg button").forEach((btn) => {
+                btn.addEventListener("click", () => {
+                    document.querySelectorAll("#down-seg button").forEach((b) => b.classList.remove("is-active"));
+                    btn.classList.add("is-active");
+                    capEnabled = btn.dataset.down === "1";
+                    render();
+                });
+            });
+
+            render();
+        </script>
+    </body>
+</html>
