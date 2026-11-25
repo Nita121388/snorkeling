@@ -5,7 +5,8 @@
     1. 文案：Bug → 修改点（修改点 = loop 工作项 items/*.md）
     2. 页内新建的落点：功能/模块/版本 → loop/map/{features,modules,releases}/，
        修改点 → loop/items/<id>.md（loop 工作项格式，不是 pmap 的 bug md）
-    3. 页内编辑：http 服务模式 POST /api/new 给引擎写 md；file:// 仍保留直写分支
+    3. 页内编辑：http 服务模式 POST /api/new 给引擎写 md；file:// 仍保留直写分支；
+       API 根与 repo 由渲染方注入（看板 = /api/map，独立服务 = /api）
     4. 时间线：布局纯函数由 lib/map-layout.mjs 注入；默认窗口围绕真实活动日，空日期不再污染成 NaN；
        功能超过一屏时 SVG 撑高、外层纵向滚动，键盘焦点自动滚入可视区
     5. 标签：按实际文字宽度决定是否翻到节点左侧，不再用固定 170px 阈值
@@ -330,7 +331,7 @@ g.hit:hover .bug-dot{stroke:var(--hover-label);stroke-width:1.5}
 </head>
 <body>
 
-<div class="proto-flag">loop map · build 2026-11-25T05:54:35Z · 13 模块 · 159 功能点 · 86 修改点</div>
+<div class="proto-flag">loop map · build 2026-11-25T07:12:01Z · 13 模块 · 159 功能点 · 86 修改点</div>
 
 <header>
   <div class="brand"><span class="mark"></span><b>Snorkeling</b><span>项目地图</span></div>
@@ -372,12 +373,14 @@ g.hit:hover .bug-dot{stroke:var(--hover-label);stroke-width:1.5}
 <div id="draftbar" class="hidden"></div>
 
 <script>
-/* loop map · build 2026-11-25T05:54:35Z
-   loop map · build 2026-11-25T05:54:35Z · 13 模块 · 159 功能点 · 86 修改点
+/* loop map · build 2026-11-25T07:12:01Z
+   loop map · build 2026-11-25T07:12:01Z · 13 模块 · 159 功能点 · 86 修改点
    功能层来自 loop/map/**（人写）；修改点来自 loop/items/*.md（工作项）
    改完重跑 queue map build */
 var TODAY = "2026-11-25";
 var PROJECT = {"name":"Snorkeling","since":"2026-04-16","today":"2026-11-25"};
+var MAP_API_ROOT = "/api";
+var MAP_REPO = "";
 var MAP_LAYOUT = (() => { const DAY = 86400000; const parseDay = function parseDay(s) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(String(s ?? ''))) return null;
     const t = Date.parse(s + 'T00:00:00Z');
@@ -608,14 +611,14 @@ var FEATURES = [
   {"id":"workspace-tabs","title":"Tab / Block / 布局工作流","module":"workspace","parent":null,"status":"shipped","introduced":"2026-04-18","target":null,"deprecated":null,"releases":[],"note":"窗口拆分、区块移动、inline tabs、主题与溢出管理。"},
   {"id":"wsh-auto-install","title":"Windows wsh 自动安装","module":"platform","parent":"platform-stability","status":"shipped","introduced":"2026-07-11","target":null,"deprecated":null,"releases":[],"note":"Windows wsh 安装硬化与目录创建。"},
   {"id":"wysiwyg","title":"WYSIWYG / Block Editor","module":"files","parent":"files-workflow","status":"shipped","introduced":"2026-08-31","target":null,"deprecated":null,"releases":[],"note":"块类型、Markdown transform、表格与就地编辑。"},
-  {"id":"_orphan","title":"未归类修改点","module":"_orphan","parent":null,"status":"building","introduced":null,"target":null,"deprecated":null,"releases":[],"note":"工作项里没写 feature:，先挂这里；写了 feature: <功能 id> 就归位。"}
+  {"id":"_orphan","title":"未归类修改点","module":"_orphan","parent":null,"status":"building","introduced":null,"target":null,"deprecated":null,"releases":[],"note":"工作项里没写 feature:，先挂这里；写了 feature: \u003c功能 id\u003e 就归位。"}
 ];
 var BUGS = [
   {"id":"F-1123-agentsend-submit-budget","title":"提交确认按时间预算退避（45s 次数上限绕过 180s/600s 预算）+ 派发回执不许掩盖未确认","feature":"agentsend","severity":"high","reported":"2026-11-23","fixed":null,"fixedIn":null,"note":"_（待补）_"},
   {"id":"F-1123-commontext-create-send","title":"CommonText 新建 agent 发送丢失：create 路径改走后端 agentsend（提交确认+补回车）","feature":"commontext-send","severity":"high","reported":"2026-11-23","fixed":null,"fixedIn":null,"note":"_（待补）_"},
   {"id":"N-1105-loop-ledger","title":"loop 台账骨架 + 门引擎","feature":"loop-workflow","severity":"low","reported":"2026-11-05","fixed":"2026-11-11","fixedIn":null,"note":"没有台账就没法回答“哪个班跑到哪、算不算过”，这是整套昼夜流程的地基。"},
   {"id":"N-1109-agent-chip-conditional-hook","title":"Agent 状态 chip 条件调用 hook 导致整窗白屏（React #310）","feature":"agent-card","severity":"normal","reported":"2026-11-09","fixed":null,"fixedIn":null,"note":"`0.0.123` / `0.0.124` 上出现\"整窗突然白屏、切 tab 无效、只能重启\"。"},
-  {"id":"N-1124-agentsend-false-fail","title":"Overview 发送已成功却显示发送失败（客户端超时预算 + 超时误映射 + 重复投递）","feature":"agentsend","severity":"high","reported":"2026-11-24","fixed":null,"fixedIn":null,"note":"用户 2026-11-24 反馈：发送成功了但显示发送失败。根因已定位：客户端 RPC 超时 80s < 服务端最坏 270s（30s 安静等待 + 180s 提交确认 + 60s 等回复）；客户端超时错误 EC-TIME 被 outcomeFromSend 无条件判 failed，且草稿保留 → 用户点重试 = 重复投递。修法：超时预算覆盖服务端全预算 + 新增 unknown 行程态（禁止重试）+ 真失败仍可重试。"},
+  {"id":"N-1124-agentsend-false-fail","title":"Overview 发送已成功却显示发送失败（客户端超时预算 + 超时误映射 + 重复投递）","feature":"agentsend","severity":"high","reported":"2026-11-24","fixed":null,"fixedIn":null,"note":"用户 2026-11-24 反馈：发送成功了但显示发送失败。根因已定位：客户端 RPC 超时 80s \u003c 服务端最坏 270s（30s 安静等待 + 180s 提交确认 + 60s 等回复）；客户端超时错误 EC-TIME 被 outcomeFromSend 无条件判 failed，且草稿保留 → 用户点重试 = 重复投递。修法：超时预算覆盖服务端全预算 + 新增 unknown 行程态（禁止重试）+ 真失败仍可重试。"},
   {"id":"N-1118-detail-scope-threading","title":"会话详情弹窗/详情块丢失 connection 与 origin，Detail 回落本机 manager","feature":"session-details","severity":"normal","reported":"2026-11-18","fixed":"2026-11-25","fixedIn":null,"note":"session-overview 的 openSessionDetail(row.sessionId)、agentcardmodal 的 pushModal 只传裸 id；openAISessionDetailFromList 不传 origin。三者都会让 Detail 走 managerForIdentifier → newLocalManager()。"},
   {"id":"N-1118-header-note-origin","title":"标题缓存缺 origin 维度：外部 dump 会话的 Header 退化为 Session Details，写操作落错库","feature":"session-details","severity":"normal","reported":"2026-11-18","fixed":"2026-11-25","fixedIn":null,"note":"session-note-cache 以 connection+id 为键，Summary 不带 origin；后端 Detail/Summary 响应也不回填 origin 标签，导致 dump 会话标题取不到、写 note/title 落到本机 meta 库。"},
   {"id":"N-1118-resolve-exact-id","title":"会话定位的 id 前缀匹配：唯一命中时静默返回另一个会话","feature":"session-details","severity":"normal","reported":"2026-11-18","fixed":"2026-11-25","fixedIn":null,"note":"strings.HasPrefix(summary.ID, identifier) 在唯一命中时不报歧义、直接返回，截断的 id 会打开别的会话。收成精确 key/id 匹配。"},
@@ -623,7 +626,7 @@ var BUGS = [
   {"id":"N-1120-fsmonitor-no-daemon","title":"内部 git 调用禁用 fsmonitor 常驻 daemon（三处收口）","feature":"loop-workflow","severity":"normal","reported":"2026-11-20","fixed":null,"fixedIn":null,"note":"本机系统级 `core.fsmonitor=true` 让每次刷索引的 git 命令在对应仓库拉起一个 40–80MB、无空闲超时、永不退出的 `fsmonitor--daemon`。Snorkeling 的 VCS 扫描（`vcs.go` 对 basePath 下 depth 3 逐仓 `git status`）、同步传输、hero 同步三条内部路径都会触发它，累积到几十个后吃满整机 commit（11-19 `errno=1455` OOM 闪退）。内部 git 命令构造点审计为 3 处，统一加 `-c core.fsmonitor=false`。不改系统 gitconfig、不影响用户终端里的 git。"},
   {"id":"N-1120-wsh-session-emoji-unwired","title":"wsh CLI 接线 bug：session emoji 命令组不可达（init() 漏 AddCommand）","feature":"emoji-pref","severity":"normal","reported":"2026-11-20","fixed":null,"fixedIn":null,"note":"commit 2c94b2c6e 新增 session emoji 功能（后端字段/推荐注入/MCP 六工具），但 wshcmd-session.go 的 init() 注册 sessionCmd 子命令时漏了 sessionEmojiCmd，其 5 个子命令只挂在自身身上，导致整组 CLI 不可达。修法：把它加进 sessionCmd.AddCommand 列表，另补顶层回归测试锁住 sessionCmd 子命令集合。"},
   {"id":"N-1124-agent-cmd-resolve2","title":"Agent 块本机启动命令解析：GUI 裸 PATH 下 opencode 找不到命令（11-24-agent-local-cmd-resolve）","feature":"agent-block","severity":"normal","reported":"2026-11-24","fixed":null,"fixedIn":null,"note":"_（待补）_"},
-  {"id":"N-1124-hero-restore-header","title":"恢复的 hero 会话块 header 走通用显示逻辑：恢复时补盖章 hero 身份 meta","feature":"hero-identity","severity":"normal","reported":"2026-11-24","fixed":null,"fixedIn":null,"note":"Hero 身份只在登场时写 block meta（`buildHeroLaunchBlockDef`：`hero` / `hero:name` / `display:name` / `agent:emoji`）；从 AISessions 恢复走的是另一条 meta 构造路径 —— GUI `restoreMetaForSession`（`frontend/app/view/aisessions/utils.ts` L743，调用点 aisessions.tsx / aisessiondetailmodal.tsx / agent.tsx）与 CLI/MCP `BuildResumeBlockMeta`（`pkg/agentcontrol/restore.go` L194，golden parity test 锁两端），**两条都不写 hero 键**。显示端只认 block meta（`block.tsx` L317 `heroHeaderName`、`agent-logo.tsx` `getAgentIcon`、`term-model.ts` L377），于是恢复块回退通用逻辑：provider logo + `basename(cmd:cwd)`（hero 会话就是 `hero-<hash8>`）。"},
+  {"id":"N-1124-hero-restore-header","title":"恢复的 hero 会话块 header 走通用显示逻辑：恢复时补盖章 hero 身份 meta","feature":"hero-identity","severity":"normal","reported":"2026-11-24","fixed":null,"fixedIn":null,"note":"Hero 身份只在登场时写 block meta（`buildHeroLaunchBlockDef`：`hero` / `hero:name` / `display:name` / `agent:emoji`）；从 AISessions 恢复走的是另一条 meta 构造路径 —— GUI `restoreMetaForSession`（`frontend/app/view/aisessions/utils.ts` L743，调用点 aisessions.tsx / aisessiondetailmodal.tsx / agent.tsx）与 CLI/MCP `BuildResumeBlockMeta`（`pkg/agentcontrol/restore.go` L194，golden parity test 锁两端），**两条都不写 hero 键**。显示端只认 block meta（`block.tsx` L317 `heroHeaderName`、`agent-logo.tsx` `getAgentIcon`、`term-model.ts` L377），于是恢复块回退通用逻辑：provider logo + `basename(cmd:cwd)`（hero 会话就是 `hero-\u003chash8\u003e`）。"},
   {"id":"N-1125-commontext-paste-default-writer-v2","title":"CommonText 图片粘贴默认 writer 未生效","feature":"_orphan","severity":"normal","reported":"2026-11-25","fixed":null,"fixedIn":null,"note":"_（待补）_"},
   {"id":"N-1120-property-status-to-select","title":"属性 status 类型彻底退役（数据迁移 status→select + 改类型浮层修复）","feature":"properties","severity":"normal","reported":"2026-11-20","fixed":null,"fixedIn":null,"note":"status 类型只做过前端读时归一（44046ab9f），后端白名单/校验/jsonschema、存量 sqlite prop_type 与"},
   {"id":"N-1105-harness-redproof","title":"既有 4 个 harness 登记 red_proof","feature":"loop-workflow","severity":"low","reported":"2026-11-05","fixed":null,"fixedIn":null,"note":"现有四个 harness 只有“能跑绿”，没有“能对已知坏样本变红”的凭据。"},
@@ -638,7 +641,7 @@ var BUGS = [
   {"id":"F-1112-persona-agent-create","title":"A2.5 Agent 自创建：CLI + propose 闸门 + 配额 + memory 纪律","feature":"persona-core","severity":"low","reported":"2026-11-12","fixed":"2026-11-12","fixedIn":null,"note":"_（待补）_"},
   {"id":"F-1112-persona-aisessions-r1","title":"A1.5 AISessions 集成：persona 属性 + 🎭 分组折叠 + 登场史","feature":"persona-block","severity":"low","reported":"2026-11-12","fixed":"2026-11-12","fixedIn":null,"note":"_（待补）_"},
   {"id":"F-1112-persona-core-r2","title":"A1 persona 核心：目录布局 + scaffold + wsh persona CLI","feature":"persona-core","severity":"low","reported":"2026-11-12","fixed":"2026-11-12","fixedIn":null,"note":"_（待补）_"},
-  {"id":"F-1113-persona-widget-launch-r2","title":"A3 widget 🎭 图标 + hover 登场弹窗 + 注入开关 + props.persona 派生补带","feature":"persona-block","severity":"low","reported":"2026-11-13","fixed":"2026-11-13","fixedIn":null,"note":"A3 登场入口。实现完成于 F-1113（7/8 绿，判据 8 期望 >=1 不可满足，drop）；F-1113-r1 判据 8 用 $() 不兼容 cmd.exe（drop）。本包为第三次判据修正（裸模式 grep + 字面量行断言，cmd.exe / bash 双验证），实现零改动。"},
+  {"id":"F-1113-persona-widget-launch-r2","title":"A3 widget 🎭 图标 + hover 登场弹窗 + 注入开关 + props.persona 派生补带","feature":"persona-block","severity":"low","reported":"2026-11-13","fixed":"2026-11-13","fixedIn":null,"note":"A3 登场入口。实现完成于 F-1113（7/8 绿，判据 8 期望 \u003e=1 不可满足，drop）；F-1113-r1 判据 8 用 $() 不兼容 cmd.exe（drop）。本包为第三次判据修正（裸模式 grep + 字面量行断言，cmd.exe / bash 双验证），实现零改动。"},
   {"id":"F-1116-commontext-sync-ws-push","title":"CommonText 同步实时推送：WebSocket rev 通知 + 保存即触发 + timer 兜底","feature":"commontext-sync","severity":"low","reported":"2026-11-16","fixed":null,"fixedIn":null,"note":"CommonText 同步现只有 5 分钟 timer + 手动两个触发源，跨设备可见最坏 ~10 分钟。设置面板「实时推送」显示不支持（`CapWebSocket` 只有常量声明，全仓无实现）。用户要求做实时推送。"},
   {"id":"F-1116-hero-identity-inject","title":"Hero 登场身份注入：据点根级 AGENTS.md 带 CHARTER 摘要","feature":"hero-identity","severity":"low","reported":"2026-11-16","fixed":"2026-11-16","fixedIn":null,"note":"rootPointerTemplate 只生成 6 行指针，pi/codex 注入面无使命正文（实测确认）。修复 = AGENTS.md 加身份段 + 必读 CHARTER 硬规则，对齐 design/plans/persona-system.md L245。"},
   {"id":"F-1117-overview-card-props","title":"Overview agent 卡面显示 Note/Tags/自定义属性（含状态）","feature":"overview-board","severity":"low","reported":"2026-11-17","fixed":null,"fixedIn":null,"note":"Overview 列表行与看板卡此前不读 `summary.props`（用户自定义属性，如 status），列表行也无 tags。数据层完整（`Summary` RPC 返回 note/tags/props），纯渲染层缺口。方案要点：看板卡 props 彩色胶囊（status/select 类型）+ 上限 3 条 + `+n` 溢出防卡高跳动；列表行补 tags chips + 属性紧凑行；悬浮卡 `summary == null` 渲染加载占位。全部复用现有 summary 缓存，不加新 RPC；解析逻辑收口 `overview-board-model.ts` 纯函数（`resolveBoardPropRows`）。完整需求见 `.trellis/tasks/11-17-overview-agent-card-props/prd.md`（G1 已签：2026-11-17 @nita）。"},
@@ -673,7 +676,7 @@ var BUGS = [
   {"id":"N-1124-schedtask-entry-fix","title":"定时任务入口回归右侧 widget + 弹窗版式对齐 CommonText（11-24-schedtask-entry-fix）","feature":"sched-task","severity":"normal","reported":"2026-11-24","fixed":null,"fixedIn":null,"note":"需求：点右侧定时任务 widget 打开 CommonText 同款弹窗，不建块。commit 8939d11f5 做成 Overview 工具栏按钮，且弹窗无尺寸/14px 标题/实现语副标题，与 CommonText 版式差距大。"},
   {"id":"N-1105-queue-failopen","title":"queue.json 解析失败不再静默清空（回退 last-good 快照）","feature":"loop-workflow","severity":"normal","reported":"2026-11-05","fixed":"2026-11-05","fixedIn":null,"note":"queue.json 解析失败返回空队列，等于夜间队列被静默清空。"},
   {"id":"N-1106-agent-tag-catalog","title":"Agent 卡片标签候选：全局清单 + 计数","feature":"agent-card","severity":"low","reported":"2026-11-06","fixed":"2026-11-14","fixedIn":null,"note":"tags 编辑器已是共享 Wolai 浮层（element/property-editor/tag-editor.tsx），但候选项只含 def.options（= summary.tags）+ 本会话已选值，看不到别的会话用过的标签。全局清单与 count 后端已提供（Tags RPC → SessionTagSummary{tag,count}），前端只喂 aisessions 筛选面板。本次把清单上提到共享 store，编辑器加计数通道，候选三源合并。"},
-  {"id":"F-1118-hero-header-display","title":"Hero Block Header 显示 Hero 名而非据点哈希路径","feature":"hero-identity","severity":"low","reported":"2026-11-18","fixed":"2026-11-25","fixedIn":null,"note":"Hero 登场块的 Agent Block Header 三处显示据点目录（basename(cmd:cwd) = hero-<hash8>）：block.tsx defaultTitle、term-model buildCmdCwdHeaderElem、block.tsx fullPath tooltip。磁盘不变量（ValidateID 目录名==id）不动，只改显示层：启动时写 meta hero:name / display:name，Header 优先显示 emoji+name，完整路径退到 tooltip 与点击复制。"},
+  {"id":"F-1118-hero-header-display","title":"Hero Block Header 显示 Hero 名而非据点哈希路径","feature":"hero-identity","severity":"low","reported":"2026-11-18","fixed":"2026-11-25","fixedIn":null,"note":"Hero 登场块的 Agent Block Header 三处显示据点目录（basename(cmd:cwd) = hero-\u003chash8\u003e）：block.tsx defaultTitle、term-model buildCmdCwdHeaderElem、block.tsx fullPath tooltip。磁盘不变量（ValidateID 目录名==id）不动，只改显示层：启动时写 meta hero:name / display:name，Header 优先显示 emoji+name，完整路径退到 tooltip 与点击复制。"},
   {"id":"F-1118-tab-collapse-active","title":"Tab 收起激活 Tab：收起并切走","feature":"tab-system","severity":"low","reported":"2026-11-18","fixed":null,"fixedIn":null,"note":"「收起激活 Tab」的真实诉求是「这个 Tab 暂时不用了，收起来去看别的」——激活恰恰是最常被收起的那一个。"},
   {"id":"F-1122-overview-new-tab","title":"Overview 新建 Tab：工具栏 + 组尾入口 + 三选一弹窗","feature":"overview-board","severity":"low","reported":"2026-11-22","fixed":null,"fixedIn":null,"note":"_（待补）_"},
   {"id":"N-1109-overview-board-chip-polish","title":"Overview 看板 chip 美化（A：去描边胶囊化）","feature":"overview-board","severity":"low","reported":"2026-11-09","fixed":null,"fixedIn":null,"note":"纯 CSS 微调：.session-overview-board-chip 去描边、999px 胶囊、10px 字号、文字提亮、内距 2px 8px；is-tag/tag-more 与状态 chip 语义不动。交付 before/after 可切换原型（G3），nita 自验观感（G7）。"},
@@ -2018,8 +2021,8 @@ async function writeDraft(i){
         ? { id:d.data.id, title:d.data.title, type:d.data.loopType, priority:d.data.loopPriority,
             severity:d.data.loopSeverity, feature:d.data.feature, note:d.data.note }
         : d.data;
-      var r = await fetch('/api/new', { method:'POST', headers:{'content-type':'application/json'},
-        body: JSON.stringify({ kind: kind, data: data }) });
+      var r = await fetch(MAP_API_ROOT + '/new', { method:'POST', headers:{'content-type':'application/json'},
+        body: JSON.stringify({ kind: kind, data: data, repo: MAP_REPO }) });
       var j = await r.json();
       if (!r.ok) throw new Error((j.errors || [j.error || '写入失败']).join('；'));
       d.savedPath = j.path;
