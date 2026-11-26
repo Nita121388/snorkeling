@@ -1,0 +1,152 @@
+﻿=== VITEST (exit=1) ===
+
+[1m[46m RUN [49m[22m [36mv3.2.4 [39m[90mE:/code/snorkeling[39m
+
+ [32m✓[39m frontend/app/workspace/preload-tabs.test.ts[2m > [22mcomputeRenderPreloadTabIds[2m > [22mkeeps the legacy shape when nothing is pending (active first, preload capped)[32m 8[2mms[22m[39m
+ [32m✓[39m frontend/app/workspace/preload-tabs.test.ts[2m > [22mcomputeRenderPreloadTabIds[2m > [22mrenders nothing when there is no active tab[32m 1[2mms[22m[39m
+ [32m✓[39m frontend/app/workspace/preload-tabs.test.ts[2m > [22mcomputeRenderPreloadTabIds[2m > [22mnever slices a pending tab away, even beyond the preload cap[32m 5[2mms[22m[39m
+ [32m✓[39m frontend/app/workspace/preload-tabs.test.ts[2m > [22mcomputeRenderPreloadTabIds[2m > [22mdedupes a pending tab that is already preloaded or active[32m 1[2mms[22m[39m
+ [32m✓[39m frontend/app/workspace/preload-tabs.test.ts[2m > [22mcomputeRenderPreloadTabIds[2m > [22mis stable when inputs contain empty ids[32m 1[2mms[22m[39m
+ [32m✓[39m frontend/app/workspace/preload-tabs.test.ts[2m > [22mcomputeRenderPreloadTabIds[2m > [22mkeeps order: active → preload → pending[32m 1[2mms[22m[39m
+ [32m✓[39m frontend/app/workspace/preload-tabs.test.ts[2m > [22mcomputeRenderPreloadTabIds[2m > [22mhandles a cap smaller than the preload list[32m 1[2mms[22m[39m
+ [31m×[39m frontend/app/workspace/preload-tabs.test.ts[2m > [22mcomputeRenderPreloadTabIds[2m > [22mdisables phantom hover tab preloading by default while preserving active and pending tabs[32m 22[2mms[22m[39m
+[31m   → expected undefined to be false // Object.is equality[39m
+node.exe : 
+At line:1 char:1
++ & "D:\SoftWare\NodeJS/node.exe" "C:\Users\chemclin\AppData\Roaming\np ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+[31m⎯⎯⎯⎯⎯⎯⎯[39m[1m[41m Failed Tests 1 [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯[39m
+
+[41m[1m FAIL [22m[49m frontend/app/workspace/preload-tabs.test.ts[2m > [22mcomputeRenderPrelo
+adTabIds[2m > [22mdisables phantom hover tab preloading by default while preserving active and pe
+nding tabs
+[31m[1mAssertionError[22m: expected undefined to be false // Object.is equality[39m
+
+[32m- Expected:[39m 
+false
+
+[31m+ Received:[39m 
+undefined
+
+[36m [2m❯[22m frontend/app/workspace/preload-tabs.test.ts:[2m46:47[22m[39m
+    [90m 44| [39m            updateActivePreloadTabIds?: (prev: readonly string[], acti…
+    [90m 45| [39m        }[33m;[39m
+    [90m 46| [39m        [34mexpect[39m(mod[33m.[39m[33mHOVER_TAB_PRELOAD_ENABLED[39m)[33m
+.[39m[34mtoBe[39m([35mfalse[39m)[33m;[39m
+    [90m   | [39m                                              [31m^[39m
+    [90m 47| [39m        [34mexpect[39m([35mtypeof[39m mod[33m.[39mupdateHoverPreloadTabIds
+)[33m.[39m[34mtoBe[39m([32m"function"[39m)[33m;[39m
+    [90m 48| [39m        [34mexpect[39m([35mtypeof[39m mod[33m.[39mupdateActivePreloadTabId
+s)[33m.[39m[34mtoBe[39m([32m"function"[39m)[33m;[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯[22m[39m
+
+
+[2m Test Files [22m [1m[31m1 failed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[31m1 failed[39m[22m[2m | [22m[1m[32m7 passed[39m[22m[90m (8)[39m
+[2m   Start at [22m 13:29:25
+[2m   Duration [22m 6.90s[2m (transform 190ms, setup 73ms, collect 167ms, tests 48ms, environment 1ms, prepare 636ms)[22m
+
+JUNIT report written to E:/code/snorkeling/test-results.xml
+
+=== GO TEST (exit=1) ===
+=== RUN   TestWindowsHookScriptsRotateLogBeforeGrowth
+    hookinstall_test.go:510: batch hook script must cap/rotate snorkeling-agentstatus-hook.log at 5MB:
+        @echo off
+        rem installed by Snorkeling
+        rem managed by Snorkeling; reinstalling the integration overwrites this file.
+        rem SNORKELING_AGENT_STATUS_INTEGRATION_ID=codex
+        rem SNORKELING_AGENT_STATUS_INTEGRATION_VERSION=22
+        rem ENTER line written before setlocal to distinguish cmd-not-started from call-parse-failure
+        if not "%LOCALAPPDATA%"=="" (echo [%DATE% %TIME%] ENTER provider=codex args=[%~1] [%~2] block=%WAVETERM_BLOCKID% cwd=%CD% >>"%LOCALAPPDATA%\snorkeling-agentstatus-hook.log" 2>nul) else if not "%TEMP%"=="" (echo [%DATE% %TIME%] ENTER provider=codex args=[%~1] [%~2] block=%WAVETERM_BLOCKID% cwd=%CD% >>"%TEMP%\snorkeling-agentstatus-hook.log" 2>nul)
+        
+        setlocal
+        set "ACTION=%~1"
+        set "PHASE=%~2"
+        set "DEBUG_LOG="
+        if not "%LOCALAPPDATA%"=="" set "DEBUG_LOG=%LOCALAPPDATA%\snorkeling-agentstatus-hook.log"
+        if "%DEBUG_LOG%"=="" if not "%TEMP%"=="" set "DEBUG_LOG=%TEMP%\snorkeling-agentstatus-hook.log"
+        call :debug_log "alive provider=codex action=%ACTION% phase=%PHASE% block=%WAVETERM_BLOCKID% localappdata-set=%LOCALAPPDATA%-nonempty jwt-set=%WAVETERM_JWT%-nonempty cwd=%CD% wshbindir=%WAVETERM_WSHBINDIR%"
+        call :debug_log "start provider=codex action=%ACTION% phase=%PHASE%"
+        
+        if "%ACTION%"=="" (
+            call :debug_log "exit missing-action"
+            exit /b 0
+        )
+        if not "%ACTION%"=="working" if not "%ACTION%"=="idle" if not "%ACTION%"=="blocked" if not "%ACTION%"=="release" if not "%ACTION%"=="unknown" (
+            call :debug_log "exit invalid-action action=%ACTION%"
+            exit /b 0
+        )
+        if "%WAVETERM_BLOCKID%"=="" (
+            call :debug_log "exit missing-block"
+            exit /b 0
+        )
+        if "%WAVETERM_JWT%"=="" (
+            call :debug_log "exit missing-jwt block=%WAVETERM_BLOCKID%"
+            exit /b 0
+        )
+        set "WSH_BIN="
+        if not "%WAVETERM_WSHBINDIR%"=="" if exist "%WAVETERM_WSHBINDIR%\wsh.exe" set "WSH_BIN=%WAVETERM_WSHBINDIR%\wsh.exe"
+        if not "%WSH_BIN%"=="" goto wsh_ready
+        
+        for /f "delims=" %%I in ('where.exe wsh.exe 2^>nul') do (
+            set "WSH_BIN=%%I"
+            goto wsh_ready
+        )
+        
+        if "%LOCALAPPDATA%"=="" goto check_userprofile_wsh
+        if exist "%LOCALAPPDATA%\snorkeling\Data\bin\wsh.exe" set "WSH_BIN=%LOCALAPPDATA%\snorkeling\Data\bin\wsh.exe"
+        if not "%WSH_BIN%"=="" goto wsh_ready
+        
+        :check_userprofile_wsh
+        if "%USERPROFILE%"=="" (
+            call :debug_log "exit missing-userprofile"
+            exit /b 0
+        )
+        if exist "%USERPROFILE%\.snorkeling\bin\wsh.exe" set "WSH_BIN=%USERPROFILE%\.snorkeling\bin\wsh.exe"
+        if "%WSH_BIN%"=="" (
+            call :debug_log "exit missing-wsh"
+            exit /b 0
+        )
+        
+        :wsh_ready
+        
+        if "%PHASE%"=="thinking" goto report
+        if "%PHASE%"=="tool" goto report
+        if "%PHASE%"=="shell-command" goto report
+        if "%PHASE%"=="approval" goto report
+        if "%PHASE%"=="none" goto report
+        if "%PHASE%"=="unknown" goto report
+        
+        if "%ACTION%"=="idle" set "PHASE=none"
+        if "%ACTION%"=="release" set "PHASE=none"
+        if "%ACTION%"=="blocked" set "PHASE=approval"
+        if "%ACTION%"=="working" set "PHASE=thinking"
+        if "%ACTION%"=="unknown" set "PHASE=unknown"
+        
+        :report
+        call :debug_log "report provider=codex action=%ACTION% phase=%PHASE% block=%WAVETERM_BLOCKID% wsh=%WSH_BIN%"
+        if "%ACTION%"=="working" (
+          if "%PHASE%"=="thinking" (
+            "%WSH_BIN%" agentstatus "%ACTION%" --provider "codex" --source hook --phase "%PHASE%" --ttl-ms 120000 <nul >nul 2>nul
+          ) else (
+            "%WSH_BIN%" agentstatus "%ACTION%" --provider "codex" --source hook --phase "%PHASE%" --ttl-ms 300000 <nul >nul 2>nul
+          )
+        ) else (
+        "%WSH_BIN%" agentstatus "%ACTION%" --provider "codex" --source hook --phase "%PHASE%" <nul >nul 2>nul
+        )
+        set "WSH_EXIT=%ERRORLEVEL%"
+        call :debug_log "done exit=%WSH_EXIT%"
+        exit /b 0
+        
+        :debug_log
+        if not "%DEBUG_LOG%"=="" echo [%DATE% %TIME%] %~1>>"%DEBUG_LOG%" 2>nul
+        exit /b 0
+--- FAIL: TestWindowsHookScriptsRotateLogBeforeGrowth (0.00s)
+FAIL
+FAIL	github.com/wavetermdev/waveterm/pkg/agentstatus	7.302s
+FAIL
+

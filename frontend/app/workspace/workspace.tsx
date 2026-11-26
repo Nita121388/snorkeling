@@ -7,7 +7,11 @@ import { CenteredDiv } from "@/app/element/quickelems";
 import { ModalsRenderer } from "@/app/modals/modalsrenderer";
 import { TabBar } from "@/app/tab/tabbar";
 import { TabContent } from "@/app/tab/tabcontent";
-import { computeRenderPreloadTabIds, PreloadTabCap } from "./preload-tabs";
+import {
+    computeRenderPreloadTabIds,
+    updateActivePreloadTabIds,
+    updateHoverPreloadTabIds,
+} from "./preload-tabs";
 import {
     getPendingMountTabIds,
     pendingInputTabCount,
@@ -94,21 +98,13 @@ const WorkspaceElem = memo(() => {
         return () => window.clearInterval(timer);
     }, [pendingMountTick]);
     useEffect(() => {
-        setPreloadTabIds((prev) => {
-            const next = prev.filter((id) => id !== tabId);
-            next.unshift(tabId);
-            return next.slice(0, PreloadTabCap);
-        });
+        setPreloadTabIds((prev) => updateActivePreloadTabIds(prev, tabId));
     }, [tabId]);
     const handleHoveredTabChange = useCallback((hoveredTabId: string | null) => {
         if (!hoveredTabId) {
             return;
         }
-        setPreloadTabIds((prev) => {
-            const next = prev.filter((id) => id !== hoveredTabId);
-            next.unshift(hoveredTabId);
-            return next.slice(0, PreloadTabCap);
-        });
+        setPreloadTabIds((prev) => updateHoverPreloadTabIds(prev, hoveredTabId));
     }, []);
     const renderPreloadTabIds = computeRenderPreloadTabIds(tabId, preloadTabIds, getPendingMountTabIds());
 

@@ -11,6 +11,41 @@
 
 export const PreloadTabCap = 3;
 
+// Each Tab runs in its own Electron WebContentsView where staticTabId never changes;
+// hover-preloading other tabs inside the current renderer mounts hidden TabContent trees
+// (xterm/WebGL/Monaco/15s polling) that can never become visible here. Keep disabled by default;
+// flip to true only if single-renderer tab switching is ever reintroduced.
+export const HOVER_TAB_PRELOAD_ENABLED = false;
+
+export function updateActivePreloadTabIds(
+    prev: readonly string[],
+    activeTabId: string,
+    enabled: boolean = HOVER_TAB_PRELOAD_ENABLED
+): string[] {
+    if (!activeTabId) {
+        return [];
+    }
+    if (!enabled) {
+        return prev.length === 1 && prev[0] === activeTabId ? (prev as string[]) : [activeTabId];
+    }
+    const next = prev.filter((id) => id !== activeTabId);
+    next.unshift(activeTabId);
+    return next.slice(0, PreloadTabCap);
+}
+
+export function updateHoverPreloadTabIds(
+    prev: readonly string[],
+    hoveredTabId: string | null,
+    enabled: boolean = HOVER_TAB_PRELOAD_ENABLED
+): string[] {
+    if (!enabled || !hoveredTabId) {
+        return prev as string[];
+    }
+    const next = prev.filter((id) => id !== hoveredTabId);
+    next.unshift(hoveredTabId);
+    return next.slice(0, PreloadTabCap);
+}
+
 /**
  * 计算本 renderer 实际渲染的 Tab 列表。
  * - activeTabId 恒在首位（它本来就该是可见的）；

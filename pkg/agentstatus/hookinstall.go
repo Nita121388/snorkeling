@@ -21,7 +21,7 @@ const (
 	HookTargetPi       = "pi"
 
 	hookInstallBaseName  = "snorkeling-agent-status"
-	hookInstallVersion   = 22
+	hookInstallVersion   = 23
 	codexHomeEnvVar      = "CODEX_HOME"
 	claudeConfigEnvVar   = "CLAUDE_CONFIG_DIR"
 	openCodeConfigEnvVar = "OPENCODE_CONFIG_DIR"
@@ -764,6 +764,7 @@ rem managed by Snorkeling; reinstalling the integration overwrites this file.
 rem %s%s
 rem %s%d
 rem ENTER line written before setlocal to distinguish cmd-not-started from call-parse-failure
+if not "%%LOCALAPPDATA%%"=="" (for %%%%A in ("%%LOCALAPPDATA%%\snorkeling-agentstatus-hook.log") do if %%%%~zA GTR 5242880 move /y "%%LOCALAPPDATA%%\snorkeling-agentstatus-hook.log" "%%LOCALAPPDATA%%\snorkeling-agentstatus-hook.log.1" >nul 2>nul) else if not "%%TEMP%%"=="" (for %%%%A in ("%%TEMP%%\snorkeling-agentstatus-hook.log") do if %%%%~zA GTR 5242880 move /y "%%TEMP%%\snorkeling-agentstatus-hook.log" "%%TEMP%%\snorkeling-agentstatus-hook.log.1" >nul 2>nul)
 if not "%%LOCALAPPDATA%%"=="" (echo [%%DATE%% %%TIME%%] ENTER provider=%s args=[%%~1] [%%~2] block=%%WAVETERM_BLOCKID%% cwd=%%CD%% >>"%%LOCALAPPDATA%%\snorkeling-agentstatus-hook.log" 2>nul) else if not "%%TEMP%%"=="" (echo [%%DATE%% %%TIME%%] ENTER provider=%s args=[%%~1] [%%~2] block=%%WAVETERM_BLOCKID%% cwd=%%CD%% >>"%%TEMP%%\snorkeling-agentstatus-hook.log" 2>nul)
 
 setlocal
@@ -869,6 +870,9 @@ if ($env:LOCALAPPDATA) {
     $fireLog = Join-Path $env:TEMP "snorkeling-agentstatus-hook.log"
 }
 if ($fireLog) {
+    if ((Test-Path $fireLog -PathType Leaf) -and ((Get-Item $fireLog -ErrorAction SilentlyContinue).Length -gt 5242880)) {
+        Move-Item -Path $fireLog -Destination ($fireLog + ".1") -Force -ErrorAction SilentlyContinue
+    }
     $dateStr = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
     Add-Content -Path $fireLog -Value ("$dateStr [ENTER] provider=%s args=[$Action] [$Phase] block=$env:WAVETERM_BLOCKID cwd=$PWD") -ErrorAction SilentlyContinue
 }

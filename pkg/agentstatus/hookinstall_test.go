@@ -503,3 +503,14 @@ func TestGeneratedAgentExtensionsTolerateMissingWsh(t *testing.T) {
 		}
 	}
 }
+
+func TestWindowsHookScriptsRotateLogBeforeGrowth(t *testing.T) {
+	batch := agentStatusBatchHookScript(HookTargetCodex)
+	if !strings.Contains(batch, "5242880") || !strings.Contains(batch, ".1") {
+		t.Fatalf("batch hook script must cap/rotate snorkeling-agentstatus-hook.log at 5MB:\n%s", batch)
+	}
+	ps := agentStatusPowerShellHookScript(HookTargetClaude)
+	if !strings.Contains(ps, "5242880") || !strings.Contains(ps, ".1") {
+		t.Fatalf("PowerShell hook script must cap/rotate snorkeling-agentstatus-hook.log at 5MB:\n%s", ps)
+	}
+}
