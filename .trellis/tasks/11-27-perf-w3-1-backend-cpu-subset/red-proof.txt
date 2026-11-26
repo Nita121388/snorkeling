@@ -1,0 +1,74 @@
+# W3-1 子集 红证（HEAD: 24977ce9c，实现前）
+
+测试先于实现落盘，在当前 HEAD 上运行：
+
+## R2 findCmdMethod 缓存（运行时红）
+
+命令：`go test ./pkg/wshutil/ -run 'TestFindCmdMethod' -count=1`
+
+```
+--- FAIL: TestFindCmdMethodStablePointer (0.00s)
+    wshadapter_cmdmethod_test.go:38: expected same *reflect.Method pointer for repeated lookups, got 0x140000cc9b0 and 0x140000ccaf0
+--- FAIL: TestFindCmdMethodConcurrent (0.00s)
+    wshadapter_cmdmethod_test.go:80: expected same *reflect.Method pointer across goroutine lookups, got 0x140000ccff0 and 0x140000cd130
+    （……多条同因失败……）
+FAIL	github.com/wavetermdev/waveterm/pkg/wshutil
+```
+
+红因：HEAD 上 `findCmdMethod` 每次 `rtype.Method(i)` 取值后返回新分配的 `&method`，两次调用指针必然不同。
+
+## R3 SetRTInfo tag 映射缓存（编译红：新内部函数尚未存在）
+
+命令：`go test ./pkg/wstore/ -run 'TestRTInfoTagMapCached|TestGetRTInfoTagMapConcurrent|TestSetRTInfoUsesCachedTagMap' -count=1`
+
+```
+pkg/wstore/wstore_rtinfo_cache_test.go:21:8: undefined: getRTInfoTagMap
+pkg/wstore/wstore_rtinfo_cache_test.go:25:8: undefined: getRTInfoTagMap
+pkg/wstore/wstore_rtinfo_cache_test.go:89:10: undefined: getRTInfoTagMap
+FAIL	github.com/wavetermdev/waveterm/pkg/wstore [build failed]
+```
+
+红因：HEAD 上 SetRTInfo 每次调用重建 `jsonTagToField`，没有可复用的按类型缓存入口；测试断言 `getRTInfoTagMap` 两次返回同一 map（reflect.ValueOf(m).Pointer() 相同），缓存实现后转绿。语义回归由
+`TestSetRTInfoUsesCachedTagMap`（多次 SetRTInfo 合并/nil 清零）双保险。
+
+## R1 sysinfo 零订阅者门控（编译红：新行为尚未存在）
+
+命令：`go test ./pkg/wshrpc/wshremote/ -run 'TestSysInfo' -count=1`
+
+```
+pkg/wshrpc/wshremote/sysinfo_test.go:21:86: undefined: sysInfoPublisher
+pkg/wshrpc/wshremote/sysinfo_test.go:23:10: undefined: sysInfoPublisher
+pkg/wshrpc/wshremote/sysinfo_test.go:94:6: undefined: sysinfoHasSubscribers
+（……同因 undefined……）
+FAIL	github.com/wavetermdev/waveterm/pkg/wshrpc/wshremote [build failed]
+```
+
+红因：HEAD 上 `RunSysInfoLoop` 无条件 `generateSingleServerData`，不存在「0 订阅 → 不采集不推送」的可判定行为；门控与注入时钟/收集器的 publisher 结构为本次新增契约。
+
+---
+
+# 绿证（实现后，同一 HEAD 工作区）
+
+## R2 + R3 门控测试（PRD 验收命令）
+`go test ./pkg/wshutil/... ./pkg/wstore/... -run 'FindCmdMethod|RTInfo' -count=1 -v`
+
+```
+--- PASS: TestFindCmdMethodStablePointer
+--- PASS: TestFindCmdMethodNotFound
+--- PASS: TestFindCmdMethodConcurrent
+ok  	github.com/wavetermdev/waveterm/pkg/wshutil
+--- PASS: TestRTInfoTagMapCached
+--- PASS: TestSetRTInfoUsesCachedTagMap
+--- PASS: TestGetRTInfoTagMapConcurrent
+--- PASS: TestSetRTInfoStoresShellLastUpdated
+ok  	github.com/wavetermdev/waveterm/pkg/wstore
+```
+
+## R1 sysinfo 门控测试
+`go test ./pkg/wshrpc/wshremote/ -run 'TestSysInfo' -count=1` → `ok ... 0.119s`
+（TestSysInfoTickSkipsZeroSubscribers / TestSysInfoTickPublishesWithSubscribers / TestSysInfoHasSubscribersGate / TestSysInfoEventShape 全过）
+
+## 竞态 + 构建 + 基线
+- `go test -p 1 -race ./pkg/wshutil/... ./pkg/wstore/... ./pkg/wshrpc/...` → 全 ok（wshutil 1.508s / wstore 1.527s / wshrpc 1.553s / wshremote 2.249s / wshserver 10.870s）
+- `go build ./...` → 通过
+- `node scripts/check-tsc-baseline.mjs` → `tsc 错误数 57 = 基线 57`（纯 Go 包，零前端改动）

@@ -16,6 +16,36 @@ var (
 	rtInfoMutex sync.RWMutex
 )
 
+// rtInfoTagMapCache caches the json-tag -> field-index map per reflect.Type.
+// Each map is built once and never mutated afterwards, so sharing it across
+// concurrent SetRTInfo callers is safe without extra locking (the cache
+// itself is a sync.Map).
+var rtInfoTagMapCache sync.Map // reflect.Type -> map[string]int
+
+// getRTInfoTagMap returns the (cached) json tag -> field index map for rtype.
+// It replaces the per-call map rebuild SetRTInfo used to do while holding the
+// global rtInfo mutex.
+func getRTInfoTagMap(rtype reflect.Type) map[string]int {
+	if cached, ok := rtInfoTagMapCache.Load(rtype); ok {
+		return cached.(map[string]int)
+	}
+	tagMap := make(map[string]int, rtype.NumField())
+	for i := 0; i < rtype.NumField(); i++ {
+		field := rtype.Field(i)
+		jsonTag := field.Tag.Get("json")
+		if jsonTag == "" {
+			continue
+		}
+		// Remove omitempty and other options
+		tagParts := strings.Split(jsonTag, ",")
+		if len(tagParts) > 0 && tagParts[0] != "" {
+			tagMap[tagParts[0]] = i
+		}
+	}
+	actual, _ := rtInfoTagMapCache.LoadOrStore(rtype, tagMap)
+	return actual.(map[string]int)
+}
+
 func setFieldValue(fieldValue reflect.Value, value any) {
 	if value == nil {
 		fieldValue.Set(reflect.Zero(fieldValue.Type()))
@@ -94,21 +124,9 @@ func SetRTInfo(oref waveobj.ORef, info map[string]any) {
 	}
 
 	rtInfoValue := reflect.ValueOf(rtInfo).Elem()
-	rtInfoType := rtInfoValue.Type()
 
-	// Build a map of json tags to field indices for quick lookup
-	jsonTagToField := make(map[string]int)
-	for i := 0; i < rtInfoType.NumField(); i++ {
-		field := rtInfoType.Field(i)
-		jsonTag := field.Tag.Get("json")
-		if jsonTag != "" {
-			// Remove omitempty and other options
-			tagParts := strings.Split(jsonTag, ",")
-			if len(tagParts) > 0 && tagParts[0] != "" {
-				jsonTagToField[tagParts[0]] = i
-			}
-		}
-	}
+	// Cached json tag -> field index lookup (per reflect.Type, built once)
+	jsonTagToField := getRTInfoTagMap(rtInfoValue.Type())
 
 	// Merge the info map into the struct
 	for key, value := range info {

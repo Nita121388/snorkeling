@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
+	"sync"
 
 	"github.com/wavetermdev/waveterm/pkg/panichandler"
 	"github.com/wavetermdev/waveterm/pkg/util/utilfn"
@@ -18,16 +19,30 @@ import (
 var WshCommandDeclMap = wshrpc.GenerateWshCommandDeclMap()
 var multiArgRType = reflect.TypeOf(wshrpc.MultiArg{})
 
-func findCmdMethod(impl any, cmd string) *reflect.Method {
-	rtype := reflect.TypeOf(impl)
-	methodName := cmd + "command"
+// cmdMethodCache caches per reflect.Type a map of lowercase method name to the
+// *reflect.Method pointer. Go methods are fixed at compile time, so each
+// per-type map is built once and never mutated afterwards; the shared map is
+// therefore safe for concurrent reads. Returning the cached pointer means
+// repeated findCmdMethod calls return the same *reflect.Method instead of
+// re-allocating one per RPC call.
+var cmdMethodCache sync.Map // reflect.Type -> map[string]*reflect.Method
+
+func getCmdMethodsForType(rtype reflect.Type) map[string]*reflect.Method {
+	if cached, ok := cmdMethodCache.Load(rtype); ok {
+		return cached.(map[string]*reflect.Method)
+	}
+	methods := make(map[string]*reflect.Method, rtype.NumMethod())
 	for i := 0; i < rtype.NumMethod(); i++ {
 		method := rtype.Method(i)
-		if strings.ToLower(method.Name) == methodName {
-			return &method
-		}
+		methods[strings.ToLower(method.Name)] = &method
 	}
-	return nil
+	actual, _ := cmdMethodCache.LoadOrStore(rtype, methods)
+	return actual.(map[string]*reflect.Method)
+}
+
+func findCmdMethod(impl any, cmd string) *reflect.Method {
+	rtype := reflect.TypeOf(impl)
+	return getCmdMethodsForType(rtype)[strings.ToLower(cmd)+"command"]
 }
 
 func decodeRtnVals(rtnVals []reflect.Value) (any, error) {
