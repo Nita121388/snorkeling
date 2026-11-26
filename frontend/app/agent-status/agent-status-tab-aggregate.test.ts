@@ -4,7 +4,7 @@
 import { SessionOverviewModel } from "@/app/session-overview/session-overview-model";
 import { globalStore } from "@/app/store/jotaiStore";
 import * as WOS from "@/store/wos";
-import { atom, createStore, PrimitiveAtom } from "jotai";
+import { atom, createStore, PrimitiveAtom, type Atom } from "jotai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ackBumpAtom, agentStatusDoneAckStore } from "./agent-status-done-ack-store";
 import { AgentStatusStore } from "./agent-status-store";
@@ -415,5 +415,28 @@ describe("Tab Agent status entries (B / C / G)", () => {
 
         const entries = globalStore.get(getTabAgentStatusEntriesAtom("tab-inline"));
         expect(entries.map((entry) => entry.blockId)).toEqual(["parent", "child"]);
+    });
+
+    it("workspace acquire 全集只收 agent 终端块（Wave 2-2：普通终端/preview 不再白发 GetAgentStatus）", async () => {
+        // 动态导入断言（仓库既有惯例）：`getWorkspaceBlockIdsAtom` 是本包新增导出，
+        // 实现前本用例红灯，且不影响本文件其它用例。
+        const mod = await import("./agent-status-tab-aggregate");
+        expect(typeof mod.getWorkspaceBlockIdsAtom).toBe("function");
+
+        const tabId = "tab-acq-w22";
+        const tabAtom = atom({ blockids: ["b-agent", "b-term", "b-preview"] } as unknown as Tab);
+        const blockAtoms = new Map<string, Atom<Block>>();
+        blockAtoms.set("b-agent", atom({ blockid: "b-agent", subblockids: [], meta: { "agent:provider": "codex" } } as unknown as Block));
+        blockAtoms.set("b-term", atom({ blockid: "b-term", subblockids: [], meta: {} } as unknown as Block));
+        blockAtoms.set("b-preview", atom({ blockid: "b-preview", subblockids: [], meta: { view: "preview" } } as unknown as Block));
+        vi.spyOn(WOS, "getWaveObjectAtom").mockImplementation((oref: string) => {
+            if (oref === WOS.makeORef("tab", tabId)) return tabAtom as never;
+            const blockId = oref.slice(oref.indexOf(":") + 1);
+            return (blockAtoms.get(blockId) ?? atom({ blockid: blockId, subblockids: [] } as unknown as Block)) as never;
+        });
+
+        const derivedStore = createStore();
+        const blockIds = derivedStore.get(mod.getWorkspaceBlockIdsAtom([tabId]));
+        expect(blockIds).toEqual(["b-agent"]);
     });
 });

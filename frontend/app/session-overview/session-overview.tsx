@@ -110,6 +110,7 @@ import {
     getCachedSessionSummary,
     getSessionOverviewCacheRevision,
     getSessionOverviewCacheSnapshot,
+    isSameSessionSummary,
     loadCachedSessionDetail,
     loadCachedSessionSummary,
     patchCachedSessionSummary,
@@ -908,15 +909,41 @@ function useSessionSummaries(blocks: OverviewBlock[], active = true): Record<str
             requestedRef.current.add(sessionId);
             clearRetry(sessionId);
             const cachedSummary = getCachedSessionSummary(sessionId);
-            setSummaries((prev) => ({
-                ...prev,
-                [sessionId]: { loading: cachedSummary == null, summary: cachedSummary, error: "" },
-            }));
+            // 冗余写入去重 (W2-2): cachedSummary 与当前 state 里的 summary 等价时不写 ——
+            // 15s 轮询 × N 会话不再每轮先写一次「旧值占位」再写一次结果 (两次整板重渲).
+            setSummaries((prev) => {
+                const existing = prev[sessionId];
+                if (
+                    cachedSummary != null &&
+                    existing != null &&
+                    !existing.loading &&
+                    existing.error === "" &&
+                    isSameSessionSummary(existing.summary, cachedSummary)
+                ) {
+                    return prev;
+                }
+                return {
+                    ...prev,
+                    [sessionId]: { loading: cachedSummary == null, summary: cachedSummary, error: "" },
+                };
+            });
             loadCachedSessionSummary(service, sessionId, { forceRefresh })
                 .then((summary) => {
                     if (cancelled) return;
                     requestedRef.current.delete(sessionId);
-                    setSummaries((prev) => ({ ...prev, [sessionId]: { loading: false, summary, error: "" } }));
+                    // 等价结果不写 state (W2-2): 无变化时不触发整板重渲.
+                    setSummaries((prev) => {
+                        const existing = prev[sessionId];
+                        if (
+                            existing != null &&
+                            !existing.loading &&
+                            existing.error === "" &&
+                            isSameSessionSummary(existing.summary, summary)
+                        ) {
+                            return prev;
+                        }
+                        return { ...prev, [sessionId]: { loading: false, summary, error: "" } };
+                    });
                 })
                 .catch((error) => {
                     if (cancelled) return;

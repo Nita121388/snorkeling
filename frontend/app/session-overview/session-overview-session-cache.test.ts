@@ -487,6 +487,27 @@ describe("session-overview-session-cache (channel revision + flush scheduler)", 
         expect(revD1).toBe(revD0); // detail 频道不动
     });
 
+    it("Summary 刷新返回等价数据: 不 bump Summary revision (15s 强刷风暴治理 W2-2)", async () => {
+        const sid = nextId("rev-dedupe");
+        const { service, summaryFn } = makeMockService();
+        const v1 = makeSummary(sid, { title: "t", messageCount: 3, updatedAt: 1_000 });
+        summaryFn.mockResolvedValueOnce(v1);
+        await loadCachedSessionSummary(service, sid, {});
+        const revAfterFirst = getSessionOverviewCacheRevision("summary");
+
+        // 15s 轮询强刷 (forceRefresh) 返回内容等价的克隆: 不得 bump revision.
+        const equivalent = makeSummary(sid, { title: "t", messageCount: 3, updatedAt: 1_000 });
+        summaryFn.mockResolvedValueOnce(equivalent);
+        await loadCachedSessionSummary(service, sid, { forceRefresh: true });
+        expect(getCachedSessionSummary(sid)).toEqual(v1);
+        expect(getSessionOverviewCacheRevision("summary")).toBe(revAfterFirst);
+
+        // 真变化 (messageCount 变了) 仍然必须 bump —— 功能不回退.
+        summaryFn.mockResolvedValueOnce(makeSummary(sid, { title: "t", messageCount: 4, updatedAt: 1_000 }));
+        await loadCachedSessionSummary(service, sid, { forceRefresh: true });
+        expect(getSessionOverviewCacheRevision("summary")).toBeGreaterThan(revAfterFirst);
+    });
+
     it("Detail 写入同时增加 Summary 与 Detail revision (因 detail 联动 summary)", async () => {
         const sid = nextId("rev-detail");
         const { service, detailFn } = makeMockService();

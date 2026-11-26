@@ -1,0 +1,175 @@
+W2-2 红测（4 个用例，全部按预期根因失败；同命令其余 40 个用例全绿）：
+
+1. overview-board-rerender.test.tsx —— OverviewBoard 仅 now 变化的无关重渲触发 3 次
+   getBoundingClientRect 采样（期望 0）：columns/columnKeys 未 memo → useLayoutEffect
+   每渲染重跑；rebaseline 换引用 → ResizeObserver 每渲染重建。
+2. send-status-chip-rerender.test.tsx —— block-a 输入草稿让 chip-a commit 2 次（期望 1）：
+   draftByBlock 存在 React state 里随 CardSendContext value 换引用，全板 chip 被
+   context 击穿（BoardCard memo 失效）。
+3. session-overview-session-cache.test.ts（新增用例）—— Summary 强刷返回等价数据
+   revision 29 > 28（期望不变）：storeSummaryResult 无条件 markChannelDirty，
+   isSameSessionSummary 已定义但从未被调用。
+4. agent-status-tab-aggregate.test.ts（新增用例）—— getWorkspaceBlockIdsAtom 未导出
+   （本包新增导出，导入断言）：该 derive 未用 isAgentTerminalMeta 过滤，普通终端 /
+   preview 也进 acquire 全集，各发一次 GetAgentStatus RPC + WPS 订阅。
+
+命令：npx vitest run frontend/app/session-overview/overview-board-rerender.test.tsx \
+  frontend/app/session-overview/session-overview-session-cache.test.ts \
+  frontend/app/session-overview/send-status-chip-rerender.test.tsx \
+  frontend/app/agent-status/agent-status-tab-aggregate.test.ts
+结果：Tests 4 failed | 40 passed (44)
+
+ RUN  v3.2.4 E:/code/snorkeling
+
+ DEPRECATED  'basic' reporter is deprecated and will be removed in Vitest v3.
+Remove 'basic' from 'reporters' option. To match 'basic' reporter 100%, use configuration:
+{
+  "test": {
+    "reporters": [
+      [
+        "default",
+        {
+          "summary": false
+        }
+      ]
+    ]
+  }
+}
+ ❯ frontend/app/session-overview/session-overview-session-cache.test.ts (27 tests | 1 failed) 190ms
+   ✓ session-overview-session-cache (behavior baseline) > Summary TTL 命中: 新鲜时直接返回缓存, 不再发 RPC 12ms
+   ✓ session-overview-session-cache (behavior baseline) > Summary TTL 过期: 陈旧窗口内先返回旧值并后台刷新 (stale-while-revalidate) 4ms
+   ✓ session-overview-session-cache (behavior baseline) > Summary 陈旧读取并发: 同窗口多次读取只触发一次后台刷新 3ms
+   ✓ session-overview-session-cache (behavior baseline) > Summary forceRefresh: 绕过 SWR 立即重新请求 2ms
+   ✓ session-overview-session-cache (behavior baseline) > isSameSessionSummary: 展示字段全等时判定为未变化, 任一字段变化即判为变化 2ms
+   ✓ session-overview-session-cache (behavior baseline) > Summary in-flight Promise 复用: 并发两次只发一个 RPC 4ms
+   ✓ session-overview-session-cache (behavior baseline) > Detail in-flight Promise 复用: 并发两次只发一个 RPC 2ms
+   ✓ session-overview-session-cache (behavior baseline) > Detail load 也会把 summary 写入 summaryCache (供后续 Summary TTL 命中) 1ms
+   ✓ session-overview-session-cache (behavior baseline) > 三条写入路径都触发 cache 通知 (异步 flush) 3ms
+   ✓ session-overview-session-cache (behavior baseline) > subscribeSessionOverviewCache 退订后不再被回调 44ms
+   ✓ session-overview-session-cache (behavior baseline) > subscribeSessionOverviewCache 同一回调 add 多次仍是单订阅 (Set 去重) 3ms
+   ✓ session-overview-session-cache (behavior baseline) > getSessionOverviewCacheSnapshot: 包含新鲜 session, stale session 不出现 2ms
+   ✓ session-overview-session-cache (behavior baseline) > alias 合并: 同一 session 由 raw id 与 summary.key 引用, 应共享同一缓存项 1ms
+   ✓ session-overview-session-cache (behavior baseline) > patchCachedSessionSummary 同步更新已有 detail.summary (整 view 即刻读到新 note) 1ms
+   ✓ session-overview-session-cache (behavior baseline) > Summary 请求并发上限 = 4: 第 5 个会排队等待 active 释放 1ms
+   ✓ session-overview-session-cache (channel revision + flush scheduler) > 新 API 存在: getSessionOverviewCacheRevision / subscribeSessionOverviewCacheChannel 可导入 1ms
+   ✓ session-overview-session-cache (channel revision + flush scheduler) > Summary 写入只增加 Summary revision, 不影响 Detail revision 1ms
+   × session-overview-session-cache (channel revision + flush scheduler) > Summary 刷新返回等价数据: 不 bump Summary revision (15s 强刷风暴治理 W2-2) 23ms
+     → expected 29 to be 28 // Object.is equality
+   ✓ session-overview-session-cache (channel revision + flush scheduler) > Detail 写入同时增加 Summary 与 Detail revision (因 detail 联动 summary) 1ms
+   ✓ session-overview-session-cache (channel revision + flush scheduler) > patchCachedSessionSummary 增加 Summary revision; 已有 detail.summary 被同步修改时也增加 Detail revision 1ms
+   ✓ session-overview-session-cache (channel revision + flush scheduler) > 同一帧内多次 Summary 写入: revision 多次增加, 但 Summary 频道 subscriber 同帧只被回调一次 1ms
+   ✓ session-overview-session-cache (channel revision + flush scheduler) > flush 后再次写入: 下一帧再通知一次 (不丢第二次) 1ms
+   ✓ session-overview-session-cache (channel revision + flush scheduler) > 同一帧分别发布 summary 与 detail: 两个频道各通知一次, 不串扰 2ms
+   ✓ session-overview-session-cache (channel revision + flush scheduler) > flush 前退订: 不会收到回调 1ms
+   ✓ session-overview-session-cache (channel revision + flush scheduler) > 一个 subscriber 抛错: 不影响其他 subscriber, 不影响缓存 RPC resolve 2ms
+   ✓ session-overview-session-cache (channel revision + flush scheduler) > revision 在通知前已可读: 晚订阅者读到的 revision 反映尚未 flush 的写入 1ms
+   ✓ session-overview-session-cache (channel revision + flush scheduler) > 无 requestAnimationFrame 环境 (timer fallback): 通知最终仍能推进 67ms
+ ❯ frontend/app/agent-status/agent-status-tab-aggregate.test.ts (15 tests | 1 failed) 128ms
+   ✓ R-class ack bump signal (F5 fix) > ackBumpAtom increments when markDoneAcked is called (D-class baseline) 13ms
+   ✓ R-class ack bump signal (F5 fix) > ackBumpAtom increments when clearDoneAcked is called (D-class baseline) 6ms
+   ✓ R-class ack bump signal (F5 fix) > updates a second renderer store after another renderer acknowledges a blocked state 6ms
+   ✓ R-class ack bump signal (F5 fix) > updates a second renderer timestamp store after another renderer acknowledges a blocked state 3ms
+   ✓ R-class ack bump signal (F5 fix) > merges the latest persisted R ack maps before writing from a stale renderer 4ms
+   ✓ R-class ack bump signal (F5 fix) > does not let a delayed legacy fingerprint event delete current valid storage 3ms
+   ✓ R-class ack bump signal (F5 fix) > re-lights C for a new blocked event but not a new working event across remounts 14ms
+   ✓ S-class (stale) tab dots > renders a purple S dot for an unacknowledged stale agent 7ms
+   ✓ S-class (stale) tab dots > drops the S dot once the stale status is acknowledged (决策 2: stale 可 ack) 5ms
+   ✓ S-class (stale) tab dots > orders D above blocked above S 5ms
+   ✓ Tab Agent status entries (B / C / G) > includes every state, including working and idle, in stable Tab order 12ms
+   ✓ Tab Agent status entries (B / C / G) > keeps the entry after ack and only changes read to seen 6ms
+   ✓ Tab Agent status entries (B / C / G) > excludes non-Agent blocks even if the store has a fallback status for them 4ms
+   ✓ Tab Agent status entries (B / C / G) > expands inline subblocks with the same collection rule as TabInfoCard 4ms
+   × Tab Agent status entries (B / C / G) > workspace acquire 全集只收 agent 终端块（Wave 2-2：普通终端/preview 不再白发 GetAgentStatus） 31ms
+     → expected 'undefined' to be 'function' // Object.is equality
+ ❯ frontend/app/session-overview/send-status-chip-rerender.test.tsx (1 test | 1 failed) 74ms
+   × 草稿输入不重渲其他卡片的 SendStatusChip（Wave 2-2） > 在 block-a 输入草稿：block-a / block-b 的 chip commit 数都不增加 62ms
+     → expected 2 to be 1 // Object.is equality
+Browserslist: browsers data (caniuse-lite) is 11 months old. Please run:
+  npx update-browserslist-db@latest
+  Why you should do it regularly: https://github.com/browserslist/update-db#readme
+ ❯ frontend/app/session-overview/overview-board-rerender.test.tsx (1 test | 1 failed) 242ms
+   × OverviewBoard 无关重渲：不采样、不重建 observer（Wave 2-2） > 仅 now 变化的重渲：getBoundingClientRect 调用增量为 0，ResizeObserver 只建 1 次 233ms
+     → expected 3 to be +0 // Object.is equality
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 4 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  frontend/app/agent-status/agent-status-tab-aggregate.test.ts > Tab Agent status entries (B / C / G) > workspace acquire 全集只收 agent 终端块（Wave 2-2：普通终端/preview 不再白发 GetAgentStatus）
+AssertionError: expected 'undefined' to be 'function' // Object.is equality
+
+Expected: "function"
+Received: "undefined"
+
+ ❯ frontend/app/agent-status/agent-status-tab-aggregate.test.ts:424:53
+    422|         // 实现前本用例红灯，且不影响本文件其它用例。
+    423|         const mod = await import("./agent-status-tab-aggregate");
+    424|         expect(typeof mod.getWorkspaceBlockIdsAtom).toBe("function");
+       |                                                     ^
+    425| 
+    426|         const tabId = "tab-acq-w22";
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/4]⎯
+
+ FAIL  frontend/app/session-overview/overview-board-rerender.test.tsx > OverviewBoard 无关重渲：不采样、不重建 observer（Wave 2-2） > 仅 now 变化的重渲：getBoundingClientRect 调用增量为 0，ResizeObserver 只建 1 次
+AssertionError: expected 3 to be +0 // Object.is equality
+
+- Expected
++ Received
+
+- 0
++ 3
+
+ ❯ frontend/app/session-overview/overview-board-rerender.test.tsx:148:60
+    146|         });
+    147| 
+    148|         expect(rectSpy.mock.calls.length - rectAfterMount).toBe(0);
+       |                                                            ^
+    149|         expect(CountingResizeObserver.constructions).toBe(observersAft…
+    150|     });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/4]⎯
+
+ FAIL  frontend/app/session-overview/send-status-chip-rerender.test.tsx > 草稿输入不重渲其他卡片的 SendStatusChip（Wave 2-2） > 在 block-a 输入草稿：block-a / block-b 的 chip commit 数都不增加
+AssertionError: expected 2 to be 1 // Object.is equality
+
+- Expected
++ Received
+
+- 1
++ 2
+
+ ❯ frontend/app/session-overview/send-status-chip-rerender.test.tsx:94:40
+     92| 
+     93|         // 草稿只属于 composer：两张卡的 chip 都不该因这次输入而 commit。
+     94|         expect(chipCommits["block-a"]).toBe(commitsBeforeA);
+       |                                        ^
+     95|         expect(chipCommits["block-b"]).toBe(commitsBeforeB);
+     96| 
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/4]⎯
+
+ FAIL  frontend/app/session-overview/session-overview-session-cache.test.ts > session-overview-session-cache (channel revision + flush scheduler) > Summary 刷新返回等价数据: 不 bump Summary revision (15s 强刷风暴治理 W2-2)
+AssertionError: expected 29 to be 28 // Object.is equality
+
+- Expected
++ Received
+
+- 28
++ 29
+
+ ❯ frontend/app/session-overview/session-overview-session-cache.test.ts:503:60
+    501|         await loadCachedSessionSummary(service, sid, { forceRefresh: t…
+    502|         expect(getCachedSessionSummary(sid)).toEqual(v1);
+    503|         expect(getSessionOverviewCacheRevision("summary")).toBe(revAft…
+       |                                                            ^
+    504| 
+    505|         // 真变化 (messageCount 变了) 仍然必须 bump —— 功能不回退.
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/4]⎯
+
+
+ Test Files  4 failed (4)
+      Tests  4 failed | 40 passed (44)
+   Start at  15:33:37
+   Duration  14.81s (transform 5.22s, setup 129ms, collect 16.52s, tests 633ms, environment 9.15s, prepare 2.37s)
+

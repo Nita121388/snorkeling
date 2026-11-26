@@ -119,9 +119,13 @@ function measureLayoutRect(element: HTMLElement, fallback: BoardRect | undefined
 function captureBoardSnapshot(
     container: HTMLElement,
     columnKeys: readonly string[],
-    fallbackItems: BoardSnapshot["items"] | undefined
+    fallbackItems: BoardSnapshot["items"] | undefined,
+    elementsOverride?: readonly HTMLElement[]
 ): BoardSnapshot {
-    const elements = Array.from(container.querySelectorAll<HTMLElement>("[data-board-block-id]"));
+    // `elementsOverride`：调用方（layout effect）已经为动效层查过一次节点，
+    // 直接复用，不再对同一帧重复 `querySelectorAll`（W2-2）。
+    const elements =
+        elementsOverride ?? Array.from(container.querySelectorAll<HTMLElement>("[data-board-block-id]"));
     const items: BoardSnapshot["items"] = {};
     for (const element of elements) {
         const blockId = element.dataset.boardBlockId;
@@ -261,8 +265,10 @@ function BoardCardImpl({
     /**
      * 跨 Tab 拖拽（11-23）：卡片 dragstart 交给看板统一处理（payload / 阈值 / 热区排除都在
      * 看板层，卡片只管把事件转上去）。不传 = 卡片不可拖（非 tab 分组 / 嵌入场景）。
+     * 签名带 card（W2-2）：看板只传一个稳定引用的回调，不再每渲染为每张卡新建闭包 ——
+     * 那会击穿 BoardCard 的 memo。
      */
-    onDragStartCard?: (event: DragEvent<HTMLDivElement>) => void;
+    onDragStartCard?: (card: OverviewBoardCard, event: DragEvent<HTMLDivElement>) => void;
     /** 拖起态视觉（看板层按当前拖拽 blockId 判定）。 */
     isDragging?: boolean;
     /** pointerdown 起点采样（看板层用它算位移阈值，<6px 视为点击）。 */
@@ -357,7 +363,7 @@ function BoardCardImpl({
             role="button"
             tabIndex={0}
             draggable={onDragStartCard != null}
-            onDragStart={onDragStartCard}
+            onDragStart={onDragStartCard != null ? (event) => onDragStartCard(card, event) : undefined}
             onPointerDown={onDragStartCard != null ? onPointerDownCard : undefined}
             onClick={handleCardClick}
             onKeyDown={(event) => {
@@ -533,9 +539,7 @@ function BoardCardImpl({
                         const rowValue =
                             row.single?.value ??
                             row.multi?.join(", ") ??
-                            (row.checked === true ? "✓" : "") ??
-                            row.text ??
-                            "";
+                            (row.checked === true ? "✓" : "");
                         return (
                         <span
                             key={row.key}
@@ -695,10 +699,19 @@ export function OverviewBoard({
 }: OverviewBoardProps) {
     const { t } = useTranslation("session-overview");
     // 状态分组常显 5 列（空列给占位）；tab / provider 分组只显示有卡的列。
-    const columns = groupOverviewCards(cards, presentedStatuses, group, {
-        maxTotal,
-        includeEmpty: group === "status",
-    });
+    //
+    // 必须 useMemo（W2-2）：`columns` 每次渲染换数组引用 → `columnKeys` 换引用 →
+    // layout effect (`[layoutSignature, columnKeys]`) 与 `rebaseline` 每渲染重跑，
+    // 对全板每张卡做一次 getBoundingClientRect（layout 强制回流）+ 重建 ResizeObserver。
+    // 触发点是日常操作：点卡片、30s `now` tick、任何无关 state 更新。
+    const columns = useMemo(
+        () =>
+            groupOverviewCards(cards, presentedStatuses, group, {
+                maxTotal,
+                includeEmpty: group === "status",
+            }),
+        [cards, presentedStatuses, group, maxTotal]
+    );
 
     const boardRef = useRef<HTMLDivElement | null>(null);
     const prevSnapshotRef = useRef<BoardSnapshot | null>(null);
@@ -729,8 +742,9 @@ export function OverviewBoard({
         [dragEnabled]
     );
 
+    // 稳定签名 `(card, event)`（W2-2）：每渲染为每张卡新建闭包会击穿 BoardCard 的 memo。
     const handleCardDragStart = useCallback(
-        (card: OverviewBoardCard) => (event: DragEvent<HTMLDivElement>) => {
+        (card: OverviewBoardCard, event: DragEvent<HTMLDivElement>) => {
             if (!dragEnabled) {
                 event.preventDefault();
                 return;
@@ -845,9 +859,10 @@ export function OverviewBoard({
         if (container == null) return;
 
         const prev = prevSnapshotRef.current;
-        // 第一段——先读完全部 rect 再写：边读边 animate 会让后面的采样读到被 transform 污染的坐标。
-        const next = captureBoardSnapshot(container, columnKeys, prev?.items);
+        // 节点只查一次：采样与动效写入共用同一份列表（W2-2 去重复 querySelectorAll）。
         const elements = Array.from(container.querySelectorAll<HTMLElement>("[data-board-block-id]"));
+        // 第一段——先读完全部 rect 再写：边读边 animate 会让后面的采样读到被 transform 污染的坐标。
+        const next = captureBoardSnapshot(container, columnKeys, prev?.items, elements);
 
         // 挂载后首帧只记账：list -> board 切换不得回放动效。
         if (!armedRef.current) {
@@ -1029,7 +1044,7 @@ export function OverviewBoard({
                                     onOpenMessage={onOpenMessage}
                                     onOpenSendPanel={openSendPanel}
                                     miniSegments={miniTimelines?.[card.blockId]}
-                                    onDragStartCard={dragEnabled ? handleCardDragStart(card) : undefined}
+                                    onDragStartCard={dragEnabled ? handleCardDragStart : undefined}
                                     onPointerDownCard={dragEnabled ? handleCardPointerDown : undefined}
                                     isDragging={dragPayload?.blockId === card.blockId}
                                 />

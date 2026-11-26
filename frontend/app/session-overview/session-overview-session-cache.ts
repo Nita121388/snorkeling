@@ -349,7 +349,14 @@ export function getCachedSessionDetail(sessionId: string): SessionDetail | null 
 function storeSummaryResult(entry: CacheEntry<SessionSummary>, sessionId: string, summary: SessionSummary): SessionSummary {
     const canonicalKey = registerSessionAliases(sessionId, summary);
     const canonicalEntry = getEntry(summaryCache, canonicalKey);
-    canonicalEntry.value = summary;
+    const prev = canonicalEntry.value;
+    // 等价去重 (W2-2): 15s 轮询强刷返回实质相同的数据时只刷新 loadedAt,
+    // 不 bump revision —— 否则每 15s × 全部会话各触发一次整板重渲 (强刷风暴).
+    // 真变化照旧 bump.
+    if (!isSameSessionSummary(prev, summary)) {
+        canonicalEntry.value = summary;
+        markChannelDirty("summary");
+    }
     canonicalEntry.loadedAt = Date.now();
     canonicalEntry.promise = null;
     dlog("summary stored", {
@@ -359,9 +366,9 @@ function storeSummaryResult(entry: CacheEntry<SessionSummary>, sessionId: string
         key: summary.key,
         updatedAt: summary.updatedAt,
         messageCount: summary.messageCount,
+        unchanged: isSameSessionSummary(prev, summary),
     });
     // Summary load 只动 summary 频道. detail 频道不受影响.
-    markChannelDirty("summary");
     return summary;
 }
 
@@ -478,6 +485,9 @@ export function loadCachedSessionDetail(
             canonicalEntry.loadedAt = Date.now();
             canonicalEntry.promise = null;
             const summaryEntry = getEntry(summaryCache, canonicalKey);
+            // 等价去重 (W2-2): summary 联动写入仅在实质变化时 bump summary 频道;
+            // detail 频道仍照旧 bump (detail 内容本身没做等价比较).
+            const summaryUnchanged = isSameSessionSummary(summaryEntry.value, detail.summary);
             summaryEntry.value = detail.summary;
             summaryEntry.loadedAt = Date.now();
             dlog("detail stored", {
@@ -489,9 +499,11 @@ export function loadCachedSessionDetail(
                 messageCount: detail.messages?.length ?? 0,
                 summaryMessageCount: detail.summary.messageCount,
             });
-            // Detail load 同时把 summary 写入 summaryCache: 两个频道都标记 dirty.
-            markChannelDirty("summary");
+            // Detail load 同时把 summary 写入 summaryCache: detail 频道标脏; summary 频道仅真变化时.
             markChannelDirty("detail");
+            if (!summaryUnchanged) {
+                markChannelDirty("summary");
+            }
             return detail;
         })
         .finally(() => {

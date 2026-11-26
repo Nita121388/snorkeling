@@ -26,6 +26,7 @@ import { i18n } from "@/i18n/config";
 import { cn, makeIconClass } from "@/util/util";
 import * as React from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { atom, useAtomValue, useSetAtom, useStore, type PrimitiveAtom } from "jotai";
 import { useTranslation } from "react-i18next";
 import {
     getSessionOverviewCacheSnapshot,
@@ -72,7 +73,17 @@ type CardSendSubmitOverrides = {
 
 export type CardSendState = {
     expandedBlockId: string | null;
-    draftByBlock: Record<string, string>;
+    /**
+     * 全板草稿（同步 getter）。
+     *
+     * W2-2：草稿态存在 `draftAtom`（jotai）里，**不再进 React state** —— 否则每敲一个字都会
+     * 换 `CardSendContext` 的 value 引用，把全板每一张卡的 `SendStatusChip` 带着重渲
+     * （`BoardCard` 的 memo 被 context 直接击穿）。
+     * 仍保留该字段给同步读取场景（测试/回调）使用；需要响应式草稿的组件用 `useCardSendDraft`。
+     */
+    readonly draftByBlock: Record<string, string>;
+    /** 草稿原子（composer 用 `useCardSendDraft` 订阅它，与 context 传播解耦）。 */
+    draftAtom: PrimitiveAtom<Record<string, string>>;
     sendByBlock: Record<string, CardSendEntry>;
     sendingStartedAt: Record<string, number>;
     /** 异步派发行程（R7）：blockId → 最近一次派发回执；仅应用存活期内有效。 */
@@ -102,6 +113,21 @@ export type CardSendState = {
 
 export const CardSendContext = React.createContext<CardSendState | null>(null);
 
+/** 无面板时的空草稿原子（hook 仍可无条件调用 useAtomValue，保持 hook 顺序稳定）。 */
+const EmptyDraftsAtom = atom<Record<string, string>>({});
+
+/**
+ * 响应式读取单张卡的草稿（W2-2）。
+ *
+ * 草稿存在 `CardSendState.draftAtom` 里：只有 composer 等真正需要草稿的组件订阅它；
+ * 常驻的 `SendStatusChip` 只消费 `CardSendContext`，不再被每个按键带着重渲。
+ */
+export function useCardSendDraft(blockId: string): string {
+    const cardSend = React.useContext(CardSendContext);
+    const drafts = useAtomValue(cardSend?.draftAtom ?? EmptyDraftsAtom);
+    return drafts[blockId] ?? "";
+}
+
 /** 草稿落盘防抖（design §3.2：400ms；逐键写 storage 会卡主线程）。 */
 export const SendDraftDebounceMs = 400;
 
@@ -115,10 +141,13 @@ function removeRecordKey<T>(record: Record<string, T>, key: string): Record<stri
 export function useCardSendState(reload: () => void): CardSendState {
     const [expandedBlockId, setExpandedBlockId] = useState<string | null>(null);
     // 草稿初值来自 localStorage（11-24 R4）：重开面板 / 切视图 / 重启应用都还在。
-    const [draftByBlock, setDraftByBlock] = useState<Record<string, string>>(() => {
+    // 存在 jotai atom 里（W2-2）：草稿变化不重渲 CardSendContext 消费者。
+    const [draftAtom] = useState<PrimitiveAtom<Record<string, string>>>(() => {
         const storage = getSafeLocalStorage();
-        return storage == null ? {} : readAllSendDrafts(storage);
+        return atom<Record<string, string>>(storage == null ? {} : readAllSendDrafts(storage));
     });
+    const draftStore = useStore();
+    const updateDrafts = useSetAtom(draftAtom);
     const [sendByBlock, setSendByBlock] = useState<Record<string, CardSendEntry>>({});
     const [sendingStartedAt, setSendingStartedAt] = useState<Record<string, number>>({});
     const [waitReply, setWaitReply] = useState(true);
@@ -126,15 +155,13 @@ export function useCardSendState(reload: () => void): CardSendState {
     // 引用镜像：回调里要读最新值，但不想为此每次渲染都换函数引用。
     const waitReplyRef = useRef(waitReply);
     waitReplyRef.current = waitReply;
-    const draftRef = useRef(draftByBlock);
-    draftRef.current = draftByBlock;
     // 每次发送一个序号：只认最后一次结果（用户可能失败后立即「改为不等待」重发）。
     const sendSeqRef = useRef<Record<string, number>>({});
 
     // 草稿防抖写盘 / 清除（storage 是外部系统，读写都走 overview-input-memory 纯函数）。
     const draftTimersRef = useRef<Record<string, number>>({});
     const clearDraft = React.useCallback((blockId: string) => {
-        setDraftByBlock((current) => removeRecordKey(current, blockId));
+        updateDrafts((current) => removeRecordKey(current, blockId));
         const storage = getSafeLocalStorage();
         if (storage != null) clearSendDraft(storage, blockId);
         const timer = draftTimersRef.current[blockId];
@@ -142,9 +169,9 @@ export function useCardSendState(reload: () => void): CardSendState {
             window.clearTimeout(timer);
             delete draftTimersRef.current[blockId];
         }
-    }, []);
+    }, [updateDrafts]);
     const setDraft = React.useCallback((blockId: string, text: string) => {
-        setDraftByBlock((current) => ({ ...current, [blockId]: text }));
+        updateDrafts((current) => ({ ...current, [blockId]: text }));
         const storage = getSafeLocalStorage();
         if (storage == null) return;
         const prev = draftTimersRef.current[blockId];
@@ -153,7 +180,7 @@ export function useCardSendState(reload: () => void): CardSendState {
             delete draftTimersRef.current[blockId];
             writeSendDraft(storage, blockId, text);
         }, SendDraftDebounceMs);
-    }, []);
+    }, [updateDrafts]);
 
     const applyOutcome = React.useCallback((blockId: string, outcome: CardSendResult) => {
         setSendByBlock((current) => ({ ...current, [blockId]: outcome }));
@@ -210,7 +237,7 @@ export function useCardSendState(reload: () => void): CardSendState {
     const retry = React.useCallback(
         (target: CardSendTarget, overrides?: CardSendSubmitOverrides) => {
             // 失败时草稿未清（见 runSend），原样重发；「改为不等待」只换投递模式。
-            runSend(target, draftRef.current[target.blockId] ?? "", overrides);
+            runSend(target, draftStore.get(draftAtom)[target.blockId] ?? "", overrides);
         },
         [runSend]
     );
@@ -407,7 +434,11 @@ export function useCardSendState(reload: () => void): CardSendState {
     return useMemo<CardSendState>(
         () => ({
             expandedBlockId,
-            draftByBlock,
+            // 同步 getter（W2-2）：读 atom 现值，不进 useMemo deps —— 草稿变化不换 context value。
+            get draftByBlock(): Record<string, string> {
+                return draftStore.get(draftAtom);
+            },
+            draftAtom,
             sendByBlock,
             sendingStartedAt,
             dispatchByBlock,
@@ -428,11 +459,13 @@ export function useCardSendState(reload: () => void): CardSendState {
         }),
         [
             expandedBlockId,
-            draftByBlock,
+            draftAtom,
+            draftStore,
             sendByBlock,
             sendingStartedAt,
             dispatchByBlock,
             waitReply,
+            setWaitReply,
             runSend,
             retry,
             continueWait,
@@ -500,7 +533,8 @@ export function CardSendPanel({
     const { t } = useTranslation("session-overview");
     const cardSend = React.useContext(CardSendContext);
     const textareaRef = useRef<HTMLTextAreaElement | null>(null);
-    const draft = cardSend?.draftByBlock[blockId] ?? "";
+    // 草稿走 atom 订阅（W2-2）：只有这个 composer 随输入重渲，不惊动全板。
+    const draft = useCardSendDraft(blockId);
     const entry = cardSend?.sendByBlock[blockId];
     const sending = entry === "sending";
     const result = entry != null && entry !== "sending" ? entry : null;

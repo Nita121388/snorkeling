@@ -119,30 +119,35 @@ export function getTabsWithUnreadDotsAtom(tabIds: string[]): Atom<Set<string>> {
     return derived;
 }
 
-function getWorkspaceBlockIdsAtom(tabIds: string[]): Atom<string[]> {
+export function getWorkspaceBlockIdsAtom(tabIds: string[]): Atom<string[]> {
     const key = tabIds.join("");
     const cached = WorkspaceBlockIdsAtomCache.get(key);
     if (cached != null) return cached;
     const derived = atom<string[]>((get) => {
         const out: string[] = [];
         const seen = new Set<string>();
+        // W2-2: 与消费侧 (getTabAgentStatusEntriesAtom) 同一份 isAgentTerminalMeta 判定 ——
+        // 普通终端 / preview / webview 块永远不会有 agent 状态, 逐块 acquire 只会白发
+        // GetAgentStatus RPC + agentstatus WPS 订阅.
+        const considerBlock = (blockId: string): void => {
+            if (seen.has(blockId)) return;
+            seen.add(blockId);
+            const block = get(WOS.getWaveObjectAtom<Block>(WOS.makeORef("block", blockId)));
+            if (isAgentTerminalMeta(block?.meta ?? null)) {
+                out.push(blockId);
+            }
+        };
         for (const tabId of tabIds) {
             const tab = get(WOS.getWaveObjectAtom<Tab>(WOS.makeORef("tab", tabId)));
             const topIds = tab?.blockids;
             if (topIds == null) continue;
             for (const topId of topIds) {
-                if (!seen.has(topId)) {
-                    seen.add(topId);
-                    out.push(topId);
-                }
+                considerBlock(topId);
                 const block = get(WOS.getWaveObjectAtom<Block>(WOS.makeORef("block", topId)));
                 const sub = block?.subblockids;
                 if (sub == null) continue;
                 for (const subId of sub) {
-                    if (!seen.has(subId)) {
-                        seen.add(subId);
-                        out.push(subId);
-                    }
+                    considerBlock(subId);
                 }
             }
         }
