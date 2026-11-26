@@ -56,11 +56,15 @@
 - disk fallback 先走窄元数据/有界 tail；只有一致性测试通过后才移除 legacy full-load。
 - Claude/OpenCode 的 model fallback 单独实现，不靠全量 Load。
 
-### 2.3 loadAll 写放大（代码已证实，待运行时复现补强）
+### 2.3 loadAll 写放大与 freshness 清零污染（已运行时复现）
 
 `DetailDelta` continuation summary 只填 `Key/ID/Source/FilePath/MessageCount`，没有 `MTime/Size`：`pkg/service/aisessionsservice/aisessionsservice.go:1268-1283`。
 
-随后 `LoadDelta` 跳过 resolve，`loadAllDelta → loadMessages`；`GetMessages` 因 mtime/size=0 必 miss，provider 整文件解析，`SaveMessages` 整会话 delete+insert，并把 mtime/size 写回 0：`pkg/aisessions/manager.go:752-830`、`pkg/aisessions/sqlite_index.go:1496-1527,1547-1582,2090-2140`。
+随后 `LoadDelta` 跳过 resolve，`loadAllDelta → loadMessages`：`pkg/aisessions/manager.go:752-830`、`pkg/aisessions/sqlite_index.go:1496-1527,1547-1582,2090-2140`。
+
+**运行时复现结果**（fake-provider，24 消息 / 3.96MB / 8 帧，`loadall-followup-results.json`）：
+- **现状组（续帧 mtime/size=0）**：Frame 0 写真实 `mtime/size`；**Frame 1 必 miss**，触发多余整会话解析 + `SaveMessages` 重写（90.46ms vs 对照 16.45ms），并把 `ai_sessions`/`ai_files` 的 `mtime/size` 覆写为 **`0, 0`**；Frame 2–7 随后触发 **`0 == 0` 假命中**（静默失新鲜度），且遗留的 `0, 0` 让下一次真实 `Detail`/扫描再次 miss 重写，形成 `real ↔ 0` 乒乓写放大。
+- **对照组（续帧带真实 mtime/size）**：8 帧总计仅 `provider_loads=1`、`saves=1`，续帧增量全为 **0**，最终 `mtime/size` 保持真实值，拼接字节一致。
 
 **修复**：
 - continuation 必须携带真实 mtime/size，或每帧按 ID 重新解析 summary（不能把 0 当真实值）。
@@ -109,15 +113,20 @@ ai_session_message_meta(
 - 切流用 feature flag；回滚只需停止读 sidecar，不丢数据。
 - 待详情 join/溢出页问题解决后，才评估独立正文表；本轮基准已证明直接拆表会严重回退。
 
-### 阶段 C：搜索优化（独立灰度）
+### 阶段 C：搜索优化（独立灰度，已补三候选实测裁决）
 
-目标：保持当前 `strings.ToLower(strings.TrimSpace(query))` + `strings.ToLower(text)` + `strings.Contains` 的 Unicode 子串语义，不把 SQLite ASCII `lower()` 当等价。
+目标：保持当前 `strings.ToLower(strings.TrimSpace(query))` + `strings.ToLower(text)` + `strings.Contains` 的 Unicode 子串语义（10 例语义对拍已验证 SQLite ASCII `lower()` 在 `NAÏVE`/`İSTANBUL`/`ΚαΛΗΜΈΡΑ` 漏检 3 例）。
 
-候选优先级：
+**实测裁决**（Go `go1.25.6` / `go-sqlite3`，5,225 可见会话，3 策略结果 100% 一致）：
 
-1. **流式逐行处理**：不 `SELECT text` 全量物化，降低 866MB 峰值内存；I/O 仍可能大。
-2. **SQL 内自定义 `contains_lower(text, query)` + 每会话 `LIMIT 1`**：函数用 Go `strings.ToLower/Contains`，提前命中，不把正文传到应用层；需基准确认。
-3. **FTS5 trigram/外部索引**：只能作为加速器，必须做 false-negative 对拍；CJK、标点、Unicode 大小写、跨 token、超长 tool text 全部验证。未证明前不替换。
+1. **流式逐行处理（`rows.Next()`）—— 推荐先上（降内存与高命中耗时）**：
+   - 高命中查询（`错误`，4,454 命中）：扫描行 **-63.4%**（576,630→211,192），P50 **4,789.5→3,062.5ms（-36.1%）**，峰值堆 **104.97→64.03MB（-39.0%）**，总分配 **1,230.4→547.6MB（-55.5%）**。
+   - 无命中查询（`absent_ascii`）：P50 **9,101.9ms**（现状 `go_bulk` 为 8,539.4ms），仍需扫 866MB 正文。
+2. **SQL 自定义 `contains_lower(text, query)` + `LIMIT 1` —— 实测淘汰**：
+   - CGO 逐行回调仍要分配约 1.92–1.94GB，无命中 P50 **9,211.2ms**、高命中 P50 **3,197.1ms**，均慢于 `rows.Next()` 且增加自定义驱动注册复杂度。
+3. **1,500ms 延迟门结论 —— 保持现状、单独迭代**：
+   - 任何不建倒排/trigram 索引的扫描候选都无法把 866MB 正文搜索压进 1,500ms（实测最优无命中 8.54s、高命中 3.06s）。
+   - 后续单独开包评估 **FTS5 trigram 预筛选加速器 + Go 精确二次校验**（保证 0 假阳、且必须过 Unicode/CJK/标点/超长 tool text 的 false-negative 对拍），未证明前不替换。
 
 搜索不包含 thinking，GUI List query 不搜正文，详情内搜索是前端子串；三条路径不能混为一谈。
 
@@ -178,6 +187,7 @@ ai_session_message_meta(
 
 ## 7. 证据边界
 
-- 已证实：存储构成、查询基线、候选索引收益、宽表详情耗时、搜索传输量、RPC 超时机制、loadAll 缺 freshness 代码链。
-- 待运行时补强：43.65s 各阶段耗时、搜索候选最终收益、loadAll 实际调用次数、写锁争用。
+- 已实测：存储构成、C 与 Go 两套查询基线、搜索三候选对比与 10 例 Unicode 语义对拍、loadAll 运行时复现（Frame 1 重写 + `0, 0` 污染）、候选索引收益、宽表详情耗时、独立正文表 70.7× 回退。
+- 代码证实：RPC 超时机制（21s/30s/60s/120s）、`Summary` join 长 flight 与 `LiveSessionState` `GetState` 忽略 context 调用链。
+- 待运行时补强：线上 43.65s 各阶段精确耗时分布、运行时 `web:servicetimeoutms`、并发写锁争用。
 - 安全例外：备份期间运行中的 Snorkeling 改写了原库；只读 WAL 打开与新 sidecar 时间接近，不能严格证明原库零触碰。快照 `quick_check=ok`；后续不再打开原库。

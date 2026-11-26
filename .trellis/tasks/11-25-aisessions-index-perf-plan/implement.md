@@ -10,15 +10,16 @@
 - [x] 4. 测删重复索引、user 部分索引、窄元数据表、整数 fk、独立正文表候选。
 - [x] 5. 追踪 `Summary` 503 与 `LiveSessionState` 空响应调用链。
 - [x] 6. 追踪 `DetailDelta(loadAll)` 的新鲜度缺失与写放大。
-- [ ] 7. 补搜索候选基准（bulk / 流式 / SQL 自定义函数）与 loadAll fake-provider 复现。
-      → 工具已编译：`tmp/aisessions-index-perf-bench/followup/followup.exe`；
-      卡点：observer 在 schema 建立前查询导致 `no such table: ai_session_messages`，
-      修法见 `NEXT-STEPS.md`。
-- [ ] 8. 汇总调查报告，明确实测/推断/未证实边界。
-      → 基线已固化到 `research/performance-baseline.md`；等第 7 项数字补齐后收口。
-- [ ] 9. 生成 HTML 整改计划（`collapse: true`，0 渲染错误）。
-      → 草稿 `tmp/aisessions-index-perf-plan.md` 已含 A–H 八节，待数字补齐后 `am render -o`。
-- [ ] 10. 清理 `tmp/aisessions-index-perf-bench/` 全部副本与中间产物（当前 13G，需在第 7/9 项之后）。
+- [x] 7. 补搜索候选基准（bulk / 流式 / SQL 自定义函数）与 loadAll fake-provider 复现。
+      → 已修 `semantics.go`（表名 + 希腊用例）、`loadall.go`（`OpenSQLiteIndex` 热身 + `db` tag + digest）、`common.go`（10ms 采样），三项全部跑通：
+      - `semantics`：10/10 Go 一致，SQLite ASCII 失配 3 例（`NAÏVE`/`İSTANBUL`/`ΚαΛΗΜΈΡΑ`）。
+      - `loadall`：现状组 Frame 1 冗余重写（90.46ms vs 16.45ms）并把 `mtime/size` 污染清零为 `0, 0`，Frame 2–7 触发 `0==0` 假命中；对照组 8 帧全程仅 1 次解析/1 次写、真实 freshness 保留。
+      - `search`（1 cold + 3 hot）：三策略结果 100% 一致；高命中（`错误`）`go_streaming` 最优（4.79s→3.06s、峰值堆 -39%、总分配 -55.5%）；`go_udf` 因 CGO 回调更慢被淘汰；无命中三者均 8.5–9.2s，未达 ≤1,500ms 门，1.5s 目标另开 FTS5 trigram 迭代。
+- [x] 8. 汇总调查报告，明确实测/推断/未证实边界。
+      → 已回写至 `research/performance-baseline.md`（新增第 5 节）、`design.md`（§2.3/§3/§7）及 `tmp/aisessions-index-perf-plan.md`。
+- [x] 9. 生成 HTML 整改计划（`collapse: true`，0 渲染错误）。
+      → 已通过 `am lint`（0 警告）与 `am render -o` 输出至 `docs/answers/aisessions-index-perf-plan-20261126.html`（8 面板，`collapse: true` 保留）。
+- [x] 10. 清理 `tmp/aisessions-index-perf-bench/` 全部副本与中间产物（约 13GB 副本/缓存已清理，仅保留 `.go` 源码与 `.json`/报告证据链）。
 
 ## 未来整改包顺序（本轮不执行）
 
