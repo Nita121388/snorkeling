@@ -1102,3 +1102,20 @@ agent，启动时如果写裸命令名，就会 `zsh:1: command not found`**—�
 - 坑：`agent:provider` 取 cmd 的 basename（`getAgentProvider` / `agentProviderName`），绝对路径不影响
   provider 判定；但 Go 测试断言 cmd 时要用「不存在的命令名」或受控 PATH（`t.Setenv("PATH", tmpDir)`），
   否则断言结果依赖开发机装了什么。
+
+---
+
+## 发送目标浮层的模型选择语义：模型只影响「新建」，绝不改写既有块 (2026-11-25, task 11-25-commontext-send-model-path)
+
+CommonText 发送浮层与 Overview New Agent 弹窗共享同一个模型目录源（`loadAgentCatalog` /
+`modelOptionsFor` / `pickDefaultModel`），但模型 override 的**作用面**不同，混用会静默改写别人的模型：
+
+- **模型 override 只作用于本次新建块**：选了具体模型 → 目标判定必须切到「新建」
+  （`previewSendTarget` 的 force-create），并把模型传给 `createAgentBlockDefForProfile` 的
+  `modelOverride`；「自动（跟随项目偏好）」= 空值，不传 override。
+- **绝不能注入已存在的聚焦块**：existing 块的运行模型不属于本次发送，选模型后仍注入 existing
+  是错面（会把别人的运行模型换掉）。
+- **切 Agent 必须清空模型选择**：不同 profile 的模型 id 不通用，带着旧 id 切 Agent 会把
+  无效模型传给新 profile。
+- 目录不可用时降级为手填输入框（不阻断发送）；路径候选复用 `collectSendFolderCandidates`
+  （顺序/去重/Tab 联动单一来源），不要为浮层重写一份路径收集。

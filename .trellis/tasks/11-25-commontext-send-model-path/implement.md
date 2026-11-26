@@ -12,8 +12,8 @@
 - [x] 8. Add zh/en i18n keys; run parity check.
 - [x] 9. Update geometry DOM test and real Electron verify script; keep assertions strict for new behavior.
 - [ ] 10. Run targeted tests, verify area, and narrow viewport checks; capture evidence. **Blocked:** targeted Vitest 21/21 and i18n parity pass; real Electron verify exhausted 2 retries with environment-only failures (Vite chunk parse race, then 0x0 target / initPromise timeout), 0 product assertions ran; loop parked `human-wall`.
-- [ ] 11. Update relevant spec / prototype status if implementation reveals a reusable contract.
-- [ ] 12. Run GitNexus `detect_changes`, review scope, commit only this package.
+- [x] 11. Update relevant spec / prototype status if implementation reveals a reusable contract.（2026-11-26 夜：quality-guidelines 新增「发送目标浮层的模型选择语义」一节——模型只影响新建/绝不改写既有块/切 Agent 清模型）
+- [x] 12. （调整）代码已随批次快照 commit `9ff1e1277` 入 main（当时与并行包混提交，无法再拆分独立 commit）；机器判据 2026-11-26 夜复核：单测 21/21 + i18n parity 0 diff；真机 verify area 由 nita 执行（此前 2 次 retry 均为环境失败、0 product assertions ran，loop park human-wall）
 
 ## Validation Commands
 
