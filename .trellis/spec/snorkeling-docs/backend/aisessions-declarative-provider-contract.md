@@ -59,6 +59,23 @@
   `restoreMetaForSession` 对不可恢复来源直接 throw，绝不 `?? "codex"`。
 - 新增声明式来源不会自动获得恢复能力；除非该 agent 有真实 resume CLI，才在两表同步加行。
 
+## 外部会话运行态（2026-11-26，antigravity-runstate）
+
+声明式 provider 会话（在 IDE 里跑、无 Snorkeling 块）的运行态来自源表的 `status` 列：
+
+- **归一化纯函数** `normalizeRunState(status, lastModifiedMs, nowMs)`（`pkg/aisessions/provider_declarative_sqlite.go`，时钟注入可单测）：
+  值含 `RUNNING`（大小写不敏感）且 `lastModifiedMs` 在 **TTL 5 分钟**内 → `"running"`；
+  其余（IDLE/空/未知/陈旧 RUNNING/updated 不可解析）→ `""`。
+  陈旧保护是硬规则：agent 崩溃不重置 status，会话不得永远显示 running。
+- 状态读取发生在 provider 既有 `List`/`ParseSummary` 同一 SELECT 里（多取一列），
+  **不新增扫描入口、不引入新轮询循环**（aisessions-scan-contract）。
+  运行中会话的 per-conv db 持续写入 → mtime 驱动的既有增量刷新链路天然跟随。
+- 索引列 `ai_sessions.run_state`（TEXT NOT NULL DEFAULT ''，走 `ensureAISessionColumns` 迁移模式）。
+- **前端合流**：`mergeRowRunning(blockRunning, runState)` 纯函数，**块内优先**；外部 running
+  复用同一点位/同 class（`RunningDot` 的 `externalRunning` 分支，`data-external-running` 探针），
+  不可点击、不建第三份状态映射，不接 thinking/tool phase 徽章（db 无此粒度）。
+- 不动：AgentStatusStore / agentstatus hooks（那是块内 hook 接管通道；外部会话没有块）。
+
 ## 已知边界
 
 | 边界 | 现状 | 出路 |
@@ -72,3 +89,6 @@
 - 单测：`go test ./pkg/aisessions ./pkg/wconfig ./pkg/service/aisessionsservice`
 - 真机台：`node scripts/verify/aisessions-declarative-source/verify.mjs`
   （会话可见 / 筛选面板有配置 label / 过滤后只剩该来源 / 详情挂载不崩）
+- 运行态台：`node scripts/verify/antigravity-runstate/verify.mjs`
+  （fixture provider 注入：RUNNING 新鲜行有指示 / IDLE 行无指示 / 陈旧 RUNNING（超 TTL）行无指示；
+  `--attach` 模式无法注入 fixture provider，判据整体 skip）
