@@ -3,7 +3,7 @@
   "name": "perf-w2-2-overview-poll-storm",
   "title": "Wave 2-2: Overview 看板回流与 15s 强刷风暴治理（columns memo、summary 等价去重、草稿态拆离 chip、workspace acquire 只收 agent 块）",
   "description": "Wave 2-2: Overview 看板回流与 15s 强刷风暴治理（columns memo、summary 等价去重、草稿态拆离 chip、workspace acquire 只收 agent 块）",
-  "status": "planning",
+  "status": "in_progress",
   "dev_type": null,
   "scope": null,
   "package": "snorkeling-docs",
@@ -15,12 +15,12 @@
   "branch": null,
   "base_branch": "snorkeling",
   "worktree_path": null,
-  "commit": null,
+  "commit": "02c798d5a",
   "pr_url": null,
   "subtasks": [],
   "children": [],
   "parent": null,
   "relatedFiles": [],
-  "notes": "",
+  "notes": "机器判据全绿（目标套件 8f/88t、整包 47f/548t、tsc 基线校准后 exit 0）；G7 真机验收待 nita 执行",
   "meta": {}
 }

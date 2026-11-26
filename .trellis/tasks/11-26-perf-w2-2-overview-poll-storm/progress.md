@@ -84,3 +84,30 @@ frontend/app/agent-status/agent-status-tab-aggregate.test.ts
 ```
 
 > 未改 `send-status-chip.tsx`（白名单里有但无需改：chip 本来只读 context，收口在 context 源头）。
+
+---
+
+## 四、2026-11-26 20:5x 收尾（主 agent：pi，macOS 本机）
+
+### 已完成
+1. **判据 2 整包复跑**（串行，`--no-file-parallelism`）：
+   `npx vitest run frontend/app/session-overview frontend/app/agent-status` →
+   **47 files / 548 tests passed**，25.31s，无 OOM。
+2. **判据 3 走通，口径澄清**：
+   - 之前 `--verbose | grep -c` 得到的 77 是脚本双段输出（`--verbose` 全量 + 超基线时的前 20 条带缩进）导致的虚高，
+     **脚本本身无重复计数 bug**；直接 `tsc --noEmit` 实测 = **57**。
+   - 干净 worktree 在基点 `0137a4da6` 实测 = **58**；当前 HEAD = **57**。
+   - 错误集合 diff：新增的 3 条 `session-overview.tsx` TS2345/TS2881 是**既有债行号漂移**（基点同位置存在实测确认）；
+     真正修掉 1 条 `overview-board.tsx(536) TS2881`。progress 原文「新增 0、减少 1」成立。
+3. **基线校准（chore）**：`node scripts/check-tsc-baseline.mjs --update` → `47 → 57`
+   （`docs/project/tsc-baseline.json`）。47 是 2026-11-05 冻结值，期间多批功能累计 10 条既有债未上调，
+   属独立技术债校准，不由本包承担代码改动。
+4. **判据 3 复核**：`node scripts/check-tsc-baseline.mjs && echo W2_2_TSC_OK` → `W2_2_TSC_OK`（exit 0）。
+
+### 仍待 nita 执行（G7 真机验收，本机不做）
+- 重启 `wavesrv` + `Snorkeling` 后确认：
+  1. 点卡片 / 30s tick 不再全板回流（CDP 采样 `getBoundingClientRect` 计数）
+  2. Overview 15s 轮询不再整板抖动重渲
+  3. 卡 composer 打字时其它卡 chip 不闪
+  4. 普通终端 Tab 不再对每个块发 `GetAgentStatus`
+- 验证台：`node scripts/verify/overview-board/verify.mjs`（本轮涉及看板回流，建议连带跑）
