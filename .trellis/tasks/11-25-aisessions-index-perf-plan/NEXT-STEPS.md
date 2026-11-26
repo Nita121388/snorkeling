@@ -1,5 +1,11 @@
 # 明天继续：AI Sessions 索引性能调查收尾
 
+> **平台标注（2026-11-27，macOS agent 核查）**：本任务全部收尾事为 **Windows 机专用**——
+> 3.42GB 基线快照、tmp 13GB 副本、followup.exe 都在 Windows 机（E:\code\snorkeling）；
+> macOS 机（/Users/nita/Primary/projects/snorkeling）无 index-v2.sqlite、tmp 为空、整改计划页
+> （docs/answers/aisessions-index-perf-plan-20261126.html）已生成入库。在 macOS 机上无可执行项。
+# 明天继续：AI Sessions 索引性能调查收尾
+
 > 状态时间：2026-11-25 晚。已提交推送：`270fc19cd`（`origin/main`）。
 > 本任务仍在 `planning`，未动生产代码、未动当前索引库。
 

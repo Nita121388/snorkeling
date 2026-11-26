@@ -1,4 +1,41 @@
-# HANDOFF — 接手必读（2026-11-24 更新）
+# HANDOFF — 接手必读（2026-11-27 更新）
+
+## 2026-11-26 深夜～11-27 凌晨：性能整改 Wave 2 全量落地 + W3-1 子集（macOS 本机，发版 0.0.140）
+
+> nita 指示：「除了真机验证部分由我来执行，其他的请你将它们做完」+「完成后提交推送 发布新版本 注意编辑发布信息」。
+> 白天（Windows 机）已完成 Wave 0 三包 + Wave 1 两包 + 声明式 provider + Antigravity 运行态；本段为 macOS 机续做部分。
+
+**本轮落地（全部独立 commit + 红证 + loop 台账）**：
+
+| 包 | commit | 内容 | 状态 |
+|---|---|---|---|
+| W2-2 收口 | `3a5b6f29c` | 整包复跑 47f/548t 全绿；tsc 口径澄清（--verbose 双段输出致 grep 虚高 77，实际 57）；**基线校准 47→57**（11-05 冻结值已失真 3 周）；台账 verify green | G2 清，**G7 真机待 nita** |
+| antigravity-runstate 验证台 | `6dc3b203d` | `scripts/verify/antigravity-runstate/verify.mjs`（fixture provider 经 profile settings 预埋注入 + node:sqlite 造数；RUNNING/IDLE/陈旧 TTL 三判据；--dry 本机 PASS）；spec 补「外部会话运行态」契约 | 真机台待 nita 跑 |
+| 11-25 两包收口 | `7224aa2d7` | commontext-send-model-path：机器判据 21/21+parity 0 复核绿、spec 回写「发送目标浮层的模型选择语义」、任务 completed；paste-default-writer：11-25 已 green，任务 completed | 真机 verify area 待 nita |
+| **W2-1 懒加载** | `e1c2…（git log 查 feat(perf/w2-1)）` | monaco-env 拆轻量桩+按需 loader；wave.ts 启动不阻塞加载 Monaco；streamdown shiki 单飞动态 import+LRU100；sysinfo 拆 view 文件 React.lazy；preview-model 改 lazy；emain fullConfig TTL30s 缓存 + configureAutoUpdater 非阻塞 | 契约 6t + 回归 1517t+843t + build:prod ok；**G7 真机待 nita** |
+| **W2-3 渲染面治理** | `92218ac3b` | preview-directory useVirtualizer 虚拟化；term.tsx TermWrap 依赖缩窄（热更新不再销毁终端）；wps.ts 订阅合批（queueMicrotask，后端全量替换语义实测）；隐藏定时器休眠（done-tick/processviewer/aiaudit 门控 + aisessions refreshTimeNow 下沉叶子） | 契约 10t + 回归 705t+1037t；**G7 真机待 nita** |
+| **W2-1b 入口 chunk 布局** | `git log 查 perf(build)` | 实测入口静态闭包 **31.52MB → 10.62MB（-66%）**：getFileLanguage 拆 preview-file-language.ts（断掉 aifilediff/vcsdiff→preview-edit→monaco 静态链）；manualChunks monaco 组收窄 + vite preload-helper 单开 + 移除 mermaid/cytoscape/katex 强制分组 | 契约 5t + 回归 457t；测量脚本口径见下 |
+| **W3-1 子集** | `8b43d4c06` | sysinfo 零订阅者门控（本地循环查 wps.Broker.HasSubscribers；远端 fail-open 恒推送）；findCmdMethod per-Type 方法表缓存；SetRTInfo tag 映射缓存 | 红测全转绿 + -race 全绿；**远端 sysinfo 订阅转发 RPC 遗留**（需动 wshrpctypes+tsgen，另立工作项） |
+
+**W2-1b 测量口径（省得下次重写）**：入口静态闭包 = `dist/frontend/index.html` 引用的 entry chunk 沿**静态** import（排除 `import(...)` 动态）BFS 的全部文件大小和；rollup 产物的 bare import（无符号绑定）也是**静态**整包加载（chunk 执行顺序依赖）。正则形态：`import { x } from "./chunk.js"` / `import "./chunk.js"` / `export {} from`。临时脚本在 /tmp/measure-entry-closure.mjs（未入库，需要可从本 HANDOFF 描述重建）。
+
+**W3-2（AI Sessions 索引 P1/P2）—— 明确留给 Windows 大库机器**：P1-A 删重复索引+部分索引+VACUUM（3.42→2.83GB）、P1-B 整数 session_fk sidecar、P2-A 搜索流式、P2-B SaveMessages 增量写——设计与基准全在 `.trellis/tasks/11-25-aisessions-index-perf-plan/`（design.md + research/ 三份 + NEXT-STEPS.md），**基线快照与 13GB tmp 副本都在 Windows 机**（本机 macOS 无该库、tmp 为空）。切记：不要直接拆 equijoin 正文表（实测 70.7× 回退）；搜索不得用 SQLite ASCII `lower()` 替换 Go Unicode 子串语义。NEXT-STEPS 的三件收尾事均 Windows-only。
+
+**遗留 follow-up 清单（本轮新增）**：
+1. 远端 sysinfo 订阅转发 RPC（主服务器 → 远端 connserver，砍远端每秒采集；需 wshrpctypes + tsgen）。
+2. W2-1b 更进一步：index chunk 9.62MB 内还有优化空间（未深挖）。
+3. W3-1 其余子项：PTY 4KB read base64 广播、Codex 会话捕捉 29 分钟轮询重读全部 jsonl、VCS 单仓 5-8 次串行 git / svn 试探、WS RPC 每请求 5 次 Unmarshal。
+4. 冷切 Tab 队列解耦（11-19-tab-switch-queue-decouple，先锁 6 项竞态单测再开开关）。
+
+**G7 真机验收清单（nita 执行，按台子）**：
+- W2-2：`node scripts/verify/overview-board/verify.mjs`（30s tick 回流 / 15s 轮询抖动 / chip 闪烁 / GetAgentStatus 收口四项确认，重启 wavesrv 后）
+- W2-1/W2-3：冷启动/冷切 Tab 卡顿与内存对比；目录大文件夹滚动；改 term:bellsound 等热更新设置终端不重建；隐藏页面 CPU 降
+- antigravity-runstate：`node scripts/verify/antigravity-runstate/verify.mjs`（默认模式）
+- commontext-send-agent-block：真机 verify area（此前 2 retry 均环境失败）
+- 11-26 declarative-provider / antigravity-runstate 真机（此前记录：移机待跑）
+
+---
+
 
 ## 2026-11-24 夜：Overview Tab 展示分区模型——设计已定，**暂不开发**（nita 拍板「先记录下来」）
 
