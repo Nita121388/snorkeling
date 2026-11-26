@@ -650,6 +650,12 @@ func newLocalManager() *aisessions.Manager {
 	})
 }
 
+// sessionSourceStatuses is the injectable provider-status source behind
+// GetSourceList: production enumerates the compile-time providers plus the
+// merged "agent:sessionproviders" config; tests substitute fixture statuses
+// without touching the real settings.json.
+var sessionSourceStatuses = aisessions.SourceStatuses
+
 // makeTitleUpdatedPublisher forwards a finished AI title to the GUI as a wps
 // event. The GUI refreshes only the affected row / tab, so there is no polling.
 func makeTitleUpdatedPublisher(connection string) func(aisessions.SessionSummary) {
@@ -933,6 +939,47 @@ func (svc *AISessionsService) List(ctx context.Context, request *AISessionsListR
 		deriveHeroProps(response.Sessions, response.HeroRoot, response.Heroes)
 	}
 	return response, nil
+}
+
+// AISessionsSourceEntry is one row of the GetSourceList RPC: a session source
+// id, its user-facing label (config label for declarative providers) and
+// whether it is currently registered (its db/directory gate passed).
+type AISessionsSourceEntry struct {
+	Source    string `json:"source"`
+	Label     string `json:"label"`
+	Available bool   `json:"available"`
+}
+
+type AISessionsSourceListResponse struct {
+	Sources []AISessionsSourceEntry `json:"sources"`
+}
+
+func (svc *AISessionsService) GetSourceList_Meta() tsgenmeta.MethodMeta {
+	return tsgenmeta.MethodMeta{
+		Desc:       "list AI session sources (compile-time + declarative) with registration status",
+		ArgNames:   []string{"ctx"},
+		ReturnDesc: "session source entries (id, label, availability)",
+	}
+}
+
+// GetSourceList feeds the AI Sessions source filter and the source badges:
+// the four compile-time providers plus every registrable declarative
+// "agent:sessionproviders" entry, with available reporting whether the
+// os.Stat registration gate passed. Unregistered entries are reported
+// (available=false) instead of hidden so the GUI can decide how to present
+// them; labels come from aisessions.ProviderLabel (declarative config label,
+// falling back to the source id).
+func (svc *AISessionsService) GetSourceList(ctx context.Context) (*AISessionsSourceListResponse, error) {
+	statuses := sessionSourceStatuses()
+	sources := make([]AISessionsSourceEntry, 0, len(statuses))
+	for _, status := range statuses {
+		sources = append(sources, AISessionsSourceEntry{
+			Source:    status.Source,
+			Label:     status.Label,
+			Available: status.Available,
+		})
+	}
+	return &AISessionsSourceListResponse{Sources: sources}, nil
 }
 
 // AISessionsHeroOverviewRequest is empty today (A4 roster block).

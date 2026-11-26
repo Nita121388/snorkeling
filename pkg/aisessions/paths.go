@@ -7,8 +7,11 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sort"
+	"strings"
 
 	"github.com/wavetermdev/waveterm/pkg/ccswitch"
+	"github.com/wavetermdev/waveterm/pkg/wconfig"
 )
 
 func homeDir() string {
@@ -145,7 +148,21 @@ func DefaultOpenCodeDBPath() string {
 	return ""
 }
 
+// DefaultProviders returns the scan providers for this machine: the four
+// compile-time providers plus every registered declarative provider (config
+// section "agent:sessionproviders", merged with the built-in entries).
+//
+// Declarative providers are an additive channel: they go through the exact same
+// Manager scan pipeline (single-flight, budgets, SQLite index) — no separate
+// scan entry point.
 func DefaultProviders() []Provider {
+	return defaultProvidersWithSettings(wconfig.ReadFullConfig().Settings)
+}
+
+// defaultProvidersWithSettings is the injectable form of DefaultProviders so
+// tests can exercise the config-declared branch without touching the user's
+// settings.json.
+func defaultProvidersWithSettings(settings wconfig.SettingsType) []Provider {
 	var providers []Provider
 	if dir := DefaultCodexSessionsDir(); dir != "" {
 		providers = append(providers, NewCodexProvider(dir))
@@ -168,7 +185,82 @@ func DefaultProviders() []Provider {
 			providers = append(providers, NewPiProvider(piDir))
 		}
 	}
+	// Declarative providers last: pure config, no compile-time knowledge of the
+	// agent. Same os.Stat gate as opencode/pi — a machine without the agent gets
+	// a clean empty list instead of a scan error on every refresh.
+	sessionProviders := mergeSessionProviderConfigs(settings)
+	for _, name := range sortedSessionProviderNames(sessionProviders) {
+		cfg := sessionProviders[name]
+		if cfg.Disabled || strings.ToLower(cfg.Type) != SessionProviderTypeSQLite {
+			continue
+		}
+		if info, err := os.Stat(cfg.DB); err != nil || info.IsDir() {
+			continue
+		}
+		providers = append(providers, NewDeclarativeSQLiteProvider(name, cfg))
+	}
 	return providers
+}
+
+// SourceStatus describes one potential session source for the GUI source
+// filter / source badge: its id, its user-facing label, and whether it is
+// currently registered (the os.Stat gate passed).
+type SourceStatus struct {
+	Source    string `json:"source"`
+	Label     string `json:"label"`
+	Available bool   `json:"available"`
+}
+
+// SourceStatuses enumerates every potential session source — the four
+// compile-time providers plus every registrable declarative config entry —
+// in stable source-lexicographic order. Unregistered sources are reported
+// with Available=false instead of being hidden, so the frontend can decide
+// whether to grey them out; the frontend keeps its built-in label/icon table
+// for ids the backend labels with the bare source id (the compile-time
+// providers do not implement LabeledProvider).
+func SourceStatuses() []SourceStatus {
+	return sourceStatusesWithSettings(wconfig.ReadFullConfig().Settings)
+}
+
+// sourceStatusesWithSettings is the injectable form of SourceStatuses so
+// tests can exercise the config-declared branch without touching the user's
+// settings.json.
+func sourceStatusesWithSettings(settings wconfig.SettingsType) []SourceStatus {
+	registered := make(map[string]Provider)
+	for _, p := range defaultProvidersWithSettings(settings) {
+		registered[p.Source()] = p
+	}
+	seen := make(map[string]bool)
+	var out []SourceStatus
+	add := func(source, label string, available bool) {
+		if source == "" || seen[source] {
+			return
+		}
+		seen[source] = true
+		out = append(out, SourceStatus{Source: source, Label: label, Available: available})
+	}
+	for _, id := range []string{SourceClaude, SourceCodex, SourceOpenCode, SourcePi} {
+		label := id
+		if p, ok := registered[id]; ok {
+			// ProviderLabel falls back to the source id for the compile-time
+			// providers: the frontend's CHAT_SOURCES table owns their labels.
+			label = ProviderLabel(p)
+		}
+		add(id, label, registered[id] != nil)
+	}
+	merged := mergeSessionProviderConfigs(settings)
+	for _, name := range sortedSessionProviderNames(merged) {
+		label := strings.TrimSpace(merged[name].Label)
+		if label == "" {
+			label = name
+		}
+		if p, ok := registered[name]; ok {
+			label = ProviderLabel(p)
+		}
+		add(name, label, registered[name] != nil)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Source < out[j].Source })
+	return out
 }
 
 func uniqueStrings(values []string) []string {

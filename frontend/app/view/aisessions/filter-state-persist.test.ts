@@ -54,7 +54,7 @@ describe("parseFilterStateMeta", () => {
         const parsed = parseFilterStateMeta({
             activePresetId: 12,
             filter: {
-                source: "not-a-source",
+                source: "Not A Source",
                 markedFilter: 1,
                 dateRange: { preset: "yesterday", from: "x" },
                 attachMode: null,

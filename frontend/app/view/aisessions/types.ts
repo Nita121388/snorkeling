@@ -1,7 +1,10 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-export type SourceFilter = "" | "codex" | "claude" | "opencode" | "pi";
+// 内置来源字面量仅作补全提示；声明式 provider 的来源 id 是开放集合（agent:sessionproviders）。
+// (string & {}) 保持字面量自动补全的同时允许任意字符串。
+export type KnownAgentSource = "codex" | "claude" | "opencode" | "pi";
+export type SourceFilter = "" | KnownAgentSource | (string & {});
 
 // Key of the transient "new chat" placeholder shown in the session list until
 // the backend assigns a real session id (first message) and List picks it up.

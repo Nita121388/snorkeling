@@ -75,6 +75,48 @@ type AgentProfileConfigType struct {
 	CmdEnv    map[string]string      `json:"env,omitempty"`
 }
 
+// AgentSessionProviderColumnsType maps SessionSummary fields onto the source
+// table's column names for a declarative session provider. Every column except
+// "id" may be missing/empty: an unknown or renamed column then only loses that
+// one field instead of breaking the whole scan.
+type AgentSessionProviderColumnsType struct {
+	ID       string `json:"id,omitempty"`
+	Title    string `json:"title,omitempty"`
+	Updated  string `json:"updated,omitempty"`
+	Created  string `json:"created,omitempty"`
+	Project  string `json:"project,omitempty"`
+	ParentID string `json:"parentid,omitempty"`
+}
+
+// AgentSessionProviderConfigType declares one external agent session store so
+// the AI Sessions scanner can list its conversations without a code change or a
+// release. It is an additive channel: the four compile-time providers
+// (codex/claude/opencode/pi) are unaffected.
+//
+// Only type "sqlite" exists today, and it deliberately accepts a fixed
+// table + column mapping instead of arbitrary SQL: a schema change upstream is
+// a user-editable config fix, and there is no query surface to sanitize.
+type AgentSessionProviderConfigType struct {
+	// Label is the user-facing source name (filter panel / source badge).
+	// Empty falls back to the config key.
+	Label string `json:"label,omitempty"`
+	// Type is the reader backend; an unknown value makes the entry a no-op
+	// rather than an error.
+	Type string `json:"type,omitempty" jsonschema:"enum=sqlite"`
+	// DB is the sqlite file holding the conversation list. A leading "~" is
+	// expanded.
+	DB string `json:"db,omitempty"`
+	// Table is the table (or view) the list rows come from.
+	Table string `json:"table,omitempty"`
+	// Disabled removes this entry (including the built-in default of the same
+	// key) from the scan.
+	Disabled bool `json:"disabled,omitempty"`
+	// Columns maps summary fields to column names; only "id" is required.
+	Columns AgentSessionProviderColumnsType `json:"columns,omitempty"`
+	// ListLimit caps one List() query (default 2000).
+	ListLimit int `json:"listlimit,omitempty"`
+}
+
 // AgentPropertyDefType is one entry in the global Notion-style property schema
 // (settings.json -> "agent:propertyschema"). It defines a reusable property:
 // its key, label, type, selectable options and display order. Session values
@@ -282,6 +324,11 @@ type SettingsType struct {
 	AgentClear          bool                              `json:"agent:*,omitempty"`
 	AgentDefaultProfile string                            `json:"agent:defaultprofile,omitempty"`
 	AgentProfiles       map[string]AgentProfileConfigType `json:"agent:profiles,omitempty"`
+	// AgentSessionProviders declares external agent session stores for the AI
+	// Sessions scanner. Built-in entries (currently "antigravity") are merged
+	// with this map: same key = user override, "disabled": true = removed.
+	// Merge rules live in pkg/aisessions (mergeSessionProviderConfigs).
+	AgentSessionProviders map[string]AgentSessionProviderConfigType `json:"agent:sessionproviders,omitempty"`
 	// AgentPropertySchema holds the user-managed Notion-style property
 	// definitions (name, type, options, order, scope). It is the global template;
 	// session props are additive values stored per-session. Empty/legacy configs

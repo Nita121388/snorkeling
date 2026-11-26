@@ -107,6 +107,60 @@
       "additionalProperties": false,
       "type": "object"
     },
+    "AgentSessionProviderColumnsType": {
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "updated": {
+          "type": "string"
+        },
+        "created": {
+          "type": "string"
+        },
+        "project": {
+          "type": "string"
+        },
+        "parentid": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "AgentSessionProviderConfigType": {
+      "properties": {
+        "label": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "sqlite"
+          ]
+        },
+        "db": {
+          "type": "string"
+        },
+        "table": {
+          "type": "string"
+        },
+        "disabled": {
+          "type": "boolean"
+        },
+        "columns": {
+          "$ref": "#/$defs/AgentSessionProviderColumnsType"
+        },
+        "listlimit": {
+          "type": "integer"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
     "AiSessionExternalOriginType": {
       "properties": {
         "label": {
@@ -566,6 +620,12 @@
         "agent:profiles": {
           "additionalProperties": {
             "$ref": "#/$defs/AgentProfileConfigType"
+          },
+          "type": "object"
+        },
+        "agent:sessionproviders": {
+          "additionalProperties": {
+            "$ref": "#/$defs/AgentSessionProviderConfigType"
           },
           "type": "object"
         },

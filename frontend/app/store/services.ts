@@ -175,6 +175,12 @@ export class AISessionsServiceType {
         return callBackendService(this?.waveEnv, "aisessions", "GenerateTitle", Array.from(arguments))
     }
 
+    // list AI session sources (compile-time + declarative) with registration status
+    // @returns session source entries (id, label, availability)
+    GetSourceList(): Promise<AISessionsSourceListResponse> {
+        return callBackendService(this?.waveEnv, "aisessions", "GetSourceList", Array.from(arguments))
+    }
+
     // hero roster with charter, storage, pending proposals and last journal line
     // @returns hero overview rows
     HeroOverview(request: AISessionsHeroOverviewRequest): Promise<AISessionsHeroOverviewResponse> {

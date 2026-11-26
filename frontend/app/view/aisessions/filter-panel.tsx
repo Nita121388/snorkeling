@@ -7,7 +7,7 @@ import type { ReactNode } from "react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { DefaultOpenState, type OpenState } from "./open-sessions";
-import { CHAT_SOURCES, getChatSource, useChatSourceIcons } from "./sources";
+import { getChatSource, useChatSourceIcons, useMergedChatSources } from "./sources";
 import type {
     AttachMode,
     DatePreset,
@@ -264,7 +264,8 @@ export function FilterPanel({
     // We visually dim the tag chip row while Untagged is active so the user
     // sees the constraint instead of clicking into a no-op.
     const tagSectionDim = tagPresence === "untagged";
-    const sourceIcons = useChatSourceIcons();
+    const mergedChatSources = useMergedChatSources();
+    const sourceIcons = useChatSourceIcons(mergedChatSources);
     const openActive = openState !== DefaultOpenState;
     const hasActive =
         openActive ||
@@ -333,7 +334,7 @@ export function FilterPanel({
                         <SegButton active={source === ""} title={t("aisessions:filter.allAgents")} onClick={() => setSource("")}>
                             <span className="text-xs">{t("aisessions:filter.all")}</span>
                         </SegButton>
-                        {CHAT_SOURCES.map((s) => {
+                        {mergedChatSources.map((s) => {
                             const icon = sourceIcons[s.id];
                             return (
                                 <SegButton

@@ -562,6 +562,18 @@ declare global {
         force?: boolean;
     };
 
+    // aisessionsservice.AISessionsSourceEntry
+    type AISessionsSourceEntry = {
+        source: string;
+        label: string;
+        available: boolean;
+    };
+
+    // aisessionsservice.AISessionsSourceListResponse
+    type AISessionsSourceListResponse = {
+        sources: AISessionsSourceEntry[];
+    };
+
     // aisessionsservice.AISessionsStatRequest
     type AISessionsStatRequest = {
         id?: string;
@@ -984,6 +996,27 @@ declare global {
         totalchars?: number;
         replycursor?: number;
         replywaitedms?: number;
+    };
+
+    // wconfig.AgentSessionProviderColumnsType
+    type AgentSessionProviderColumnsType = {
+        id?: string;
+        title?: string;
+        updated?: string;
+        created?: string;
+        project?: string;
+        parentid?: string;
+    };
+
+    // wconfig.AgentSessionProviderConfigType
+    type AgentSessionProviderConfigType = {
+        label?: string;
+        type?: string;
+        db?: string;
+        table?: string;
+        disabled?: boolean;
+        columns?: AgentSessionProviderColumnsType;
+        listlimit?: number;
     };
 
     // wshrpc.AgentSkillInstallResult
@@ -2953,17 +2986,17 @@ declare global {
         "waveai:maxoutputtokens"?: number;
     };
 
-    // syncproto.Origin
-    type Origin = {
-        deviceid?: string;
-        devicename?: string;
-        platform?: string;
-    };
-
     // hero.Origin
     type Origin = {
         deviceId?: string;
         deviceName?: string;
+        platform?: string;
+    };
+
+    // syncproto.Origin
+    type Origin = {
+        deviceid?: string;
+        devicename?: string;
         platform?: string;
     };
 
@@ -4012,6 +4045,7 @@ declare global {
         "agent:*"?: boolean;
         "agent:defaultprofile"?: string;
         "agent:profiles"?: {[key: string]: AgentProfileConfigType};
+        "agent:sessionproviders"?: {[key: string]: AgentSessionProviderConfigType};
         "agent:propertyschema"?: AgentPropertyDefType[];
         "agentstatus:*"?: boolean;
         "agentstatus:osnotify"?: boolean;

@@ -101,7 +101,13 @@ import {
     removeSessionTagFromNote,
     sessionTagsEqual,
 } from "./session-tags";
-import { defaultChatSource, getChatSource, isSourceAvailable, useChatSourceAvailability } from "./sources";
+import {
+    defaultChatSource,
+    getChatSource,
+    isSourceAvailable,
+    useChatSourceAvailability,
+    useMergedChatSources,
+} from "./sources";
 import { SubagentCard } from "./subagent-card";
 import { isSubagentToolName, synthesizeSubagentMatch } from "./subagent-detect";
 import { SubagentPlaceholderCard } from "./subagent-placeholder";
@@ -437,6 +443,9 @@ export function SessionDetailPane({
 }) {
     const { t } = useTranslation("aisessions");
     const availableChatSources = useChatSourceAvailability();
+    // 来源徽标 label 走合并来源面：拉取 GetSourceList 并同步模块级 label 缓存，
+    // 结果到达后触发重渲染（getChatSource 的纯函数查表才有新 label 可读）。
+    useMergedChatSources();
     const [noteDraft, setNoteDraft] = useState("");
     const [noteEditorOpen, setNoteEditorOpen] = useState(false);
     const [noteError, setNoteError] = useState("");

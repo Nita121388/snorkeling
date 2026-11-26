@@ -32,10 +32,15 @@ function preset(overrides: Record<string, unknown> = {}) {
 
 describe("sanitizeFilterPresetFilter", () => {
     it("fills defaults for missing/invalid fields", () => {
-        const result = sanitizeFilterPresetFilter({ source: "bogus", markedFilter: 42, tagFilters: "x" });
+        const result = sanitizeFilterPresetFilter({ source: "Not A Source", markedFilter: 42, tagFilters: "x" });
         expect(result.source).toBe("");
         expect(result.markedFilter).toBe("all");
         expect(result.tagFilters).toEqual([]);
+    });
+
+    it("keeps declarative provider source ids that are not in the builtin set", () => {
+        const result = sanitizeFilterPresetFilter({ source: "antigravity" });
+        expect(result.source).toBe("antigravity");
     });
 
     it("normalizes tags and paths", () => {

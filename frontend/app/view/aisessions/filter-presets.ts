@@ -82,8 +82,14 @@ function asStringArray(value: unknown): string[] {
     return value.filter((item): item is string => typeof item === "string");
 }
 
+// 未知来源 id 校验：小写字母/数字开头，允许 - 与 _，最长 64。声明式 provider 的来源
+// id（如 "antigravity"）不在内置集合里，但不能因此把持久化的筛选值清空。
+const SourceIdPattern = /^[a-z0-9][a-z0-9_-]{0,63}$/;
+
 function sanitizeSource(value: unknown): SourceFilter {
-    return typeof value === "string" && SourceValues.has(value) ? (value as SourceFilter) : "";
+    if (typeof value !== "string") return "";
+    if (value === "" || SourceValues.has(value)) return value as SourceFilter;
+    return SourceIdPattern.test(value) ? (value as SourceFilter) : "";
 }
 
 function sanitizeMarked(value: unknown): MarkedFilter {
