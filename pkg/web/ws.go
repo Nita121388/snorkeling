@@ -85,7 +85,16 @@ func getStringFromMap(jmsg map[string]any, key string) string {
 	return ""
 }
 
-func processWSCommand(jmsg map[string]any, outputCh chan any, rpcInputCh chan baseds.RpcInputChType) {
+func sendOutputCh(outputCh chan any, closeCh chan any, msg any) bool {
+	select {
+	case outputCh <- msg:
+		return true
+	case <-closeCh:
+		return false
+	}
+}
+
+func processWSCommand(jmsg map[string]any, outputCh chan any, closeCh chan any, rpcInputCh chan baseds.RpcInputChType) {
 	var rtnErr error
 	var cmdType string
 	defer func() {
@@ -101,7 +110,7 @@ func processWSCommand(jmsg map[string]any, outputCh chan any, rpcInputCh chan ba
 			return
 		}
 		rtn := map[string]any{"type": "error", "error": rtnErr.Error()}
-		outputCh <- rtn
+		sendOutputCh(outputCh, closeCh, rtn)
 	}()
 	wsCommand, err := webcmd.ParseWSCommandMap(jmsg)
 	if err != nil {
@@ -153,14 +162,16 @@ func ReadLoop(conn *websocket.Conn, outputCh chan any, closeCh chan any, rpcInpu
 		if msgType == "ping" {
 			now := time.Now()
 			pongMessage := map[string]interface{}{"type": "pong", "stime": now.UnixMilli()}
-			outputCh <- pongMessage
+			if !sendOutputCh(outputCh, closeCh, pongMessage) {
+				break
+			}
 			continue
 		}
 		wsCommand := getStringFromMap(jmsg, "wscommand")
 		if wsCommand == "" {
 			continue
 		}
-		processWSCommand(jmsg, outputCh, rpcInputCh)
+		processWSCommand(jmsg, outputCh, closeCh, rpcInputCh)
 	}
 }
 
@@ -195,6 +206,7 @@ func WriteLoop(conn *websocket.Conn, outputCh chan any, closeCh chan any, routeI
 					break
 				}
 			}
+			_ = conn.SetWriteDeadline(time.Now().Add(wsWriteWaitTimeout))
 			err = conn.WriteMessage(websocket.TextMessage, barr)
 			if err != nil {
 				conn.Close()
@@ -274,7 +286,7 @@ func HandleWsInternal(w http.ResponseWriter, r *http.Request) error {
 	eventbus.RegisterWSChannel(wsConnId, stableId, outputCh)
 	defer eventbus.UnregisterWSChannel(wsConnId)
 	wproxy := wshutil.MakeRpcProxyWithSize(fmt.Sprintf("ws:%s", stableId), WebSocketChannelSize, WebSocketChannelSize)
-	defer close(wproxy.ToRemoteCh)
+	defer wproxy.Close()
 	registerConn(wsConnId, stableId, wproxy)
 	defer unregisterConn(wsConnId, stableId)
 	wg := &sync.WaitGroup{}
@@ -285,12 +297,22 @@ func HandleWsInternal(w http.ResponseWriter, r *http.Request) error {
 		}()
 		// no waitgroup add here
 		// move values from rpcOutputCh to outputCh
-		for msgBytes := range wproxy.ToRemoteCh {
-			rpcWSMsg := map[string]any{
-				"eventtype": "rpc", // TODO don't hard code this (but def is in eventbus)
-				"data":      json.RawMessage(msgBytes),
+		for {
+			select {
+			case msgBytes, ok := <-wproxy.ToRemoteCh:
+				if !ok {
+					return
+				}
+				rpcWSMsg := map[string]any{
+					"eventtype": "rpc", // TODO don't hard code this (but def is in eventbus)
+					"data":      json.RawMessage(msgBytes),
+				}
+				if !sendOutputCh(outputCh, closeCh, rpcWSMsg) {
+					return
+				}
+			case <-closeCh:
+				return
 			}
-			outputCh <- rpcWSMsg
 		}
 	}()
 	go func() {

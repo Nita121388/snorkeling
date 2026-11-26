@@ -41,6 +41,9 @@ const (
 )
 
 const RouterInputChQueueSize = 100
+const MaxLinkBacklogSize = 1024
+const RpcMapEntryTTL = 10 * time.Minute
+const RpcMapPruneThreshold = 512
 
 var BacklogLogThresholds = map[int]bool{1: true, 5: true, 10: true, 20: true, 30: true, 40: true, 50: true, 100: true, 200: true, 500: true, 1000: true}
 
@@ -73,6 +76,7 @@ type rpcRoutingInfo struct {
 	rpcId        string
 	sourceLinkId baseds.LinkId
 	destRouteId  string
+	createdAt    time.Time
 }
 
 type messageWrap struct {
@@ -252,12 +256,22 @@ func (router *WshRouter) registerRouteInfo(rpcId string, sourceLinkId baseds.Lin
 	if rpcId == "" {
 		return
 	}
+	now := time.Now()
 	router.lock.Lock()
 	defer router.lock.Unlock()
+	if len(router.rpcMap) >= RpcMapPruneThreshold {
+		cutoff := now.Add(-RpcMapEntryTTL)
+		for id, info := range router.rpcMap {
+			if !info.createdAt.IsZero() && info.createdAt.Before(cutoff) {
+				delete(router.rpcMap, id)
+			}
+		}
+	}
 	router.rpcMap[rpcId] = rpcRoutingInfo{
 		rpcId:        rpcId,
 		sourceLinkId: sourceLinkId,
 		destRouteId:  destRouteId,
+		createdAt:    now,
 	}
 }
 
@@ -316,6 +330,14 @@ func (router *WshRouter) sendMessageToLink(msgBytes []byte, linkId baseds.LinkId
 func (router *WshRouter) addToBacklog_withlock(linkId baseds.LinkId, msgBytes []byte, ingressLinkId baseds.LinkId, debugStr string) {
 	mapWasEmpty := len(router.linkMsgBacklog) == 0
 	backlog := router.linkMsgBacklog[linkId]
+	if len(backlog) >= MaxLinkBacklogSize {
+		highWater := router.backlogHighWaterMark[linkId]
+		if highWater <= MaxLinkBacklogSize {
+			log.Printf("[router] backlog for linkid=%d reached cap (%d messages); dropping overflow\n", linkId, MaxLinkBacklogSize)
+			router.backlogHighWaterMark[linkId] = MaxLinkBacklogSize + 1
+		}
+		return
+	}
 	backlog = append(backlog, backlogMessageWrap{msgBytes: msgBytes, ingressLinkId: ingressLinkId, debugStr: debugStr})
 	router.linkMsgBacklog[linkId] = backlog
 
@@ -714,7 +736,9 @@ func (router *WshRouter) getRoutesForLink(linkId baseds.LinkId) []string {
 
 func (router *WshRouter) UnregisterLink(linkId baseds.LinkId) {
 	routes := router.getRoutesForLink(linkId)
+	routeSet := make(map[string]struct{}, len(routes))
 	for _, routeId := range routes {
+		routeSet[routeId] = struct{}{}
 		router.unbindRoute(linkId, routeId)
 	}
 	router.lock.Lock()
@@ -724,6 +748,17 @@ func (router *WshRouter) UnregisterLink(linkId baseds.LinkId) {
 		log.Printf("wshrouter unregister link %s", lm.Name())
 	}
 	delete(router.linkMap, linkId)
+	delete(router.linkMsgBacklog, linkId)
+	delete(router.backlogHighWaterMark, linkId)
+	for rpcId, info := range router.rpcMap {
+		if info.sourceLinkId == linkId {
+			delete(router.rpcMap, rpcId)
+			continue
+		}
+		if _, matched := routeSet[info.destRouteId]; matched {
+			delete(router.rpcMap, rpcId)
+		}
+	}
 	if router.upstreamLinkId == linkId {
 		router.upstreamLinkId = baseds.NoLinkId
 	}

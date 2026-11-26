@@ -14,6 +14,8 @@ import (
 
 type WshRpcProxy struct {
 	Lock         *sync.Mutex
+	closeLock    sync.RWMutex
+	closed       bool
 	RpcContext   *wshrpc.RpcContext
 	ToRemoteCh   chan []byte
 	FromRemoteCh chan baseds.RpcInputChType
@@ -43,13 +45,40 @@ func (p *WshRpcProxy) SetPeerInfo(peerInfo string) {
 	p.PeerInfo = peerInfo
 }
 
-func (p *WshRpcProxy) SendRpcMessage(msg []byte, ingressLinkId baseds.LinkId, debugStr string) bool {
+// Close safely marks the proxy closed and closes ToRemoteCh once so concurrent
+// SendRpcMessage callers return false without panicking on a closed channel.
+func (p *WshRpcProxy) Close() {
+	p.closeLock.Lock()
+	defer p.closeLock.Unlock()
+	if p.closed {
+		return
+	}
+	p.closed = true
+	close(p.ToRemoteCh)
+}
+
+func (p *WshRpcProxy) SendRpcMessage(msg []byte, ingressLinkId baseds.LinkId, debugStr string) (sent bool) {
+	p.closeLock.RLock()
+	defer p.closeLock.RUnlock()
+	if p.closed {
+		return false
+	}
 	defer func() {
+		r := recover()
+		if r == nil {
+			return
+		}
+		// Fallback guard in case a legacy caller closed ToRemoteCh directly without Close().
+		if err, ok := r.(error); ok && err.Error() == "send on closed channel" {
+			sent = false
+			return
+		}
 		panicCtx := "WshRpcProxy.SendRpcMessage"
 		if debugStr != "" {
 			panicCtx = fmt.Sprintf("%s:%s", panicCtx, debugStr)
 		}
-		panichandler.PanicHandler(panicCtx, recover())
+		panichandler.PanicHandler(panicCtx, r)
+		sent = false
 	}()
 	select {
 	case p.ToRemoteCh <- msg:
