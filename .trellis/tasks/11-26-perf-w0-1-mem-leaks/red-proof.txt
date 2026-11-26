@@ -1,0 +1,71 @@
+﻿
+[1m[46m RUN [49m[22m [36mv3.2.4 [39m[90mE:/code/snorkeling[39m
+
+[90mstdout[2m | emain/emain-tabview-cache.test.ts[2m > [22m[2memain-tabview cache eviction and offscreen positioning[2m > [22m[2mevicts the oldest inactive tab even when an active tab is present in the cache
+[22m[39msetMaxTabCacheSize [33m2[39m
+createBareTabView
+createBareTabView
+createBareTabView
+
+[90mstdout[2m | emain/emain-tabview-cache.test.ts[2m > [22m[2memain-tabview cache eviction and offscreen positioning[2m > [22m[2mevicts the oldest inactive tab even when an active tab is present in the cache
+[22m[39msetMaxTabCacheSize [33m10[39m
+
+[90mstdout[2m | emain/emain-tabview-cache.test.ts[2m > [22m[2memain-tabview cache eviction and offscreen positioning[2m > [22m[2mshort-circuits positionTabOffScreen when bounds already match offscreen target
+[22m[39mcreateBareTabView
+
+[90mstdout[2m | emain/emain-tabview-cache.test.ts[2m > [22m[2memain-tabview cache eviction and offscreen positioning[2m > [22m[2mshort-circuits positionTabOffScreen when bounds already match offscreen target
+[22m[39msetMaxTabCacheSize [33m10[39m
+
+ [32m✓[39m emain/emain-tabview-cache.test.ts[2m > [22memain-tabview cache eviction and offscreen positioning[2m > [22mevicts the oldest inactive tab even when an active tab is present in the cache[32m 12[2mms[22m[39m
+ [31m×[39m emain/emain-tabview-cache.test.ts[2m > [22memain-tabview cache eviction and offscreen positioning[2m > [22mshort-circuits positionTabOffScreen when bounds already match offscreen target[32m 15[2mms[22m[39m
+[31m   → expected "spy" to be called 1 times, but got 3 times[39m
+ [31m×[39m frontend/app/view/term/termwrap-dispose-leak.test.ts[2m > [22mTermWrap dispose idle timer cleanup[2m > [22mcancels scheduled idle timer on dispose so processAndCacheData never fires again[32m 13[2mms[22m[39m
+[31m   → expected "spy" to be called +0 times, but got 1 times[39m
+node.exe : 
+At line:1 char:1
++ & "D:\SoftWare\NodeJS/node.exe" "C:\Users\chemclin\AppData\Roaming\np ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+[31m⎯⎯⎯⎯⎯⎯⎯[39m[1m[41m Failed Tests 2 [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯[39m
+
+[41m[1m FAIL [22m[49m emain/emain-tabview-cache.test.ts[2m > [22memain-tabview cache eviction
+ and offscreen positioning[2m > [22mshort-circuits positionTabOffScreen when bounds already match
+ offscreen target
+[31m[1mAssertionError[22m: expected "spy" to be called 1 times, but got 3 times[39m
+[36m [2m❯[22m emain/emain-tabview-cache.test.ts:[2m116:35[22m[39m
+    [90m114| [39m        view[33m.[39m[34mpositionTabOffScreen[39m(winBounds)[33m;[39m
+    [90m115| [39m
+    [90m116| [39m        [34mexpect[39m(view[33m.[39msetBoundsSpy)[33m.[39m[34mtoHaveBeenC
+alledTimes[39m([34m1[39m)[33m;[39m
+    [90m   | [39m                                  [31m^[39m
+    [90m117| [39m        expect(view.setBoundsSpy).toHaveBeenCalledWith({ x: -15000, y:…
+    [90m118| [39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m frontend/app/view/term/termwrap-dispose-leak.test.ts[2m > [22mTermWrap 
+dispose idle timer cleanup[2m > [22mcancels scheduled idle timer on dispose so processAndCacheDat
+a never fires again
+[31m[1mAssertionError[22m: expected "spy" to be called +0 times, but got 1 times[39m
+[36m [2m❯[22m frontend/app/view/term/termwrap-dispose-leak.test.ts:[2m65:32[22m[39m
+    [90m 63| [39m                [34mcb[39m({ didTimeout[33m:[39m [35mfalse[39m[33m,[39m 
+timeRemaining[33m:[39m () [33m=>[39m [34m50[39m })[33m;[39m
+    [90m 64| [39m            }
+    [90m 65| [39m            [34mexpect[39m(processSpy)[33m.[39m[34mtoHaveBeenCalledTimes[3
+9m([34m0[39m)[33m;[39m
+    [90m   | [39m                               [31m^[39m
+    [90m 66| [39m
+    [90m 67| [39m            // Also test disposing while a requestIdleCallback is alre…
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯[22m[39m
+
+
+[2m Test Files [22m [1m[31m2 failed[39m[22m[90m (2)[39m
+[2m      Tests [22m [1m[31m2 failed[39m[22m[2m | [22m[1m[32m1 passed[39m[22m[90m (3)[39m
+[2m   Start at [22m 13:04:40
+[2m   Duration [22m 9.09s[2m (transform 1.58s, setup 81ms, collect 4.20s, tests 45ms, environment 1ms, prepare 777ms)[22m
+
+JUNIT report written to E:/code/snorkeling/test-results.xml
+

@@ -165,6 +165,9 @@ export class TermWrap {
     inSyncTransaction: boolean = false;
     inRepaintTransaction: boolean = false;
     repaintScrollTimer: NodeJS.Timeout | null = null;
+    private disposed: boolean = false;
+    private idleTimeoutId: ReturnType<typeof setTimeout> | null = null;
+    private idleCallbackId: number | null = null;
 
     constructor(
         tabId: string,
@@ -530,6 +533,17 @@ export class TermWrap {
     }
 
     dispose() {
+        this.disposed = true;
+        if (this.idleTimeoutId != null) {
+            clearTimeout(this.idleTimeoutId);
+            this.idleTimeoutId = null;
+        }
+        if (this.idleCallbackId != null) {
+            if (typeof window !== "undefined" && typeof window.cancelIdleCallback === "function") {
+                window.cancelIdleCallback(this.idleCallbackId);
+            }
+            this.idleCallbackId = null;
+        }
         if (this.repaintScrollTimer != null) {
             clearTimeout(this.repaintScrollTimer);
             this.repaintScrollTimer = null;
@@ -785,8 +799,19 @@ export class TermWrap {
     }
 
     runProcessIdleTimeout() {
-        setTimeout(() => {
-            window.requestIdleCallback(() => {
+        if (this.disposed) {
+            return;
+        }
+        this.idleTimeoutId = setTimeout(() => {
+            this.idleTimeoutId = null;
+            if (this.disposed) {
+                return;
+            }
+            this.idleCallbackId = window.requestIdleCallback(() => {
+                this.idleCallbackId = null;
+                if (this.disposed) {
+                    return;
+                }
                 this.processAndCacheData();
                 this.runProcessIdleTimeout();
             });

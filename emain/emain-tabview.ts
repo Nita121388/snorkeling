@@ -214,6 +214,15 @@ export class WaveTabView extends WebContentsView {
     }
 
     positionTabOffScreen(winBounds: Rectangle) {
+        const curBounds = this.getBounds();
+        if (
+            curBounds.width == winBounds.width &&
+            curBounds.height == winBounds.height &&
+            curBounds.x == -15000 &&
+            curBounds.y == -15000
+        ) {
+            return;
+        }
         this.setBounds({
             x: -15000,
             y: -15000,
@@ -279,19 +288,18 @@ function tryEvictEntry(waveTabId: string): boolean {
 }
 
 function checkAndEvictCache(): void {
-    if (wcvCache.size <= MaxCacheSize) {
+    const excess = wcvCache.size - MaxCacheSize;
+    if (excess <= 0) {
         return;
     }
-    const sorted = Array.from(wcvCache.values()).sort((a, b) => {
-        // Prioritize entries which are active
-        if (a.isActiveTab && !b.isActiveTab) {
-            return -1;
+    const candidates = Array.from(wcvCache.values())
+        .filter((tabView) => !tabView.isActiveTab)
+        .sort((a, b) => a.lastUsedTs - b.lastUsedTs);
+    let evicted = 0;
+    for (let i = 0; i < candidates.length && evicted < excess; i++) {
+        if (tryEvictEntry(candidates[i].waveTabId)) {
+            evicted++;
         }
-        // Otherwise, sort by lastUsedTs
-        return a.lastUsedTs - b.lastUsedTs;
-    });
-    for (let i = 0; i < sorted.length - MaxCacheSize; i++) {
-        tryEvictEntry(sorted[i].waveTabId);
     }
 }
 
