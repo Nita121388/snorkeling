@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io/fs"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -31,6 +32,7 @@ type DataCacheEntry struct {
 // if File or DataEntries are not nil then they are dirty (need to be flushed to disk)
 type CacheEntry struct {
 	PinCount int // this is synchronzed with the FileStore lock (not the entry lock)
+	dirty    atomic.Bool
 
 	Lock        *sync.Mutex
 	ZoneId      string
@@ -79,13 +81,14 @@ func (s *FileStore) unpinEntryAndTryDelete(zoneId string, name string) {
 		return
 	}
 	entry.PinCount--
-	if entry.PinCount <= 0 && entry.File == nil {
+	if entry.PinCount <= 0 && !entry.dirty.Load() {
 		delete(s.Cache, cacheKey{ZoneId: zoneId, Name: name})
 	}
 }
 
 func (entry *CacheEntry) clear() {
 	entry.File = nil
+	entry.dirty.Store(false)
 	entry.DataEntries = make(map[int]*DataCacheEntry)
 	entry.FlushErrors = 0
 }
@@ -107,6 +110,7 @@ func (entry *CacheEntry) loadFileIntoCache(ctx context.Context) error {
 		return err
 	}
 	entry.File = file
+	entry.dirty.Store(true)
 	return nil
 }
 

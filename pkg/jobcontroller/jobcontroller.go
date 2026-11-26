@@ -101,6 +101,8 @@ var (
 
 	jobStreamIds = ds.MakeSyncMap[string]()
 
+	jobAttachedBlockIds = ds.MakeSyncMap[string]()
+
 	jobTerminationMessageWritten = ds.MakeSyncMap[bool]()
 
 	lastAutoReconnectAttempt = ds.MakeSyncMap[int64]()
@@ -666,6 +668,7 @@ func StartJob(ctx context.Context, params StartJobParams) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to create job in database: %w", err)
 	}
+	setCachedJobAttachedBlockId(jobId, params.BlockId)
 	if params.BlockId != "" {
 		// AttachJobToBlock will send status
 		err = AttachJobToBlock(ctx, jobId, params.BlockId)
@@ -791,18 +794,55 @@ func doWFSAppend(ctx context.Context, oref waveobj.ORef, fileName string, data [
 	return nil
 }
 
+func setCachedJobAttachedBlockId(jobId string, blockId string) {
+	if jobId == "" {
+		return
+	}
+	jobAttachedBlockIds.Set(jobId, blockId)
+}
+
+func clearCachedJobAttachedBlockId(jobId string) {
+	if jobId == "" {
+		return
+	}
+	jobAttachedBlockIds.Delete(jobId)
+}
+
+func getCachedJobAttachedBlockId(jobId string) (string, bool) {
+	if jobId == "" {
+		return "", false
+	}
+	return jobAttachedBlockIds.GetEx(jobId)
+}
+
+func resolveJobAttachedBlockId(ctx context.Context, jobId string) (string, error) {
+	if blockId, ok := getCachedJobAttachedBlockId(jobId); ok {
+		return blockId, nil
+	}
+	job, err := wstore.DBGet[*waveobj.Job](ctx, jobId)
+	if err != nil {
+		return "", fmt.Errorf("error getting job: %w", err)
+	}
+	blockId := ""
+	if job != nil {
+		blockId = job.AttachedBlockId
+	}
+	setCachedJobAttachedBlockId(jobId, blockId)
+	return blockId, nil
+}
+
 func handleAppendJobFile(ctx context.Context, jobId string, fileName string, data []byte) error {
 	err := doWFSAppend(ctx, waveobj.MakeORef(waveobj.OType_Job, jobId), fileName, data)
 	if err != nil {
 		return fmt.Errorf("error appending to job file: %w", err)
 	}
 
-	job, err := wstore.DBGet[*waveobj.Job](ctx, jobId)
+	attachedBlockId, err := resolveJobAttachedBlockId(ctx, jobId)
 	if err != nil {
-		return fmt.Errorf("error getting job: %w", err)
+		return err
 	}
-	if job != nil && job.AttachedBlockId != "" {
-		err = doWFSAppend(ctx, waveobj.MakeORef(waveobj.OType_Block, job.AttachedBlockId), fileName, data)
+	if attachedBlockId != "" {
+		err = doWFSAppend(ctx, waveobj.MakeORef(waveobj.OType_Block, attachedBlockId), fileName, data)
 		if err != nil {
 			return fmt.Errorf("error appending to block file: %w", err)
 		}
@@ -1401,6 +1441,7 @@ func IsBlockIdTermDurable(blockId string) bool {
 func DeleteJob(ctx context.Context, jobId string) error {
 	SetJobConnStatus(jobId, JobConnStatus_Disconnected)
 	jobTerminationMessageWritten.Delete(jobId)
+	clearCachedJobAttachedBlockId(jobId)
 	err := filestore.WFS.DeleteZone(ctx, jobId)
 	if err != nil {
 		log.Printf("[job:%s] warning: error deleting WaveFS zone: %v", jobId, err)
@@ -1409,8 +1450,9 @@ func DeleteJob(ctx context.Context, jobId string) error {
 }
 
 func AttachJobToBlock(ctx context.Context, jobId string, blockId string) error {
+	var oldJobId string
 	err := wstore.WithTx(ctx, func(tx *wstore.TxWrap) error {
-		var oldJobId string
+		oldJobId = ""
 
 		err := wstore.DBUpdateFn(tx.Context(), blockId, func(block *waveobj.Block) {
 			oldJobId = block.JobId
@@ -1448,6 +1490,10 @@ func AttachJobToBlock(ctx context.Context, jobId string, blockId string) error {
 	if err != nil {
 		return err
 	}
+	if oldJobId != "" && oldJobId != jobId {
+		setCachedJobAttachedBlockId(oldJobId, "")
+	}
+	setCachedJobAttachedBlockId(jobId, blockId)
 
 	SendBlockJobStatusEvent(ctx, blockId)
 	wcore.SendWaveObjUpdate(waveobj.MakeORef(waveobj.OType_Block, blockId))
@@ -1495,6 +1541,7 @@ func DetachJobFromBlock(ctx context.Context, jobId string, updateBlock bool) err
 	if err != nil {
 		return err
 	}
+	setCachedJobAttachedBlockId(jobId, "")
 
 	if blockId != "" {
 		SendBlockJobStatusEvent(ctx, blockId)

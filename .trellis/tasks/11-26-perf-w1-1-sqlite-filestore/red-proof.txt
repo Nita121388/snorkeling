@@ -1,0 +1,35 @@
+﻿=== RUN   TestMakeDBSetsWALPerfPragmas
+    wstore_dbsetup_test.go:45: expected PRAGMA temp_store=2 (MEMORY), got 0
+--- FAIL: TestMakeDBSetsWALPerfPragmas (0.01s)
+FAIL
+FAIL	github.com/wavetermdev/waveterm/pkg/wstore	3.035s
+=== RUN   TestMakeDBSetsWALPerfPragmas
+2026/11/26 13:55:30 [db] opening db E:\code\snorkeling\.cache\tmp\TestMakeDBSetsWALPerfPragmas4018135480\001\db\filestore.db
+    blockstore_perf_test.go:52: expected PRAGMA temp_store=2 (MEMORY), got 0
+--- FAIL: TestMakeDBSetsWALPerfPragmas (0.03s)
+=== RUN   TestFlushCacheContinuesPastMissingEntry
+2026/11/26 13:55:30 [db] using in-memory db
+2026/11/26 13:55:30 migrate filestore
+2026/11/26 13:55:30 [db] filestore migration done, version 0 -> 1
+2026/11/26 13:55:30 filestore initialized
+    blockstore_perf_test.go:109: expected FlushCache to commit both valid files despite missing entries, got committed=0/8
+--- FAIL: TestFlushCacheContinuesPastMissingEntry (0.00s)
+FAIL
+FAIL	github.com/wavetermdev/waveterm/pkg/filestore	3.756s
+=== RUN   TestFileWatcherDebouncesBurstEvents
+2026/11/26 13:55:33 [ps-publish] DROP client=nil event=config
+2026/11/26 13:55:33 [ps-publish] DROP client=nil event=config
+2026/11/26 13:55:33 [ps-publish] DROP client=nil event=config
+2026/11/26 13:55:33 [ps-publish] DROP client=nil event=config
+2026/11/26 13:55:33 [ps-publish] DROP client=nil event=config
+    filewatcher_perf_test.go:45: expected 5 burst fsnotify events to coalesce into 1 reload, got 5
+--- FAIL: TestFileWatcherDebouncesBurstEvents (0.33s)
+FAIL
+FAIL	github.com/wavetermdev/waveterm/pkg/wconfig	2.742s
+=== RUN   TestSQLiteIndexInitFastPathAndPragmas
+    sqlite_init_fastpath_test.go:43: expected PRAGMA temp_store=2 (MEMORY), got 0
+--- FAIL: TestSQLiteIndexInitFastPathAndPragmas (0.03s)
+FAIL
+FAIL	github.com/wavetermdev/waveterm/pkg/aisessions	3.143s
+FAIL
+

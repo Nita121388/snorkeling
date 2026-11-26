@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sync"
+	"time"
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/wavetermdev/waveterm/pkg/panichandler"
@@ -16,17 +17,21 @@ import (
 	"github.com/wavetermdev/waveterm/pkg/wps"
 )
 
+const defaultConfigDebounceDelay = 150 * time.Millisecond
+
 var instance *Watcher
 var once sync.Once
 
 type ConfigUpdateHandler func(FullConfigType)
 
 type Watcher struct {
-	initialized bool
-	watcher     *fsnotify.Watcher
-	mutex       sync.Mutex
-	fullConfig  FullConfigType
-	handlers    []ConfigUpdateHandler
+	initialized   bool
+	watcher       *fsnotify.Watcher
+	mutex         sync.Mutex
+	fullConfig    FullConfigType
+	handlers      []ConfigUpdateHandler
+	debounceTimer *time.Timer
+	debounceDelay time.Duration
 }
 
 type WatcherUpdate struct {
@@ -63,11 +68,11 @@ func GetWatcher() *Watcher {
 
 func (w *Watcher) Start() {
 	w.mutex.Lock()
-	defer w.mutex.Unlock()
-
 	log.Printf("starting file watcher\n")
 	w.initialized = true
-	w.sendInitialValues()
+	w.mutex.Unlock()
+
+	w.reloadAndBroadcast()
 
 	go func() {
 		defer func() {
@@ -90,19 +95,13 @@ func (w *Watcher) Start() {
 	}()
 }
 
-// for initial values, exit on first error
-func (w *Watcher) sendInitialValues() error {
-	w.fullConfig = ReadFullConfig()
-	message := WatcherUpdate{
-		FullConfig: w.fullConfig,
-	}
-	w.broadcast(message)
-	return nil
-}
-
 func (w *Watcher) Close() {
 	w.mutex.Lock()
 	defer w.mutex.Unlock()
+	if w.debounceTimer != nil {
+		w.debounceTimer.Stop()
+		w.debounceTimer = nil
+	}
 	if w.watcher != nil {
 		w.watcher.Close()
 		w.watcher = nil
@@ -111,11 +110,25 @@ func (w *Watcher) Close() {
 }
 
 func (w *Watcher) broadcast(message WatcherUpdate) {
+	w.mutex.Lock()
+	handlers := append([]ConfigUpdateHandler(nil), w.handlers...)
+	w.mutex.Unlock()
+	w.broadcastWithHandlers(message, handlers)
+}
+
+func (w *Watcher) broadcastWithHandlers(message WatcherUpdate, handlers []ConfigUpdateHandler) {
 	wps.Broker.Publish(wps.WaveEvent{
 		Event: wps.Event_Config,
 		Data:  message,
 	})
-	w.notifyHandlers(message.FullConfig)
+	for _, handler := range handlers {
+		go func(h ConfigUpdateHandler) {
+			defer func() {
+				panichandler.PanicHandler("filewatcher:notifyHandlers", recover())
+			}()
+			h(message.FullConfig)
+		}(handler)
+	}
 }
 
 func (w *Watcher) RegisterUpdateHandler(handler ConfigUpdateHandler) {
@@ -124,28 +137,27 @@ func (w *Watcher) RegisterUpdateHandler(handler ConfigUpdateHandler) {
 	w.handlers = append(w.handlers, handler)
 }
 
-func (w *Watcher) notifyHandlers(config FullConfigType) {
-	handlers := w.handlers
-	for _, handler := range handlers {
-		go func(h ConfigUpdateHandler) {
-			defer func() {
-				panichandler.PanicHandler("filewatcher:notifyHandlers", recover())
-			}()
-			h(config)
-		}(handler)
-	}
-}
-
 func (w *Watcher) GetFullConfig() FullConfigType {
 	w.mutex.Lock()
 	defer w.mutex.Unlock()
 	return w.fullConfig
 }
 
-func (w *Watcher) handleEvent(event fsnotify.Event) {
+func (w *Watcher) reloadAndBroadcast() {
+	// ReadFullConfig hits disk + SQLite; run outside w.mutex so GetFullConfig() never stalls.
+	fullConfig := ReadFullConfig()
 	w.mutex.Lock()
-	defer w.mutex.Unlock()
+	if !w.initialized {
+		w.mutex.Unlock()
+		return
+	}
+	w.fullConfig = fullConfig
+	handlers := append([]ConfigUpdateHandler(nil), w.handlers...)
+	w.mutex.Unlock()
+	w.broadcastWithHandlers(WatcherUpdate{FullConfig: fullConfig}, handlers)
+}
 
+func (w *Watcher) handleEvent(event fsnotify.Event) {
 	fileName := filepath.ToSlash(event.Name)
 	if event.Op == fsnotify.Chmod {
 		return
@@ -153,7 +165,29 @@ func (w *Watcher) handleEvent(event fsnotify.Event) {
 	if !isValidSubSettingsFileName(fileName) {
 		return
 	}
-	w.handleSettingsFileEvent(event, fileName)
+	w.scheduleReload()
+}
+
+func (w *Watcher) scheduleReload() {
+	w.mutex.Lock()
+	defer w.mutex.Unlock()
+	delay := w.debounceDelay
+	if delay <= 0 {
+		delay = defaultConfigDebounceDelay
+	}
+	if w.debounceTimer != nil {
+		w.debounceTimer.Reset(delay)
+		return
+	}
+	w.debounceTimer = time.AfterFunc(delay, func() {
+		defer func() {
+			panichandler.PanicHandler("filewatcher:debouncedReload", recover())
+		}()
+		w.mutex.Lock()
+		w.debounceTimer = nil
+		w.mutex.Unlock()
+		w.reloadAndBroadcast()
+	})
 }
 
 var validFileRe = regexp.MustCompile(`^[a-zA-Z0-9_@.-]+\.json$`)
@@ -166,21 +200,9 @@ func isValidSubSettingsFileName(fileName string) bool {
 	return validFileRe.MatchString(baseName)
 }
 
-func (w *Watcher) handleSettingsFileEvent(_ fsnotify.Event, _ string) {
-	fullConfig := ReadFullConfig()
-	w.fullConfig = fullConfig
-	w.broadcast(WatcherUpdate{FullConfig: w.fullConfig})
-}
-
 func BroadcastConfigUpdate() {
 	if instance == nil {
 		return
 	}
-	instance.mutex.Lock()
-	defer instance.mutex.Unlock()
-	if !instance.initialized {
-		return
-	}
-	instance.fullConfig = ReadFullConfig()
-	instance.broadcast(WatcherUpdate{FullConfig: instance.fullConfig})
+	instance.reloadAndBroadcast()
 }

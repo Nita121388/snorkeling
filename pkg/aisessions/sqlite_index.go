@@ -15,6 +15,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/jmoiron/sqlx"
@@ -55,17 +57,60 @@ func OpenSQLiteIndex(path string, metaPath string) (*SQLiteIndex, error) {
 	return openSQLiteIndex(path, metaPath)
 }
 
+type sqliteInitStamp struct {
+	metaExists  bool
+	metaMTimeNS int64
+	metaSize    int64
+}
+
+var (
+	sqliteInitCache     sync.Map // cleanPath|cleanMetaPath -> sqliteInitStamp
+	sqliteFullInitCount atomic.Int64
+)
+
+func sqliteInitCacheKey(path string, metaPath string) string {
+	return filepath.Clean(path) + "|" + filepath.Clean(metaPath)
+}
+
+func statMetaStamp(metaPath string) sqliteInitStamp {
+	trimmed := strings.TrimSpace(metaPath)
+	if trimmed == "" {
+		return sqliteInitStamp{}
+	}
+	info, err := os.Stat(trimmed)
+	if err != nil {
+		return sqliteInitStamp{}
+	}
+	return sqliteInitStamp{
+		metaExists:  true,
+		metaMTimeNS: info.ModTime().UnixNano(),
+		metaSize:    info.Size(),
+	}
+}
+
 func openSQLiteIndex(path string, metaPath string) (*SQLiteIndex, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
 		return nil, err
 	}
-	db, err := sqlx.Open("sqlite3", fmt.Sprintf("file:%s?mode=rwc&_journal_mode=WAL&_busy_timeout=5000", path))
+	existedBeforeOpen := sqliteDBExists(path)
+	db, err := sqlx.Open("sqlite3", fmt.Sprintf("file:%s?mode=rwc&_journal_mode=WAL&_busy_timeout=5000&_synchronous=NORMAL&_cache_size=-64000", path))
 	if err != nil {
 		return nil, err
 	}
 	db.DB.SetMaxOpenConns(1)
+	ctx := context.Background()
+	for _, pragma := range []string{
+		`PRAGMA synchronous=NORMAL`,
+		`PRAGMA temp_store=MEMORY`,
+		`PRAGMA cache_size=-64000`,
+	} {
+		if _, err := db.ExecContext(ctx, pragma); err != nil {
+			_ = db.Close()
+			return nil, err
+		}
+	}
 	idx := &SQLiteIndex{path: path, metaPath: metaPath, db: db}
-	if err := idx.init(context.Background()); err != nil {
+	if err := idx.init(ctx, existedBeforeOpen); err != nil {
 		_ = db.Close()
 		return nil, err
 	}
@@ -111,7 +156,17 @@ func (idx *SQLiteIndex) Path() string {
 	return idx.path
 }
 
-func (idx *SQLiteIndex) init(ctx context.Context) error {
+func (idx *SQLiteIndex) init(ctx context.Context, existedBeforeOpen bool) error {
+	cacheKey := sqliteInitCacheKey(idx.path, idx.metaPath)
+	metaStamp := statMetaStamp(idx.metaPath)
+	if existedBeforeOpen {
+		if cached, ok := sqliteInitCache.Load(cacheKey); ok && cached.(sqliteInitStamp) == metaStamp {
+			if existingVer, verOk, err := idx.schemaMeta(ctx, "schema_version"); err == nil && verOk && existingVer == sqliteIndexSchemaVersion {
+				return nil
+			}
+		}
+	}
+	sqliteFullInitCount.Add(1)
 	stmts := []string{
 		`PRAGMA journal_mode=WAL`,
 		`PRAGMA busy_timeout=5000`,
@@ -319,7 +374,13 @@ func (idx *SQLiteIndex) init(ctx context.Context) error {
 			return err
 		}
 	}
-	return idx.migratePropTypeStatus(ctx)
+	if err := idx.migratePropTypeStatus(ctx); err != nil {
+		return err
+	}
+	if tagMigrationComplete {
+		sqliteInitCache.Store(cacheKey, statMetaStamp(idx.metaPath))
+	}
+	return nil
 }
 
 // ensurePropsColumns adds the rename/order columns to ai_session_props for

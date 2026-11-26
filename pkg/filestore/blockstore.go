@@ -407,6 +407,7 @@ func (s *FileStore) FlushCache(ctx context.Context) (stats FlushStats, rtnErr er
 	// get a copy of dirty keys so we can iterate without the lock
 	dirtyCacheKeys := s.getDirtyCacheKeys()
 	stats.NumDirtyEntries = len(dirtyCacheKeys)
+	var firstErr error
 	for _, key := range dirtyCacheKeys {
 		err := withLock(s, key.ZoneId, key.Name, func(entry *CacheEntry) error {
 			return entry.flushToDB(ctx, false)
@@ -416,11 +417,15 @@ func (s *FileStore) FlushCache(ctx context.Context) (stats FlushStats, rtnErr er
 			return stats, ctx.Err()
 		}
 		if err != nil {
-			return stats, fmt.Errorf("error flushing cache entry[%v]: %v", key, err)
+			if firstErr == nil {
+				firstErr = fmt.Errorf("error flushing cache entry[%v]: %v", key, err)
+			}
+			log.Printf("filestore flush entry error [%v]: %v\n", key, err)
+			continue
 		}
 		stats.NumCommitted++
 	}
-	return stats, nil
+	return stats, firstErr
 }
 
 ///////////////////////////////////
@@ -479,7 +484,7 @@ func (s *FileStore) getDirtyCacheKeys() []cacheKey {
 	defer s.Lock.Unlock()
 	var dirtyCacheKeys []cacheKey
 	for key, entry := range s.Cache {
-		if entry.File != nil {
+		if entry.dirty.Load() {
 			dirtyCacheKeys = append(dirtyCacheKeys, key)
 		}
 	}

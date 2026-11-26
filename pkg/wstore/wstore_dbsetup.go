@@ -52,11 +52,21 @@ func GetDBName() string {
 
 func MakeDB(ctx context.Context) (*sqlx.DB, error) {
 	dbName := GetDBName()
-	rtn, err := sqlx.Open("sqlite3", fmt.Sprintf("file:%s?mode=rwc&_journal_mode=WAL&_busy_timeout=5000", dbName))
+	rtn, err := sqlx.Open("sqlite3", fmt.Sprintf("file:%s?mode=rwc&_journal_mode=WAL&_busy_timeout=5000&_synchronous=NORMAL&_cache_size=-16000", dbName))
 	if err != nil {
 		return nil, err
 	}
 	rtn.DB.SetMaxOpenConns(1)
+	for _, pragma := range []string{
+		`PRAGMA synchronous=NORMAL`,
+		`PRAGMA temp_store=MEMORY`,
+		`PRAGMA cache_size=-16000`,
+	} {
+		if _, err := rtn.ExecContext(ctx, pragma); err != nil {
+			_ = rtn.Close()
+			return nil, fmt.Errorf("applying %s: %w", pragma, err)
+		}
+	}
 	return rtn, nil
 }
 
