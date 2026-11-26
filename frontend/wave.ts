@@ -12,7 +12,7 @@ polyfillCountryFlagEmojis("Twemoji Country Flags", "fonts/TwemojiCountryFlags.wo
 
 import { App } from "@/app/app";
 import { registerBuiltinViews } from "@/app/block/builtinviews";
-import { loadMonaco, setMonacoTheme } from "@/app/monaco/monaco-env";
+import { ensureMonacoLoaded, setMonacoTheme } from "@/app/monaco/monaco-env";
 import { loadBadges } from "@/app/store/badge";
 import { GlobalModel } from "@/app/store/global-model";
 import {
@@ -271,7 +271,9 @@ async function initWave(initOpts: WaveInitOpts) {
     registerControlShiftStateUpdateHandler();
     initOpenedThisLaunchTabIdsSync();
     initCollapsedTabIdsSync();
-    await loadMonaco();
+    // W2-1（性能）：不再在首帧渲染前加载 Monaco（monaco-editor + 语言 contribution +
+    // 6 个 worker）。编辑器真正渲染时由 monaco-react 懒加载壳自行拉起；主题由
+    // monaco-env 轻量桩记账，首次加载完成后统一应用。
     const fullConfig = await RpcApi.GetFullConfigCommand(TabRpcClient);
     console.log("fullconfig", fullConfig);
     globalStore.set(atoms.fullConfigAtom, fullConfig);
@@ -346,7 +348,9 @@ async function initBuilder(initOpts: BuilderInitOpts) {
 
     registerBuilderGlobalKeys();
     registerElectronReinjectKeyHandler();
-    await loadMonaco();
+    // W2-1：Builder 面重度使用代码编辑器，保持启动即加载（与旧行为一致），
+    // 只是 API 换成非阻塞语义的 ensureMonacoLoaded。
+    await ensureMonacoLoaded();
     const fullConfig = await RpcApi.GetFullConfigCommand(TabRpcClient);
     console.log("fullconfig", fullConfig);
     globalStore.set(atoms.fullConfigAtom, fullConfig);

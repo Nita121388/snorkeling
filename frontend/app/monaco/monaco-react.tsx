@@ -1,230 +1,42 @@
 // Copyright 2025, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-import { loadMonaco } from "@/app/monaco/monaco-env";
-import type * as MonacoTypes from "monaco-editor";
-import * as monaco from "monaco-editor";
-import { useEffect, useRef } from "react";
-import { debounce } from "throttle-debounce";
+// W2-1（性能）：这个文件是 monaco-react 的**懒加载壳**，禁止在这里静态 import
+// monaco-editor。真实实现（含 monaco-editor + 语言 contribution + workers）在
+// ./monaco-react-impl，只在编辑器真正渲染时按需拉起。
+//
+// 为什么必须拆：codeeditor.tsx 被 waveconfig / preview-edit / onboarding / builder
+// 静态引用，而这些 ViewModel 又从 builtinviews 静态进入每个终端 Tab 的入口 chunk；
+// 只要 monaco-react 顶层静态 import monaco-editor，Monaco 就会重新变回启动依赖。
 
-function createModel(value: string, path: string, language?: string) {
-    const uri = monaco.Uri.parse(`wave://editor/${encodeURIComponent(path)}`);
-    return monaco.editor.createModel(value, language, uri);
+import type { CodeEditorProps, DiffViewerProps } from "@/app/monaco/monaco-react-impl";
+import { lazy, Suspense } from "react";
+
+const MonacoCodeEditorImpl = lazy(() =>
+    import("./monaco-react-impl").then((m) => ({ default: m.MonacoCodeEditor }))
+);
+const MonacoDiffViewerImpl = lazy(() =>
+    import("./monaco-react-impl").then((m) => ({ default: m.MonacoDiffViewer }))
+);
+
+export type { CodeEditorProps, DiffViewerProps };
+
+// 编辑器加载期的占位：与真实编辑器容器同尺寸，避免块内布局跳变；不做额外 loading UI
+// （块级挂载处已有统一加载态）。
+const MonacoPlaceholder = () => <div className="flex flex-col h-full w-full" />;
+
+export function MonacoCodeEditor(props: CodeEditorProps) {
+    return (
+        <Suspense fallback={<MonacoPlaceholder />}>
+            <MonacoCodeEditorImpl {...props} />
+        </Suspense>
+    );
 }
 
-type CodeEditorProps = {
-    text: string;
-    readonly: boolean;
-    language?: string;
-    onChange?: (text: string) => void;
-    onMount?: (editor: MonacoTypes.editor.IStandaloneCodeEditor, monacoApi: typeof monaco) => () => void;
-    path: string;
-    options: MonacoTypes.editor.IEditorOptions;
-};
-
-export function MonacoCodeEditor({ text, readonly, language, onChange, onMount, path, options }: CodeEditorProps) {
-    const divRef = useRef<HTMLDivElement>(null);
-    const editorRef = useRef<MonacoTypes.editor.IStandaloneCodeEditor | null>(null);
-    const onUnmountRef = useRef<(() => void) | null>(null);
-    const applyingFromProps = useRef(false);
-    const pendingCompositionChange = useRef(false);
-
-    function emitEditorChange(editor: MonacoTypes.editor.IStandaloneCodeEditor) {
-        const model = editor.getModel();
-        if (!model) return;
-        onChange?.(model.getValue());
-    }
-
-    useEffect(() => {
-        loadMonaco();
-
-        const el = divRef.current;
-        if (!el) return;
-
-        const model = createModel(text, path, language);
-        console.log("[monaco] CREATE MODEL", path, model);
-
-        const editor = monaco.editor.create(el, {
-            ...options,
-            readOnly: readonly,
-            model,
-        });
-        editorRef.current = editor;
-
-        const sub = model.onDidChangeContent(() => {
-            if (applyingFromProps.current) return;
-            if (editor.inComposition) {
-                pendingCompositionChange.current = true;
-                return;
-            }
-            onChange?.(model.getValue());
-        });
-        const compositionStartSub = editor.onDidCompositionStart(() => {
-            pendingCompositionChange.current = false;
-        });
-        const compositionEndSub = editor.onDidCompositionEnd(() => {
-            if (!pendingCompositionChange.current) return;
-            pendingCompositionChange.current = false;
-            emitEditorChange(editor);
-        });
-
-        if (onMount) {
-            onUnmountRef.current = onMount(editor, monaco);
-        }
-
-        return () => {
-            if (pendingCompositionChange.current) {
-                pendingCompositionChange.current = false;
-                emitEditorChange(editor);
-            }
-            sub.dispose();
-            compositionStartSub.dispose();
-            compositionEndSub.dispose();
-            if (onUnmountRef.current) onUnmountRef.current();
-            editor.setModel(null);
-            editor.dispose();
-            model.dispose();
-            console.log("[monaco] dispose model");
-            editorRef.current = null;
-        };
-        // mount/unmount only
-    }, []);
-
-    useEffect(() => {
-        const editor = editorRef.current;
-        const el = divRef.current;
-        if (!editor || !el) return;
-
-        const debouncedLayout = debounce(100, () => {
-            editor.layout();
-        });
-        const resizeObserver = new ResizeObserver(debouncedLayout);
-        resizeObserver.observe(el);
-
-        return () => {
-            resizeObserver.disconnect();
-            debouncedLayout.cancel();
-        };
-    }, []);
-
-    // Keep model value in sync with props
-    useEffect(() => {
-        const editor = editorRef.current;
-        if (!editor) return;
-        const model = editor.getModel();
-        if (!model) return;
-
-        const current = model.getValue();
-        if (current === text) return;
-        if (editor.inComposition) return;
-
-        applyingFromProps.current = true;
-        model.pushEditOperations([], [{ range: model.getFullModelRange(), text }], () => null);
-        applyingFromProps.current = false;
-    }, [text]);
-
-    // Keep options in sync
-    useEffect(() => {
-        const editor = editorRef.current;
-        if (!editor) return;
-        editor.updateOptions({ ...options, readOnly: readonly });
-    }, [options, readonly]);
-
-    // Keep language in sync
-    useEffect(() => {
-        const editor = editorRef.current;
-        if (!editor) return;
-        const model = editor.getModel();
-        if (!model || !language) return;
-        monaco.editor.setModelLanguage(model, language);
-    }, [language]);
-
-    return <div className="flex flex-col h-full w-full" ref={divRef} />;
-}
-
-type DiffViewerProps = {
-    original: string;
-    modified: string;
-    language?: string;
-    path: string;
-    options: MonacoTypes.editor.IDiffEditorOptions;
-    onMount?: (editor: MonacoTypes.editor.IStandaloneDiffEditor, monacoApi: typeof monaco) => () => void;
-};
-
-export function MonacoDiffViewer({ original, modified, language, path, options, onMount }: DiffViewerProps) {
-    const divRef = useRef<HTMLDivElement>(null);
-    const diffRef = useRef<MonacoTypes.editor.IStandaloneDiffEditor | null>(null);
-    const onUnmountRef = useRef<(() => void) | null>(null);
-
-    // Create once
-    useEffect(() => {
-        loadMonaco();
-
-        const el = divRef.current;
-        if (!el) return;
-
-        const origUri = monaco.Uri.parse(`wave://diff/${encodeURIComponent(path)}.orig`);
-        const modUri = monaco.Uri.parse(`wave://diff/${encodeURIComponent(path)}.mod`);
-
-        const originalModel = monaco.editor.createModel(original, language, origUri);
-        const modifiedModel = monaco.editor.createModel(modified, language, modUri);
-
-        const diff = monaco.editor.createDiffEditor(el, options);
-        diffRef.current = diff;
-
-        diff.setModel({ original: originalModel, modified: modifiedModel });
-        if (onMount) {
-            onUnmountRef.current = onMount(diff, monaco);
-        }
-
-        return () => {
-            if (onUnmountRef.current) onUnmountRef.current();
-            diff.setModel(null);
-            diff.dispose();
-            originalModel.dispose();
-            modifiedModel.dispose();
-            diffRef.current = null;
-        };
-    }, []);
-
-    useEffect(() => {
-        const diff = diffRef.current;
-        const el = divRef.current;
-        if (!diff || !el) return;
-
-        const debouncedLayout = debounce(100, () => {
-            diff.layout();
-        });
-        const resizeObserver = new ResizeObserver(debouncedLayout);
-        resizeObserver.observe(el);
-
-        return () => {
-            resizeObserver.disconnect();
-            debouncedLayout.cancel();
-        };
-    }, []);
-
-    // Update models on prop change
-    useEffect(() => {
-        const diff = diffRef.current;
-        if (!diff) return;
-        const model = diff.getModel();
-        if (!model) return;
-
-        if (model.original.getValue() !== original) model.original.setValue(original);
-        if (model.modified.getValue() !== modified) model.modified.setValue(modified);
-
-        if (language) {
-            monaco.editor.setModelLanguage(model.original, language);
-            monaco.editor.setModelLanguage(model.modified, language);
-        }
-    }, [original, modified, language]);
-
-    useEffect(() => {
-        const diff = diffRef.current;
-        if (!diff) return;
-        diff.updateOptions(options);
-    }, [options]);
-
-    return <div className="flex flex-col h-full w-full" ref={divRef} />;
+export function MonacoDiffViewer(props: DiffViewerProps) {
+    return (
+        <Suspense fallback={<MonacoPlaceholder />}>
+            <MonacoDiffViewerImpl {...props} />
+        </Suspense>
+    );
 }

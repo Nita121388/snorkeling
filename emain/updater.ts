@@ -847,9 +847,12 @@ ipcMain.on("get-updater-channel", (event) => {
 let autoUpdateLock = false;
 
 /**
- * Configures the auto-updater based on the user's preference
+ * Configures the auto-updater based on the user's preference.
+ *
+ * W2-1：可选传入启动期已取回的 settings（emain.ts 后台调用），避免重复
+ * GetFullConfigCommand；不传时保留原来的回源行为。
  */
-export async function configureAutoUpdater() {
+export async function configureAutoUpdater(settings?: SettingsType) {
     if (isDev()) {
         console.log("skipping auto-updater in dev mode");
         return;
@@ -864,8 +867,8 @@ export async function configureAutoUpdater() {
 
     try {
         console.log("Configuring updater");
-        const settings = (await RpcApi.GetFullConfigCommand(ElectronWshClient)).settings;
-        updater = new Updater(settings);
+        const resolvedSettings = settings ?? (await RpcApi.GetFullConfigCommand(ElectronWshClient)).settings;
+        updater = new Updater(resolvedSettings);
         await updater.start();
     } catch (e) {
         console.warn("error configuring updater", e.toString());

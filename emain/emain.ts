@@ -59,6 +59,7 @@ import {
     getWaveWindowByWorkspaceId,
     initCollapsedTabIdsStore,
     initGlobalHotkeyEventSubscription,
+    primeFullConfigCache,
     registerGlobalHotkey,
     relaunchBrowserWindows,
     WaveBrowserWindow,
@@ -461,6 +462,10 @@ async function appMain() {
         console.log("error initializing wshrpc", e);
     }
     const fullConfig = await RpcApi.GetFullConfigCommand(ElectronWshClient);
+    // W2-1（启动去重）：把启动期这一份 fullConfig 缓存给主进程内其它启动路径
+    // （relaunchBrowserWindows / getOrCreateWebViewForTab / configureAutoUpdater），
+    // 避免同一次启动里重复发 GetFullConfigCommand。
+    primeFullConfigCache(fullConfig);
     checkIfRunningUnderARM64Translation(fullConfig);
     if (fullConfig?.settings?.["app:confirmquit"] != null) {
         confirmQuit = fullConfig.settings["app:confirmquit"];
@@ -478,7 +483,7 @@ async function appMain() {
         electron.nativeTheme.themeSource = "system";
     }
     ensureHotSpareTab(fullConfig);
-    await relaunchBrowserWindows();
+    await relaunchBrowserWindows(fullConfig);
     openExternalPathsAtStartup(bootArgv);
     flushPendingExternalOpenPaths();
     setTimeout(runActiveTimer, 5000); // start active timer, wait 5s just to be safe
@@ -486,7 +491,11 @@ async function appMain() {
 
     makeAndSetAppMenu();
     makeDockTaskbar();
-    await configureAutoUpdater();
+    // W2-1（性能）：自动更新配置不再阻塞启动收尾 —— configureAutoUpdater 内部会
+    // await 首次 checkForUpdates（网络 / codesign 检测），之前卡在
+    // setGlobalIsStarting(false) 与后续全局快捷键注册前面。现改为后台执行，错误
+    // 仍由它自己的 catch 记日志；settings 直接传入，省掉一次 GetFullConfigCommand。
+    fireAndForget(() => configureAutoUpdater(fullConfig?.settings));
     setGlobalIsStarting(false);
     if (fullConfig?.settings?.["window:maxtabcachesize"] != null) {
         setMaxTabCacheSize(fullConfig.settings["window:maxtabcachesize"]);

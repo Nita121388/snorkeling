@@ -5,7 +5,7 @@ import { RpcApi } from "@/app/store/wshclientapi";
 import { adaptFromElectronKeyEvent, checkKeyPressed } from "@/util/keyutil";
 import { CHORD_TIMEOUT } from "@/util/sharedconst";
 import { Rectangle, shell, WebContentsView } from "electron";
-import { createNewWaveWindow, getWaveWindowById } from "emain/emain-window";
+import { createNewWaveWindow, getFullConfigCached, getWaveWindowById } from "emain/emain-window";
 import path from "path";
 import { configureAuthKeyRequestInjection } from "./authkey";
 import { setWasActive } from "./emain-activity";
@@ -317,7 +317,9 @@ export async function getOrCreateWebViewForTab(waveWindowId: string, tabId: stri
     if (tabView) {
         return [tabView, true];
     }
-    const fullConfig = await RpcApi.GetFullConfigCommand(ElectronWshClient);
+    // W2-1（启动去重）：每个新 Tab 创建时不再单独发 GetFullConfigCommand，
+    // 复用主进程启动期取回的 fullConfig（带 TTL 失效）。
+    const fullConfig = await getFullConfigCached();
     tabView = getSpareTab(fullConfig);
     tabView.waveWindowId = waveWindowId;
     tabView.lastUsedTs = Date.now();

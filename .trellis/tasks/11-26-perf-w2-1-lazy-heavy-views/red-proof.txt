@@ -1,0 +1,20 @@
+ × frontend/wave-monaco-lazy.test.ts > wave.ts 启动路径不阻塞加载 Monaco（W2-1） > 不再有 `await loadMonaco()` 阻塞调用（按需加载走非阻塞 ensureMonacoLoaded） 4ms
+ × frontend/wave-monaco-lazy.test.ts > wave.ts 启动路径不阻塞加载 Monaco（W2-1） > monaco-env.ts 主文件不再静态 import monaco-editor（拆到按需 loader 子模块） 0ms
+ ✓ frontend/wave-monaco-lazy.test.ts > wave.ts 启动路径不阻塞加载 Monaco（W2-1） > 拆分真实存在：monaco-env 保留轻量 theme 桩（setMonacoTheme 可同步调用） 0ms
+ × frontend/app/block/heavy-views-lazy.test.ts > 重型视图懒加载（W2-1） > streamdown.tsx 不再静态 import shiki（codeToHtml 走按需动态 import + LRU） 4ms
+ × frontend/app/block/heavy-views-lazy.test.ts > 重型视图懒加载（W2-1） > sysinfo.tsx（model 文件）不再静态 import @observablehq/plot（plot 只活在拆出的 view 文件） 0ms
+ × frontend/app/block/heavy-views-lazy.test.ts > 重型视图懒加载（W2-1） > preview-model.tsx 不再静态 import ./preview（PreviewView 改 React.lazy） 1ms
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 5 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  frontend/wave-monaco-lazy.test.ts > wave.ts 启动路径不阻塞加载 Monaco（W2-1） > 不再有 `await loadMonaco()` 阻塞调用（按需加载走非阻塞 ensureMonacoLoaded）
+AssertionError: expected '// Copyright 2025, Command Line Inc.\…' not to match /await\s+loadMonaco\s*\(\s*\)/
+ FAIL  frontend/wave-monaco-lazy.test.ts > wave.ts 启动路径不阻塞加载 Monaco（W2-1） > monaco-env.ts 主文件不再静态 import monaco-editor（拆到按需 loader 子模块）
+AssertionError: expected '// Copyright 2025, Command Line Inc.\…' not to match /from\s+["']monaco-editor["']/
+ FAIL  frontend/app/block/heavy-views-lazy.test.ts > 重型视图懒加载（W2-1） > streamdown.tsx 不再静态 import shiki（codeToHtml 走按需动态 import + LRU）
+AssertionError: expected '// Copyright 2026, Command Line Inc.\…' not to match /from\s+["']shiki/
+ FAIL  frontend/app/block/heavy-views-lazy.test.ts > 重型视图懒加载（W2-1） > sysinfo.tsx（model 文件）不再静态 import @observablehq/plot（plot 只活在拆出的 view 文件）
+AssertionError: expected '// Copyright 2026, Command Line Inc.\…' not to match /from\s+["']@observablehq\/plo…/plot["']
+ FAIL  frontend/app/block/heavy-views-lazy.test.ts > 重型视图懒加载（W2-1） > preview-model.tsx 不再静态 import ./preview（PreviewView 改 React.lazy）
+AssertionError: expected '// Copyright 2026, Command Line Inc.\…' not to match /from\s+["']\.\/preview["']/preview["']
+            const activeMark = direction === currentDirection ? \"✓ \" : \"\";
+ Test Files  2 failed (2)
+      Tests  5 failed | 1 passed (6)

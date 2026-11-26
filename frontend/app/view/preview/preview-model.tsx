@@ -45,14 +45,13 @@ import clsx from "clsx";
 import { Atom, atom, Getter, PrimitiveAtom, WritableAtom } from "jotai";
 import { loadable } from "jotai/utils";
 import type * as MonacoTypes from "monaco-editor";
-import { createRef } from "react";
+import { createRef, lazy } from "react";
 import { isOpenableForObsidian, loadObsidianVaults, openInObsidianWithPicker } from "./obsidian";
 import { isNoiseUsagePath, resolvePathUsageKind } from "./path-usage";
 import { recordInitialPathUsage, recordPathUsage } from "./path-usage-store";
 import type { ExportFormat, ExportOptions } from "./plugins/export/export-provider";
 import { availableExportProviders, runMarkdownExport } from "./plugins/export/export-runner";
 import { isMarkdownFile } from "./plugins/export/pdf-export";
-import { PreviewView } from "./preview";
 import { makeDirectoryDefaultMenuItems } from "./preview-directory-utils";
 import { findInlineTabDedupeMatch, type InlineTabCandidate } from "./preview-inline-tab";
 import {
@@ -99,6 +98,11 @@ import {
 import { getHtmlOpenMode, htmlOpenModePrefsAtom, setHtmlOpenMode } from "./preview-text-modes-store";
 import { getPreviewDisplayPath, isWindowsDrivesPath } from "./preview-windows-drives";
 import type { PreviewEnv } from "./previewenv";
+
+// W2-1（性能）：PreviewView 静态导入会把 markdown.tsx（六千余行）+
+// @tanstack/react-table 整条链拖进每个终端 Tab 的入口 chunk（builtinviews 静态
+// 引用 PreviewModel）。改按需 React.lazy；块挂载处的 Suspense（block.tsx）提供加载态。
+const LazyPreviewView = lazy(() => import("./preview").then((m) => ({ default: m.PreviewView })));
 
 // Pinned directories setting key
 const PreviewPinnedDirectoriesKey = "preview:pinned-directories";
@@ -1447,7 +1451,7 @@ export class PreviewModel implements ViewModel {
     }
 
     get viewComponent(): ViewComponent {
-        return PreviewView;
+        return LazyPreviewView;
     }
 
     async getSpecializedView(getFn: Getter): Promise<{ specializedView?: string; errorStr?: string }> {

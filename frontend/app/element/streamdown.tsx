@@ -11,12 +11,50 @@ import { cn, useAtomValueSafe } from "@/util/util";
 import { type Atom, useAtomValue } from "jotai";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { bundledLanguages, codeToHtml } from "shiki/bundle/web";
 import { Streamdown } from "streamdown";
 import { throttle } from "throttle-debounce";
 
 const DarkShikiTheme = "github-dark-high-contrast";
 const LightShikiTheme = "github-light";
+
+// W2-1（性能）：shiki（bundle/web，含全量语法包）不再顶层静态 import —— 它会被
+// 拖进每个终端 Tab 的入口 chunk（streamdown 的引用面不止 ai 面板：aipanel /
+// onboarding 也用）。改为首个代码块出现时动态 import（模块级单飞）。
+type ShikiModule = typeof import("shiki/bundle/web");
+
+let shikiPromise: Promise<ShikiModule> | null = null;
+let shikiLoaded = false;
+
+function loadShiki(): Promise<ShikiModule> {
+    if (!shikiPromise) {
+        shikiPromise = import("shiki/bundle/web").then((mod) => {
+            shikiLoaded = true;
+            return mod;
+        });
+    }
+    return shikiPromise;
+}
+
+function isShikiLoaded(): boolean {
+    return shikiLoaded;
+}
+
+// codeToHtml 结果的**有界 LRU**：流式输出会把同一段代码反复重渲染（throttle 之后
+// 仍会重跑），缓存命中直接出 HTML，避免重复走 shiki 解析/着色。
+const ShikiHtmlCacheMaxEntries = 100;
+const shikiHtmlCache = new Map<string, string>();
+
+function cacheShikiHtml(key: string, html: string): void {
+    // Map 保插入顺序：命中先删后插 = 移到最新；超限删最旧（首个 key）。
+    shikiHtmlCache.delete(key);
+    shikiHtmlCache.set(key, html);
+    if (shikiHtmlCache.size > ShikiHtmlCacheMaxEntries) {
+        const oldestKey = shikiHtmlCache.keys().next().value;
+        if (oldestKey !== undefined) {
+            shikiHtmlCache.delete(oldestKey);
+        }
+    }
+}
 
 function extractText(node: React.ReactNode): string {
     if (node == null || typeof node === "boolean") return "";
@@ -48,20 +86,44 @@ function CodeHighlight({
 }) {
     const [html, setHtml] = useState<string>("");
     const [hasError, setHasError] = useState(false);
+    const [unsupported, setUnsupported] = useState(false);
+    // shiki 模块未加载时（首个代码块要现拉 chunk），先用可见纯文本占位；
+    // 已加载后的重高亮仍沿用原有透明占位，避免纯文本→高亮闪烁。
+    const [plainFallback] = useState(() => !isShikiLoaded());
     const codeRef = useRef<HTMLElement>(null);
     const seqRef = useRef(0);
 
     const highlightCode = useCallback(
         async (textToHighlight: string, language: string, disposedRef: { current: boolean }, seq: number) => {
             try {
-                const full = await codeToHtml(textToHighlight, { lang: language, theme: shikiTheme });
+                const cacheKey = `${shikiTheme}::${language}::${textToHighlight}`;
+                const cachedHtml = shikiHtmlCache.get(cacheKey);
+                if (cachedHtml != null) {
+                    if (!disposedRef.current && seq === seqRef.current) {
+                        setHtml(cachedHtml);
+                        setHasError(false);
+                        setUnsupported(false);
+                    }
+                    return;
+                }
+                const shiki = await loadShiki();
+                if (!(language in shiki.bundledLanguages)) {
+                    // 不在 bundle 里的语言：按纯文本渲染（与旧行为一致）。
+                    if (!disposedRef.current && seq === seqRef.current) {
+                        setUnsupported(true);
+                    }
+                    return;
+                }
+                const full = await shiki.codeToHtml(textToHighlight, { lang: language, theme: shikiTheme });
                 const start = full.indexOf("<code");
                 const open = full.indexOf(">", start);
                 const end = full.lastIndexOf("</code>");
                 const inner = start !== -1 && open !== -1 && end !== -1 ? full.slice(open + 1, end) : "";
+                cacheShikiHtml(cacheKey, inner);
                 if (!disposedRef.current && seq === seqRef.current) {
                     setHtml(inner);
                     setHasError(false);
+                    setUnsupported(false);
                 }
             } catch (e) {
                 if (!disposedRef.current && seq === seqRef.current) {
@@ -92,6 +154,14 @@ function CodeHighlight({
         };
     }, [text, lang, throttledHighlight]);
 
+    if (unsupported) {
+        return (
+            <code ref={codeRef} className={cn("font-mono text-[12px]", className)}>
+                {text}
+            </code>
+        );
+    }
+
     if (hasError) {
         return (
             <code ref={codeRef} className={cn("font-mono text-[12px]", className)}>
@@ -102,7 +172,10 @@ function CodeHighlight({
 
     if (!html && text) {
         return (
-            <code ref={codeRef} className={cn("font-mono text-[12px] text-transparent", className)}>
+            <code
+                ref={codeRef}
+                className={cn("font-mono text-[12px]", plainFallback ? "" : "text-transparent", className)}
+            >
                 {text}
             </code>
         );
@@ -131,7 +204,9 @@ export function Code({
     const lang = m?.[1] || "text";
     const text = extractText(children);
 
-    if (isCodeBlock && lang in bundledLanguages) {
+    if (isCodeBlock) {
+        // 语言是否在 shiki bundle 里改为在 CodeHighlight 内（异步）判断，
+        // 以免顶层静态 import bundledLanguages。
         return <CodeHighlight className={className} lang={lang} text={text} shikiTheme={shikiTheme} />;
     }
 

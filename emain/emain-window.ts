@@ -281,6 +281,31 @@ async function getClientId() {
     return cachedClientId;
 }
 
+// W2-1（性能，启动去重）：GetFullConfigCommand 在启动路径上被主进程连发 ——
+// 主启动（emain.ts）+ relaunchBrowserWindows + 每个新 Tab 的
+// getOrCreateWebViewForTab + configureAutoUpdater，同一次启动里全是同一份配置。
+// 这里做一次带 TTL 的主进程缓存：新窗口/新 Tab 优先复用启动期取回的 fullConfig，
+// TTL 过期才回源（settings 变更的完整失效跟随现有重启/relaunch 流程，另造第二套
+// 失效机制反而不可靠）。
+const FullConfigCacheTtlMs = 30_000;
+
+let cachedFullConfig: FullConfigType | null = null;
+let cachedFullConfigTs = 0;
+
+export function primeFullConfigCache(fullConfig: FullConfigType): void {
+    cachedFullConfig = fullConfig;
+    cachedFullConfigTs = Date.now();
+}
+
+export async function getFullConfigCached(): Promise<FullConfigType> {
+    if (cachedFullConfig != null && Date.now() - cachedFullConfigTs < FullConfigCacheTtlMs) {
+        return cachedFullConfig;
+    }
+    const fullConfig = await RpcApi.GetFullConfigCommand(ElectronWshClient);
+    primeFullConfigCache(fullConfig);
+    return fullConfig;
+}
+
 type WindowActionQueueEntry =
     | {
           op: "switchtab";
@@ -1385,7 +1410,7 @@ export async function createNewWaveWindow() {
     newBrowserWindow.show();
 }
 
-export async function relaunchBrowserWindows() {
+export async function relaunchBrowserWindows(fullConfig?: FullConfigType) {
     console.log("relaunchBrowserWindows");
     setGlobalIsRelaunching(true);
     const windows = getAllWaveWindows();
@@ -1399,7 +1424,9 @@ export async function relaunchBrowserWindows() {
     setGlobalIsRelaunching(false);
 
     const clientData = await ClientService.GetClientData();
-    const fullConfig = await RpcApi.GetFullConfigCommand(ElectronWshClient);
+    // W2-1：主启动路径传入已取回的 fullConfig，免掉启动期第二次 GetFullConfigCommand；
+    // 其它调用方（菜单 relaunch 等）走带 TTL 的缓存。
+    const configToUse = fullConfig ?? (await getFullConfigCached());
     const windowIds = clientData.windowids ?? [];
     const wins: WaveBrowserWindow[] = [];
     const isFirstRelaunch = !hasCompletedFirstRelaunch;
@@ -1418,7 +1445,7 @@ export async function relaunchBrowserWindows() {
             windowData,
             isPrimaryStartupWindow ? "(primary startup)" : ""
         );
-        const win = await createBrowserWindow(windowData, fullConfig, {
+        const win = await createBrowserWindow(windowData, configToUse, {
             unamePlatform,
             isPrimaryStartupWindow,
             foregroundWindow: windowId === primaryWindowId,
