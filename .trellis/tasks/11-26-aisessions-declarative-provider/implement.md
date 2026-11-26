@@ -78,6 +78,7 @@ RPC 注册文件（wshrpc command 常量/类型）如需改动，先在此追加
 3. **`columns` 用 typed struct，同 key 覆盖是逐字段的**：`{"antigravity":{"disabled":true}}` 不会丢内置 table/columns。
 4. **额外收口 `filter-presets.ts`**：`SourceValues` 硬编码 4 源会让 antigravity 筛选值被 sanitize 清空；改为合法 id 模式校验，`SourceFilter` 类型放宽为开放集合。
 5. **来源清单 RPC 落地为 `AISessionsService.GetSourceList` + `aisessions.SourceStatuses()`**（service 层反射注册，非 wshrpc command 常量）。
+6. **R8 补包（审计后新增，见 docs/answers/antigravity-gap-audit-*.html）**：声明式来源首次让「未知 source 恢复路径」可达，暴露 `restoreCommandForSession` / `restoreMetaForSession` 的 `codex` 静默回退；修复为 `isResumableSource` 守卫 + 三处入口隐藏 + 不可恢复来源 throw。其余审计疏漏（状态接管 db 轮询 / agentcatalog 内置 profile / candidateDirSpecs 探测目录 / 模型显示）留待后续独立任务。
 
 ## 风险与回滚点
 

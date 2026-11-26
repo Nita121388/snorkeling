@@ -36,6 +36,7 @@ import {
     describeSessionDates,
     formatFileSize,
     heatLevel,
+    isResumableSource,
     MessageHeatThresholds,
     restoreCommandForSession,
     SizeHeatThresholds,
@@ -618,17 +619,21 @@ export function SessionRow({
                                 {childBadge}
                             </button>
                         ) : null}
-                        <button
-                            type="button"
-                            className="flex h-5 shrink-0 items-center gap-1 rounded border border-border px-2 text-[10px] text-secondary opacity-0 transition-opacity hover:bg-hover hover:text-primary disabled:cursor-default disabled:opacity-60 disabled:hover:bg-transparent disabled:hover:text-secondary group-hover:opacity-100 group-focus-within:opacity-100"
-                            title={t("aisessions:row.resume")}
-                            data-row-action="true"
-                            disabled={resumeDisabled}
-                            onClick={onResume}
-                        >
-                            <i className="fa-sharp fa-solid fa-square-terminal" />
-                            <span>{t("aisessions:row.resumeLabel")}</span>
-                        </button>
+                        {/* R8：不可恢复来源（声明式 provider，如 antigravity）没有恢复命令——
+                            隐藏而不是置灰，避免「点了拉起错误 agent」。 */}
+                        {isResumableSource(session.source) ? (
+                            <button
+                                type="button"
+                                className="flex h-5 shrink-0 items-center gap-1 rounded border border-border px-2 text-[10px] text-secondary opacity-0 transition-opacity hover:bg-hover hover:text-primary disabled:cursor-default disabled:opacity-60 disabled:hover:bg-transparent disabled:hover:text-secondary group-hover:opacity-100 group-focus-within:opacity-100"
+                                title={t("aisessions:row.resume")}
+                                data-row-action="true"
+                                disabled={resumeDisabled}
+                                onClick={onResume}
+                            >
+                                <i className="fa-sharp fa-solid fa-square-terminal" />
+                                <span>{t("aisessions:row.resumeLabel")}</span>
+                            </button>
+                        ) : null}
                         <GenActionButton
                             sessionKey={session.key}
                             connection={connection}
@@ -639,14 +644,16 @@ export function SessionRow({
                             source="session-row"
                             className="opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
                         />
-                        <span data-row-action="true" className="inline-flex">
-                            <CopyIconButton
-                                text={restoreCommandForSession(session)}
-                                label={t("aisessions:row.copyResume")}
-                                size="xs"
-                                className="opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
-                            />
-                        </span>
+                        {isResumableSource(session.source) ? (
+                            <span data-row-action="true" className="inline-flex">
+                                <CopyIconButton
+                                    text={restoreCommandForSession(session)}
+                                    label={t("aisessions:row.copyResume")}
+                                    size="xs"
+                                    className="opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
+                                />
+                            </span>
+                        ) : null}
                     </div>
                     <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-secondary tabular-nums">
                         <button

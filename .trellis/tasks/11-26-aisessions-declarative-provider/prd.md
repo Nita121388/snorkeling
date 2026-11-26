@@ -21,6 +21,7 @@
 - R5 前端来源面收口：来源筛选选项与 source 徽标不再只认硬编码 4 个；声明式 provider 的会话可见、可筛、label 用配置值（不显示裸 id 也无破相）。
 - R6 现有 4 个编译期 provider 不动：声明式是增量通道，不是重写。
 - R7 遵守 aisessions-scan-contract：新 provider 走 `Manager` 扫描链路，单文件读取有上限，不新增绕过 single-flight 的扫描入口。
+- R8 **未知 source 不得产生 codex 恢复命令**（本任务首次让声明式来源进入恢复路径后的回归面）：`restoreCommandForSession()` 目前未知 source 回退 `codex resume <id>`（utils.ts:749 `?? "codex"`），`agentcontrol/restore.go` 已把同一错误标为 known defect。声明式来源的会话必须隐藏「Resume / 复制恢复命令」入口（或给出明确「不支持恢复」占位），不得生成错 agent 命令。
 
 ### Out of scope（后续独立任务）
 

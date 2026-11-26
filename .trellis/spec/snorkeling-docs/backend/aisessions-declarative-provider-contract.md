@@ -47,6 +47,18 @@
 - 持久化的筛选值不能因为「不在内置集合」被清空：`sanitizeSource` 接受合法 id 模式（`^[a-z0-9][a-z0-9_-]{0,63}$`）。
 - 未知来源样式走现有中性回退（`bg-secondary` 点 + `getAgentIcon` 首字母/emoji 链），**不得**为新 agent 写专属样式类。
 
+## 恢复链路：不可恢复来源不得产生 codex 命令（2026-11-26，R8）
+
+声明式来源首次让「未知 source 的恢复路径」可达，暴露了历史缺陷：前端 `restoreCommandForSession` /
+`restoreMetaForSession` 对未知 source 回退 `codex resume <id>`（拉起错误 agent）。后端 `agentcontrol/restore.go`
+早已按 D4 拒绝未知 source（E_USAGE），前端必须对齐：
+
+- `isResumableSource(source)` 是唯一判定（真源 = `AgentResumeCmdBySource` 键集，与后端
+  `resumeCmdBySource` 同步四行）；用 `hasOwnProperty`，防原型链键（`"toString"`）。
+- 非可恢复来源：列表行 Resume 按钮、行内/菜单「复制恢复命令」、详情头入口全部**隐藏**（不是置灰）；
+  `restoreMetaForSession` 对不可恢复来源直接 throw，绝不 `?? "codex"`。
+- 新增声明式来源不会自动获得恢复能力；除非该 agent 有真实 resume CLI，才在两表同步加行。
+
 ## 已知边界
 
 | 边界 | 现状 | 出路 |

@@ -742,11 +742,30 @@ const AgentResumeCmdBySource: Record<string, string> = {
     pi: "pi",
 };
 
+/**
+ * R8（aisessions 声明式 provider）：该来源的会话能否恢复。真源就是
+ * AgentResumeCmdBySource 的键集，与后端 pkg/agentcontrol/restore.go 的
+ * resumeCmdBySource 对齐（「the two tables must carry exactly these four
+ * rows」）。声明式 provider（如 antigravity）没有恢复命令，UI 一律隐藏
+ * Resume / 复制恢复命令入口，绝不静默回退 codex。
+ */
+export function isResumableSource(source: string): boolean {
+    return Object.prototype.hasOwnProperty.call(AgentResumeCmdBySource, source);
+}
+
 export function restoreMetaForSession(context: AISessionsRestoreContextResponse): MetaType & Record<string, unknown> {
+    // R8：不可恢复来源没有恢复命令，绝不允许 `?? "codex"` 静默回退——
+    // 后端 CLI/MCP 恢复路径（agentcontrol.ResolveRestoreContext）对未知 source
+    // 已经拒绝（E_USAGE），这里对齐：非四源之一直接拒绝构建 meta，让调用方的
+    // try/catch 把错误呈给用户，而不是拉起一个错误 agent 的块。
+    const resumeCmd = AgentResumeCmdBySource[context.source];
+    if (resumeCmd == null) {
+        throw new Error(`source "${context.source}" has no known resume command`);
+    }
     const meta: MetaType & Record<string, unknown> = {
         view: "term",
         controller: "cmd",
-        cmd: AgentResumeCmdBySource[context.source] ?? "codex",
+        cmd: resumeCmd,
         "cmd:shell": false,
         "cmd:runonstart": true,
         "cmd:jwt": true,
@@ -816,7 +835,12 @@ export function restoreCommandForSession(summary: SessionSummary): string {
         const quotedPath = isWindows() ? quoteWindowsPath(summary.projectPath) : quoteShellPath(summary.projectPath);
         return `cd ${quotedPath}\n${resumeCommand}`;
     }
-    return `codex resume ${summary.id}`;
+    if (summary.source === "codex") {
+        return `codex resume ${summary.id}`;
+    }
+    // R8：声明式/未知来源没有恢复命令，返回空串（调用方隐藏复制入口），
+    // 绝不回退 `codex resume`——那是错误 agent 启动（与后端 D4 语义对齐）。
+    return "";
 }
 
 export function shortSessionId(id: string): string {

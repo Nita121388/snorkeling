@@ -64,6 +64,7 @@ export function SessionMoreMenu({
     sessionId,
     sessionKey,
     restoreCommand,
+    canResume = true,
     buildMarkdown,
     onRename,
     onEditNote,
@@ -82,6 +83,11 @@ export function SessionMoreMenu({
     sessionId: string;
     sessionKey?: string;
     restoreCommand: string;
+    /**
+     * R8：该来源能否恢复。false 时不渲染 Resume 与「复制恢复命令」两项——
+     * 声明式 provider（antigravity）没有恢复命令，置灰仍可能被误点。
+     */
+    canResume?: boolean;
     buildMarkdown: () => string;
     onRename?: () => void;
     onEditNote: () => void;
@@ -219,13 +225,15 @@ export function SessionMoreMenu({
                             />
                         </>
                     ) : null}
-                    <MenuRow
-                        icon={restoring ? "fa-spinner animate-spin" : "fa-square-terminal"}
-                        label={restoring ? t("aisessions:menu.resuming") : t("aisessions:menu.resume")}
-                        disabled={restoring}
-                        disabledReason={t("aisessions:menu.restoring")}
-                        onClick={() => closeAndRun(onResume)}
-                    />
+                    {canResume ? (
+                        <MenuRow
+                            icon={restoring ? "fa-spinner animate-spin" : "fa-square-terminal"}
+                            label={restoring ? t("aisessions:menu.resuming") : t("aisessions:menu.resume")}
+                            disabled={restoring}
+                            disabledReason={t("aisessions:menu.restoring")}
+                            onClick={() => closeAndRun(onResume)}
+                        />
+                    ) : null}
                     <MenuRow
                         icon={refreshing ? "fa-spinner animate-spin" : "fa-rotate"}
                         label={refreshing ? t("aisessions:menu.refreshing") : t("aisessions:menu.refresh")}
@@ -301,13 +309,15 @@ export function SessionMoreMenu({
                                     label={t("aisessions:menu.sessionId")}
                                     onClick={() => copyAndClose(sessionId, t("aisessions:menu.copiedId"), "id")}
                                 />
-                                <MenuRow
-                                    icon="fa-terminal"
-                                    label={t("aisessions:menu.resumeCommand")}
-                                    onClick={() =>
-                                        copyAndClose(restoreCommand, t("aisessions:menu.copiedResume"), "resume")
-                                    }
-                                />
+                                {canResume ? (
+                                    <MenuRow
+                                        icon="fa-terminal"
+                                        label={t("aisessions:menu.resumeCommand")}
+                                        onClick={() =>
+                                            copyAndClose(restoreCommand, t("aisessions:menu.copiedResume"), "resume")
+                                        }
+                                    />
+                                ) : null}
                                 <div className="mx-2 my-1 h-px bg-border" />
                                 <MenuRow
                                     icon="fa-brackets-curly"

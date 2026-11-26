@@ -162,6 +162,7 @@ import {
     buildSessionDetailTimeline,
     formatToolCallPreview,
     isReadableMessage,
+    isResumableSource,
     outlinePreview,
     restoreCommandForSession,
     shortSessionId,
@@ -2531,6 +2532,7 @@ export function SessionDetailPane({
                                 sessionId={summary.id}
                                 sessionKey={summary.key}
                                 restoreCommand={restoreCommandForSession(summary)}
+                                canResume={isResumableSource(summary.source)}
                                 onRename={summary.key ? startRename : undefined}
                                 onEditNote={() => {
                                     setNoteError("");

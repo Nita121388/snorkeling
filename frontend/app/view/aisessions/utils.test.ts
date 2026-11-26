@@ -33,6 +33,7 @@ import {
     heroGroupLabel,
     heroIdOfSession,
     isReadableMessage,
+    isResumableSource,
     isSessionNotFoundError,
     makeHeroPathMatcher,
     makeSessionComparator,
@@ -463,6 +464,36 @@ describe("AI session detail timeline", () => {
             `cd "C:\\dev\\proj"\n$env:PI_CODING_AGENT_SESSION_DIR = 'C:\\Wave Data\\pi-sessions\\vendor-a'\npi --session-id pi-session-789`
         );
         setPlatform(PlatformMacOS);
+    });
+
+    // R8（aisessions 声明式 provider）：声明式/未知来源没有恢复命令，
+    // 绝不允许静默回退 `codex resume`（后端 agentcontrol D4 同语义）。
+    it("returns an empty resume command for declarative/unknown sources instead of a codex fallback", () => {
+        expect(restoreCommandForSession({ id: "ag-conv-1", source: "antigravity" } as SessionSummary)).toBe("");
+        expect(
+            restoreCommandForSession({ id: "some-id", source: "totally-unknown" } as SessionSummary)
+        ).not.toContain("codex");
+        // 四个已知源不受影响（codex 从未有自己的分支，走的是尾部分支）。
+        expect(restoreCommandForSession({ id: "cx-1", source: "codex" } as SessionSummary)).toBe(
+            "codex resume cx-1"
+        );
+    });
+
+    it("marks exactly the four compiled-in sources as resumable", () => {
+        expect(isResumableSource("claude")).toBe(true);
+        expect(isResumableSource("codex")).toBe(true);
+        expect(isResumableSource("opencode")).toBe(true);
+        expect(isResumableSource("pi")).toBe(true);
+        expect(isResumableSource("antigravity")).toBe(false);
+        expect(isResumableSource("")).toBe(false);
+        // 原型链键不得被误认（Record<string,string> 直取会命中）。
+        expect(isResumableSource("toString")).toBe(false);
+    });
+
+    it("refuses to build restore meta for non-resumable sources (no silent codex cmd)", () => {
+        expect(() => restoreMetaForSession({ sessionid: "ag-conv-1", source: "antigravity" })).toThrow(
+            /antigravity/
+        );
     });
 
     it("builds vendor restore metadata only from validated context", () => {
