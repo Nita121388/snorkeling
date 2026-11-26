@@ -365,6 +365,16 @@ const TerminalView = ({ blockId, model }: ViewComponentProps<TermViewModel>) => 
     // Fully-resolved terminal font: block override > global setting > connection > default.
     const resolvedFontFamily =
         blockData?.meta?.["term:fontfamily"] ?? termSettings?.["term:fontfamily"] ?? connFontFamily ?? "Hack";
+    // W2-3: 把用于初始化的 term 设置提成组件级原语值。它们既给下面的 create effect 当
+    // init-only 依赖，也给「就地 apply」effect 用 —— 这样改 term:bellsound / term:theme /
+    // 字体等可热更新设置不会再销毁重建每个终端的 PTY 容器。
+    const termMacOptionIsMeta = jotai.useAtomValue(getOverrideConfigAtom(blockId, "term:macoptionismeta")) ?? false;
+    const termCursorStyle = normalizeCursorStyle(jotai.useAtomValue(getOverrideConfigAtom(blockId, "term:cursor")));
+    const termCursorBlink = jotai.useAtomValue(getOverrideConfigAtom(blockId, "term:cursorblink")) ?? false;
+    const termAllowBPM = jotai.useAtomValue(model.termBPMAtom) ?? true;
+    const termScrollbackSetting = termSettings?.["term:scrollback"];
+    const termBlockScrollback = blockData?.meta?.["term:scrollback"];
+    const termDisableWebgl = termSettings?.["term:disablewebgl"] ?? false;
     const isFocused = jotai.useAtomValue(model.nodeModel.isFocused);
     const isMI = jotai.useAtomValue(tabModel.isTermMultiInput);
     const isBasicTerm = termMode != "vdom" && blockData?.meta?.controller != "cmd"; // needs to match isBasicTerm
@@ -443,14 +453,13 @@ const TerminalView = ({ blockId, model }: ViewComponentProps<TermViewModel>) => 
         const fullConfig = globalStore.get(atoms.fullConfigAtom);
         const termThemeName = globalStore.get(model.termThemeNameAtom);
         const termTransparency = globalStore.get(model.termTransparencyAtom);
-        const termMacOptionIsMetaAtom = getOverrideConfigAtom(blockId, "term:macoptionismeta");
         const [termTheme, _] = computeTheme(fullConfig, termThemeName, termTransparency);
         let termScrollback = 2000;
-        if (termSettings?.["term:scrollback"]) {
-            termScrollback = Math.floor(termSettings["term:scrollback"]);
+        if (termScrollbackSetting) {
+            termScrollback = Math.floor(termScrollbackSetting);
         }
-        if (blockData?.meta?.["term:scrollback"]) {
-            termScrollback = Math.floor(blockData.meta["term:scrollback"]);
+        if (termBlockScrollback) {
+            termScrollback = Math.floor(termBlockScrollback);
         }
         if (termScrollback < 0) {
             termScrollback = 0;
@@ -458,16 +467,11 @@ const TerminalView = ({ blockId, model }: ViewComponentProps<TermViewModel>) => 
         if (termScrollback > 50000) {
             termScrollback = 50000;
         }
-        const termAllowBPM = globalStore.get(model.termBPMAtom) ?? true;
-        const termMacOptionIsMeta = globalStore.get(termMacOptionIsMetaAtom) ?? false;
-        const termCursorStyle = normalizeCursorStyle(globalStore.get(getOverrideConfigAtom(blockId, "term:cursor")));
-        const termCursorBlink = globalStore.get(getOverrideConfigAtom(blockId, "term:cursorblink")) ?? false;
         const wasFocused = globalStore.get(model.nodeModel.isFocused);
-        const fontFamily = blockData?.meta?.["term:fontfamily"] ?? termSettings?.["term:fontfamily"] ?? connFontFamily ?? "Hack";
+        const fontFamily = resolvedFontFamily;
         // Light theme forces the Canvas renderer: xterm's WebGL renderer produces faint/thin
         // glyphs on a light background (poor sub-pixel coverage), so disable it under light.
-        const useWebGl =
-            globalStore.get(atoms.resolvedAppThemeAtom) !== "light" && !termSettings?.["term:disablewebgl"];
+        const useWebGl = globalStore.get(atoms.resolvedAppThemeAtom) !== "light" && !termDisableWebgl;
         console.log("[termwrap-lifecycle-debug] create", {
             blockId,
             nodeId: model.nodeModel.nodeId,
@@ -579,7 +583,20 @@ const TerminalView = ({ blockId, model }: ViewComponentProps<TermViewModel>) => 
             setSelectionCopyOverlay(null);
             setSelectionLogicalLineText(null);
         };
-    }, [blockId, termSettings, termFontSize, connFontFamily]);
+    }, [blockId, termFontSize, termScrollbackSetting, termBlockScrollback, termDisableWebgl]);
+
+    // W2-3: 其余可在运行时生效的终端选项就地 apply —— 关键是不重建 TermWrap（PTY 会话不断）。
+    // theme / fontFamily / renderer 已分别由 TermThemeUpdater 与上方 fontFamily effect 热更新。
+    React.useEffect(() => {
+        const termWrap = termWrapInst;
+        if (termWrap == null) {
+            return;
+        }
+        termWrap.terminal.options.macOptionIsMeta = termMacOptionIsMeta;
+        termWrap.terminal.options.cursorStyle = termCursorStyle;
+        termWrap.terminal.options.cursorBlink = termCursorBlink;
+        termWrap.terminal.options.ignoreBracketedPasteMode = !termAllowBPM;
+    }, [termWrapInst, termMacOptionIsMeta, termCursorStyle, termCursorBlink, termAllowBPM]);
 
     // pending input 注入：CommonText「新建 agent block 并发送」时，文本在队列里等 TUI 就绪。
     // 就绪判定走 computeInjectDecision（首输出 + 静默窗口，TTL 兜底）；注入经 terminal.paste

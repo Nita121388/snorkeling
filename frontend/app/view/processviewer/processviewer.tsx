@@ -223,6 +223,18 @@ export class ProcessViewerViewModel implements ViewModel {
 
         const poll = async () => {
             while (!cancelled && !this.disposed) {
+                // W2-3: 窗口隐藏时休眠 —— 不做拉取也不写 atom，避免后台页每 interval 重渲。
+                if (typeof document !== "undefined" && document.hidden) {
+                    await new Promise<void>((resolve) => {
+                        const timer = setTimeout(resolve, globalStore.get(this.fetchIntervalAtom));
+                        this.cancelPoll = () => {
+                            clearTimeout(timer);
+                            cancelled = true;
+                            resolve();
+                        };
+                    });
+                    continue;
+                }
                 await this.doOneFetch(false, () => cancelled);
 
                 if (cancelled || this.disposed) break;

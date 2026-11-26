@@ -98,6 +98,8 @@ export function AiAuditView({ model }: { model: AiAuditViewModel }) {
     React.useEffect(() => {
         void model.load();
         const timer = window.setInterval(() => {
+            // W2-3: 窗口隐藏时休眠 —— 不轮询也不写 now state，避免隐藏页每 4s 重渲。
+            if (typeof document !== "undefined" && document.hidden) return;
             void model.load({ silent: true });
             setNow(Date.now());
         }, 4000);

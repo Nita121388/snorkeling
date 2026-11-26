@@ -22,14 +22,29 @@ import { atom } from "jotai";
  */
 
 let timer: ReturnType<typeof setInterval> | null = null;
+let visibilityListenerAttached = false;
 
 export const nowMinuteTickAtom = atom<number>(0);
 
 function ensureTimerRunning(): void {
     if (timer != null) return;
     timer = setInterval(() => {
+        // W2-3: 窗口隐藏时休眠 —— 不写 atom，避免整页每分钟重渲。timer 本身常驻，
+        // 回到可见后由 visibilitychange 立即补一拍，不会出现长时间 stale 的 elapsed。
+        if (typeof document !== "undefined" && document.hidden) {
+            return;
+        }
         globalStore.set(nowMinuteTickAtom, Date.now());
     }, 60_000);
+    // 回到可见立刻补一拍：隐藏期间跳过的 tick 不用等下一个 60s 才追上。
+    if (!visibilityListenerAttached && typeof document !== "undefined") {
+        visibilityListenerAttached = true;
+        document.addEventListener("visibilitychange", () => {
+            if (!document.hidden) {
+                globalStore.set(nowMinuteTickAtom, Date.now());
+            }
+        });
+    }
 }
 
 export function startNowMinuteTick(): void {

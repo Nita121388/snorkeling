@@ -28,7 +28,7 @@ import { PrimitiveAtom, atom, useAtom, useAtomValue, useSetAtom } from "jotai";
 import { OverlayScrollbarsComponent, OverlayScrollbarsComponentRef } from "overlayscrollbars-react";
 import React, { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useDrag, useDrop } from "react-dnd";
-import { debounce } from "throttle-debounce";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { InlineRenameInput } from "@/app/element/inline-rename-input";
 import { i18n } from "@/i18n/config";
 import { useTranslation } from "react-i18next";
@@ -346,14 +346,22 @@ function DirectoryTable({
 
     const osRef = useRef<OverlayScrollbarsComponentRef>(null);
     const bodyRef = useRef<HTMLDivElement>(null);
-    const [scrollHeight, setScrollHeight] = useState(0);
 
-    const onScroll = useCallback(
-        debounce(2, () => {
-            setScrollHeight(osRef.current.osInstance().elements().viewport.scrollTop);
-        }),
-        []
-    );
+    // W2-3: 滚动高度只服务于 CSS（.dir-table:not([data-scroll-height="0"]) 顶部模糊层），
+    // 直写 DOM dataset，删掉 onScroll 2ms 防抖 + scrollHeight state 导致的整表重渲。
+    // 初始值 "0" 在 JSX 上保留，未滚动时仍不显示那层 blur。
+    const onScroll = useCallback(() => {
+        const osc = osRef.current;
+        if (osc == null) {
+            return;
+        }
+        const viewport = osc.osInstance()?.elements().viewport;
+        const host = osc.getElement();
+        if (viewport == null || host == null) {
+            return;
+        }
+        host.dataset.scrollHeight = String(viewport.scrollTop);
+    }, []);
 
     const TableComponent = table.getState().columnSizingInfo.isResizingColumn ? MemoizedTableBody : TableBody;
 
@@ -364,7 +372,7 @@ function DirectoryTable({
             className="dir-table"
             style={{ ...columnSizeVars }}
             ref={osRef}
-            data-scroll-height={scrollHeight}
+            data-scroll-height="0"
         >
             <div className="dir-table-head">
                 {table.getHeaderGroups().map((headerGroup) => (
@@ -387,7 +395,6 @@ function DirectoryTable({
                 setSelectedPath={setSelectedPath}
                 selectedPaths={selectedPaths}
                 setSelectedPaths={setSelectedPaths}
-                osRef={osRef.current}
                 editingRenameAtom={editingRenameAtom}
             />
         </OverlayScrollbarsComponent>
@@ -406,7 +413,6 @@ interface TableBodyProps {
     setSelectedPath: (_: string) => void;
     selectedPaths: Set<string>;
     setSelectedPaths: React.Dispatch<React.SetStateAction<Set<string>>>;
-    osRef: OverlayScrollbarsComponentRef;
     editingRenameAtom: PrimitiveAtom<{ path: string; isDir: boolean } | null>;
 }
 
@@ -420,7 +426,6 @@ function TableBody({
     setSearch,
     selectedPaths,
     setSelectedPaths,
-    osRef,
     editingRenameAtom,
 }: TableBodyProps) {
     const searchActive = useAtomValue(model.directorySearchActive);
@@ -438,17 +443,69 @@ function TableBody({
     const marqueeAdditiveRef = useRef(false);
     const blockMoveMenuItems = useBlockMoveMenuItems();
 
+    // ---- W2-3 TableBody 虚拟化 ----
+    // 滚动容器 = OverlayScrollbars 的 viewport（即 overlayscrollbars-react 渲染的
+    // contents div）。它在 React 树里直接渲染，挂载后就能从 DOM 取到，不依赖
+    // osInstance() 初始化完成的时机。
+    const getScrollElement = useCallback((): HTMLElement | null => {
+        const body = bodyRef.current;
+        if (body == null) {
+            return null;
+        }
+        return body.closest("[data-overlayscrollbars-contents]") as HTMLElement | null;
+    }, []);
+
+    const scrollBoxRef = useRef<HTMLDivElement>(null);
+    // 列表起点到滚动内容顶部的距离（表头 + body padding）。行 absolute 定位时把这部分
+    // 从 translateY 里减掉；range 计算和 scrollToIndex 由 virtualizer 的 scrollMargin 对齐。
+    const [scrollMargin, setScrollMargin] = useState(0);
+
+    const rowModel = table.getRowModel();
+    // 展示顺序：`..` 上级行固定在首位（idx=0），其余行按表格排序。
+    const rows = useMemo(() => {
+        const flatRows = rowModel.flatRows;
+        const dotdot = flatRows.find((row) => row.getValue("name") === "..");
+        const others = flatRows.filter((row) => row.getValue("name") !== "..");
+        return dotdot == null ? others : [dotdot, ...others];
+    }, [rowModel]);
+
+    const rowVirtualizer = useVirtualizer({
+        count: rows.length,
+        getScrollElement,
+        estimateSize: () => 24,
+        overscan: 8,
+        scrollMargin,
+    });
+
+    React.useLayoutEffect(() => {
+        const viewport = getScrollElement();
+        const box = scrollBoxRef.current;
+        if (viewport == null || box == null) {
+            return;
+        }
+        const boxTop = box.getBoundingClientRect().top - viewport.getBoundingClientRect().top + viewport.scrollTop;
+        if (Math.abs(boxTop - scrollMargin) > 0.5) {
+            setScrollMargin(boxTop);
+        }
+    });
+
     useEffect(() => {
-        if (focusIndex === null || !bodyRef.current || !osRef) {
+        if (focusIndex == null || bodyRef.current == null) {
+            return;
+        }
+
+        const viewport = getScrollElement();
+        if (viewport == null) {
             return;
         }
 
         const rowElement = bodyRef.current.querySelector(`[data-rowindex="${focusIndex}"]`) as HTMLDivElement;
         if (!rowElement) {
+            // 虚拟化后目标行可能不在当前渲染窗口里：交给 virtualizer 滚过去，而不是静默不动。
+            rowVirtualizer.scrollToIndex(focusIndex, { align: "auto" });
             return;
         }
 
-        const viewport = osRef.osInstance().elements().viewport;
         const viewportHeight = viewport.offsetHeight;
         const rowRect = rowElement.getBoundingClientRect();
         const parentRect = viewport.getBoundingClientRect();
@@ -470,24 +527,43 @@ function TableBody({
         }
     }, [focusIndex]);
 
-    const allRows = table.getRowModel().flatRows;
     const selectedFileInfos = useMemo(
-        () => allRows.map((row) => row.original).filter((fileInfo) => selectedPaths.has(fileInfo.path)),
-        [allRows, selectedPaths]
+        () => rows.map((row) => row.original).filter((fileInfo) => selectedPaths.has(fileInfo.path)),
+        [rows, selectedPaths]
     );
+
+    // W2-3: 行回调通过 ref 读最新状态，身份保持稳定 —— 否则 focusIndex / 选区变化会重建回调，
+    // 击穿 TableRow 的 React.memo（虚拟化只省 DOM，不省 re-render）。
+    const rowsRef = useRef(rows);
+    rowsRef.current = rows;
+    const focusIndexRef = useRef(focusIndex);
+    focusIndexRef.current = focusIndex;
+    const selectionAnchorRef = useRef(selectionAnchorPath);
+    selectionAnchorRef.current = selectionAnchorPath;
+    const selectedPathsRef = useRef(selectedPaths);
+    selectedPathsRef.current = selectedPaths;
+    const selectedFileInfosRef = useRef(selectedFileInfos);
+    selectedFileInfosRef.current = selectedFileInfos;
+    const connRef = useRef(conn);
+    connRef.current = conn;
+    const dirPathRef = useRef(dirPath);
+    dirPathRef.current = dirPath;
+    const blockMoveMenuItemsRef = useRef(blockMoveMenuItems);
+    blockMoveMenuItemsRef.current = blockMoveMenuItems;
 
     const handleRowClick = useCallback(
         (e: React.MouseEvent<HTMLDivElement>, row: Row<FileInfo>, idx: number) => {
+            const currentRows = rowsRef.current;
             const rowPath = row.getValue("path") as string;
             setFocusIndex(idx);
-            if (e.shiftKey && selectionAnchorPath != null) {
-                const anchorIndex = allRows.findIndex(
-                    (candidateRow) => candidateRow.getValue("path") === selectionAnchorPath
+            if (e.shiftKey && selectionAnchorRef.current != null) {
+                const anchorIndex = currentRows.findIndex(
+                    (candidateRow) => candidateRow.getValue("path") === selectionAnchorRef.current
                 );
-                const startIndex = anchorIndex >= 0 ? anchorIndex : focusIndex;
+                const startIndex = anchorIndex >= 0 ? anchorIndex : focusIndexRef.current;
                 const [start, end] = [Math.min(startIndex, idx), Math.max(startIndex, idx)];
                 const nextSelectedPaths = new Set<string>();
-                allRows.slice(start, end + 1).forEach((candidateRow) => {
+                currentRows.slice(start, end + 1).forEach((candidateRow) => {
                     const candidatePath = candidateRow.getValue("path") as string;
                     if (candidatePath) {
                         nextSelectedPaths.add(candidatePath);
@@ -512,7 +588,7 @@ function TableBody({
             setSelectedPaths(new Set(rowPath ? [rowPath] : []));
             setSelectionAnchorPath(rowPath);
         },
-        [allRows, focusIndex, selectionAnchorPath, setFocusIndex, setSelectedPaths]
+        [setFocusIndex, setSelectedPaths]
     );
 
     // 框选：与 AI Sessions 列表共用同一套几何函数（@/util/selectionrect）。
@@ -577,15 +653,18 @@ function TableBody({
                 return;
             }
             setFocusIndex(idx);
-            const contextSelectedFileInfos = selectedPaths.has(finfo.path) ? selectedFileInfos : [finfo];
-            if (!selectedPaths.has(finfo.path)) {
+            const currentSelectedPaths = selectedPathsRef.current;
+            const contextSelectedFileInfos = currentSelectedPaths.has(finfo.path)
+                ? selectedFileInfosRef.current
+                : [finfo];
+            if (!currentSelectedPaths.has(finfo.path)) {
                 setSelectedPaths(new Set([finfo.path]));
                 setSelectionAnchorPath(finfo.path);
             }
             const menu = await makeDirectoryEntryMenuItems(
                 model,
                 finfo,
-                conn,
+                connRef.current,
                 setErrorMsg,
                 {
                     newFile: table.options.meta.newFile,
@@ -598,26 +677,29 @@ function TableBody({
                         model.goHistory(finfo.path, undefined, resolveExplorerRootPathForOpenInCurrentBlock(finfo)),
                     openInNewBlock: (isDir) => model.openPathInNewBlockSmart(finfo.path, isDir),
                     selectedFileInfos: contextSelectedFileInfos,
-                    relativePathRoot: dirPath,
+                    relativePathRoot: dirPathRef.current,
                 }
             );
-            ContextMenuModel.getInstance().showContextMenu(appendBlockMoveMenuItems(menu, blockMoveMenuItems), e);
+            ContextMenuModel.getInstance().showContextMenu(
+                appendBlockMoveMenuItems(menu, blockMoveMenuItemsRef.current),
+                e
+            );
         },
-        [
-            blockMoveMenuItems,
-            conn,
-            model,
-            selectedFileInfos,
-            selectedPaths,
-            setErrorMsg,
-            setFocusIndex,
-            setSelectedPaths,
-            table,
-        ]
+        [model, setErrorMsg, setFocusIndex, setSelectedPaths, table]
     );
 
-    const dotdotRow = allRows.find((row) => row.getValue("name") === "..");
-    const otherRows = allRows.filter((row) => row.getValue("name") !== "..");
+    // 行高测量回调：virtualizer 靠行上的 data-index 属性定位（见 TableRow）。
+    const measureRow = useCallback(
+        (node: HTMLElement | null) => {
+            rowVirtualizer.measureElement(node);
+        },
+        [rowVirtualizer]
+    );
+
+    const virtualItems = rowVirtualizer.getVirtualItems();
+    // 斑马纹（scss 里 .dir-table-body-row:nth-child(odd)）依赖 DOM 兄弟序：
+    // 虚拟窗口起点为奇数时插入一个 0 尺寸占位元素把奇偶对齐，滚动中条纹才不会「爬行」。
+    const needParitySpacer = virtualItems.length > 0 && virtualItems[0]!.index % 2 === 1;
 
     return (
         <div className="dir-table-body relative" ref={bodyRef} onMouseDown={startMarquee}>
@@ -653,38 +735,39 @@ function TableBody({
                     </div>
                 </div>
             )}
-            <div className="dir-table-body-scroll-box">
+            <div
+                className="dir-table-body-scroll-box"
+                ref={scrollBoxRef}
+                style={{ height: rowVirtualizer.getTotalSize() }}
+            >
                 <div className="dummy dir-table-body-row" ref={dummyLineRef}>
                     <div className="dir-table-body-cell">dummy-data</div>
                 </div>
-                {dotdotRow && (
-                    <TableRow
-                        model={model}
-                        row={dotdotRow}
-                        focusIndex={focusIndex}
-                        setSearch={setSearch}
-                        idx={0}
-                        selected={selectedPaths.has(dotdotRow.getValue("path") as string)}
-                        handleRowClick={handleRowClick}
-                        handleFileContextMenu={handleFileContextMenu}
-                        editingRenameAtom={editingRenameAtom}
-                        key="dotdot"
-                    />
-                )}
-                {otherRows.map((row, idx) => (
-                    <TableRow
-                        model={model}
-                        row={row}
-                        focusIndex={focusIndex}
-                        setSearch={setSearch}
-                        idx={dotdotRow ? idx + 1 : idx}
-                        selected={selectedPaths.has(row.getValue("path") as string)}
-                        handleRowClick={handleRowClick}
-                        handleFileContextMenu={handleFileContextMenu}
-                        editingRenameAtom={editingRenameAtom}
-                        key={idx}
-                    />
-                ))}
+                {needParitySpacer ? (
+                    <div aria-hidden="true" style={{ position: "absolute", width: 0, height: 0 }} />
+                ) : null}
+                {virtualItems.map((virtualRow) => {
+                    const row = rows[virtualRow.index];
+                    if (row == null) {
+                        return null;
+                    }
+                    return (
+                        <TableRow
+                            model={model}
+                            row={row}
+                            focused={focusIndex === virtualRow.index}
+                            setSearch={setSearch}
+                            idx={virtualRow.index}
+                            selected={selectedPaths.has(row.getValue("path") as string)}
+                            handleRowClick={handleRowClick}
+                            handleFileContextMenu={handleFileContextMenu}
+                            editingRenameAtom={editingRenameAtom}
+                            measureRef={measureRow}
+                            virtualStart={virtualRow.start - scrollMargin}
+                            key={virtualRow.key}
+                        />
+                    );
+                })}
             </div>
         </div>
     );
@@ -693,37 +776,50 @@ function TableBody({
 type TableRowProps = {
     model: PreviewModel;
     row: Row<FileInfo>;
-    focusIndex: number;
+    focused: boolean;
     setSearch: (_: string) => void;
     idx: number;
     selected: boolean;
     handleRowClick: (e: React.MouseEvent<HTMLDivElement>, row: Row<FileInfo>, idx: number) => void;
     handleFileContextMenu: (e: any, finfo: FileInfo, idx: number) => Promise<void>;
     editingRenameAtom: PrimitiveAtom<{ path: string; isDir: boolean } | null>;
+    /** W2-3: virtualizer 行高测量回调（靠行上的 data-index 属性定位）。 */
+    measureRef?: (node: HTMLElement | null) => void;
+    /** W2-3: 行在 .dir-table-body-scroll-box 里的绝对定位偏移（px）。 */
+    virtualStart: number;
 };
 
-function TableRow({
+// W2-3: React.memo —— 虚拟化后仍要避免整窗口逐行 re-render；配合 TableBody 里
+// 经 ref 稳定化的回调，focusIndex / 选区变化时只有受影响的行重渲。
+const TableRow = React.memo(function TableRow({
     model,
     row,
-    focusIndex,
+    focused,
     setSearch,
     idx,
     selected,
     handleRowClick,
     handleFileContextMenu,
     editingRenameAtom,
+    measureRef,
+    virtualStart,
 }: TableRowProps) {
     const dirPath = useAtomValue(model.statFilePath);
     const connection = useAtomValue(model.connection);
     const setErrorMsg = useSetAtom(model.errorMsgAtom);
     const [editingRename, setEditingRename] = useAtom(editingRenameAtom);
 
-    const dragItem: DraggedFile = {
-        relName: row.getValue("name") as string,
-        absParent: dirPath,
-        uri: formatRemoteUri(row.getValue("path") as string, connection),
-        isDir: row.original.isdir,
-    };
+    // W2-3: dragItem 用 useMemo 稳定身份 —— 原来每次 render 新对象，useDrag
+    // 每帧重绑拖拽 connector，还击穿 memo。
+    const dragItem = useMemo<DraggedFile>(
+        () => ({
+            relName: row.getValue("name") as string,
+            absParent: dirPath,
+            uri: formatRemoteUri(row.getValue("path") as string, connection),
+            isDir: row.original.isdir,
+        }),
+        [row, dirPath, connection]
+    );
     const [_, drag] = useDrag(
         () => ({
             type: "FILE_ITEM",
@@ -733,18 +829,28 @@ function TableRow({
         [dragItem]
     );
 
-    const dragRef = useCallback(
+    // 拖拽 connector 与 virtualizer 行测量二合一。
+    const setRowRef = useCallback(
         (node: HTMLDivElement | null) => {
             drag(node);
+            measureRef?.(node);
         },
-        [drag]
+        [drag, measureRef]
     );
 
     return (
         <div
-            className={clsx("dir-table-body-row", { focused: focusIndex === idx, selected })}
+            className={clsx("dir-table-body-row", { focused, selected })}
             data-rowindex={idx}
+            data-index={idx}
             data-file-path={row.getValue("path") as string}
+            style={{
+                position: "absolute",
+                top: 0,
+                left: 0,
+                width: "100%",
+                transform: `translateY(${virtualStart}px)`,
+            }}
             onDoubleClick={(e) => {
                 fireAndForget(() =>
                     openPreviewEntry(model, row.original, connection, { forceNewBlock: e.ctrlKey || e.metaKey })
@@ -754,7 +860,7 @@ function TableRow({
             }}
             onClick={(e) => handleRowClick(e, row, idx)}
             onContextMenu={(e) => handleFileContextMenu(e, row.original, idx)}
-            ref={dragRef}
+            ref={setRowRef}
         >
             {row.getVisibleCells().map((cell) => {
                 const isEditingName =
@@ -792,7 +898,7 @@ function TableRow({
             })}
         </div>
     );
-}
+});
 
 const MemoizedTableBody = React.memo(
     TableBody,

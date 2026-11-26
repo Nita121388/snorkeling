@@ -3,6 +3,7 @@
 
 import { i18n } from "@/i18n/config";
 import { cn } from "@/util/util";
+import { useMemo } from "react";
 import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import type { ListGroupMode } from "./controls";
@@ -202,17 +203,21 @@ export function GroupedSessionList({
     // 树在上层（aisessions.tsx）按筛选结果算好后随 grouped / sessions 一起传下来：
     // 这里只负责渲染，避免每个分组各算一遍。见 ProjectSessionGroup.tree。
     // 时间模式（扁平）：顶层行也要跟随排序链，否则「按消息数排序」只在项目分组里生效。
-    const flatTree =
-        groupMode === "project"
-            ? []
-            : buildSessionTree(
-                  sessions.filter((s) => s.key !== NewSessionKey),
-                  matchedKeys,
-                  sortDescending,
-                  sortChain != null && sortChain.length > 0
-                      ? makeSessionComparator(sortChain, countSubSessions(sessions))
-                      : undefined
-              );
+    // W2-3: useMemo —— 30s 刷新 tick / 无关 state 引发的重渲不再重算整棵树。
+    const flatTree = useMemo(
+        () =>
+            groupMode === "project"
+                ? []
+                : buildSessionTree(
+                      sessions.filter((s) => s.key !== NewSessionKey),
+                      matchedKeys,
+                      sortDescending,
+                      sortChain != null && sortChain.length > 0
+                          ? makeSessionComparator(sortChain, countSubSessions(sessions))
+                          : undefined
+                  ),
+        [groupMode, sessions, matchedKeys, sortDescending, sortChain]
+    );
 
     /** 一个行的行标人设（🎭 + 名字/裸 id）；无归属或无名册时为 null。 */
     const rowHero = (session: SessionSummary) => {

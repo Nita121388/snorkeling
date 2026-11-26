@@ -1867,6 +1867,42 @@ function formatBackupSize(size: number): string {
     return `${(size / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+/**
+ * W2-3: 相对刷新时间下沉到叶子。原来 30s tick 的 setRefreshTimeNow 挂在整页顶层，
+ * 每次触发都会重渲整棵未虚拟化的 GroupedSessionList；现在只有这一行文字自己 tick。
+ * 窗口隐藏时不 tick；回到可见时立刻补一拍，elapsed 不会 stale。
+ */
+function LastRefreshLabel({ refreshAt }: { refreshAt: number | null }) {
+    const [now, setNow] = React.useState(() => Date.now());
+    React.useEffect(() => {
+        if (!refreshAt) return;
+        const sync = () => setNow(Date.now());
+        sync();
+        const handle = window.setInterval(() => {
+            if (typeof document !== "undefined" && document.hidden) return;
+            sync();
+        }, 30_000);
+        const onVisibilityChange = () => {
+            if (typeof document === "undefined" || document.hidden) return;
+            sync();
+        };
+        document.addEventListener("visibilitychange", onVisibilityChange);
+        return () => {
+            window.clearInterval(handle);
+            document.removeEventListener("visibilitychange", onVisibilityChange);
+        };
+    }, [refreshAt]);
+    if (!refreshAt) return null;
+    return (
+        <span
+            className="shrink-0"
+            title={i18n.t("aisessions:list.lastRefreshed", { time: formatDateTimeToSecond(refreshAt) })}
+        >
+            {formatRelativeRefreshTime(refreshAt, now)}
+        </span>
+    );
+}
+
 function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
     const { t } = useTranslation("aisessions");
     const blockData = jotai.useAtomValue(model.blockAtom);
@@ -1937,7 +1973,6 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
     // 点过「显示全部」的父会话：只在本次会话内有效，不落盘（避免刷新后列表被 107 个子会话撑爆）。
     const [fullyExpandedParents, setFullyExpandedParents] = useState<Set<string>>(() => new Set());
     const [sessionListWidth, setSessionListWidth] = useState(readSessionListWidth);
-    const [refreshTimeNow, setRefreshTimeNow] = useState(() => Date.now());
     const [backupStats, setBackupStats] = useState<BackupStats | null>(null);
     const [backupCleanupError, setBackupCleanupError] = useState("");
     const [backupCleanupRunning, setBackupCleanupRunning] = useState(false);
@@ -2295,13 +2330,6 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
         if (loading) return;
         loadBackupStats();
     }, [loadBackupStats, loading]);
-
-    useEffect(() => {
-        if (!lastSessionsRefreshAt) return;
-        setRefreshTimeNow(Date.now());
-        const handle = window.setInterval(() => setRefreshTimeNow(Date.now()), 30_000);
-        return () => window.clearInterval(handle);
-    }, [lastSessionsRefreshAt]);
 
     useEffect(() => {
         const node = rootRef.current;
@@ -2749,12 +2777,6 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
         : sessionListCollapsed
           ? "minmax(0,1fr)"
           : `${sessionListWidth}px minmax(0,1fr)`;
-    const lastRefreshLabel = lastSessionsRefreshAt
-        ? formatRelativeRefreshTime(lastSessionsRefreshAt, refreshTimeNow)
-        : "";
-    const lastRefreshTitle = lastSessionsRefreshAt
-        ? i18n.t("aisessions:list.lastRefreshed", { time: formatDateTimeToSecond(lastSessionsRefreshAt) })
-        : "";
     const filterButtonLabel =
         activeFilterCount > 0
             ? i18n.t("aisessions:filter.buttonActive", { count: activeFilterCount })
@@ -2945,11 +2967,7 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                                           )
                                         : ""}
                                 </span>
-                                {lastRefreshLabel !== "" ? (
-                                    <span className="shrink-0" title={lastRefreshTitle}>
-                                        {lastRefreshLabel}
-                                    </span>
-                                ) : null}
+                                {lastSessionsRefreshAt ? <LastRefreshLabel refreshAt={lastSessionsRefreshAt} /> : null}
                             </div>
                             <SessionBatchBar
                                 selectedCount={selectedKeys.length}

@@ -37,7 +37,31 @@ type WaveEventUnsubscribe = {
 const fileSubjects = new Map<string, SubjectWithRef<WSFileEventData>>();
 const waveEventSubjects = new Map<string, WaveEventSubjectContainer[]>();
 
+// W2-3: sub/unsub 合批。同一 tick 内对同一 eventType 的多次变更只发一条 EventSubCommand。
+// 协议语义：后端 EventSubCommand → Broker.Subscribe 会先 `unsubscribe_nolock(route, event)`
+// 再按本次请求里的 scopes 重新登记，也就是「每个 (route, event) 全量替换」。
+// 因此这里只维护「期望态」并整体重发，不需要做增量合并；移除 scope 也天然覆盖（替换即删除）。
+let pendingEventTypes: Set<string> = new Set();
+let subFlushScheduled = false;
+
+function scheduleWaveEventSub(eventType: string) {
+    pendingEventTypes.add(eventType);
+    if (subFlushScheduled) {
+        return;
+    }
+    subFlushScheduled = true;
+    queueMicrotask(() => {
+        const eventTypes = Array.from(pendingEventTypes);
+        pendingEventTypes = new Set();
+        subFlushScheduled = false;
+        for (const et of eventTypes) {
+            updateWaveEventSub(et);
+        }
+    });
+}
+
 function wpsReconnectHandler() {
+    // 重连后 broker 侧的订阅已全部丢失，必须立刻按当前期望态全部重发（不走合批）。
     for (const eventType of waveEventSubjects.keys()) {
         updateWaveEventSub(eventType);
     }
@@ -47,20 +71,31 @@ function updateWaveEventSub(eventType: string) {
     if (isPreviewWindow()) {
         return;
     }
+    // client 未接入（测试环境 / 初始化早期）：没有可发的 RPC，直接跳过。
+    // 这里是 microtask flush 的入口，绝不能抛未处理异常。
+    if (WpsRpcClient == null) {
+        return;
+    }
     const subjects = waveEventSubjects.get(eventType);
     if (subjects == null) {
         RpcApi.EventUnsubCommand(WpsRpcClient, eventType, { noresponse: true });
         return;
     }
-    const subreq: SubscriptionRequest = { event: eventType, scopes: [], allscopes: false };
+    const scopeSet: Set<string> = new Set();
+    let allscopes = false;
     for (const scont of subjects) {
         if (isBlank(scont.scope)) {
-            subreq.allscopes = true;
-            subreq.scopes = [];
+            allscopes = true;
             break;
         }
-        subreq.scopes.push(scont.scope);
+        // 同一 eventType 的重复 scope 只传一次（N 个块订阅同一 scope → 1 条）。
+        scopeSet.add(scont.scope);
     }
+    const subreq: SubscriptionRequest = {
+        event: eventType,
+        scopes: allscopes ? [] : Array.from(scopeSet),
+        allscopes: allscopes,
+    };
     RpcApi.EventSubCommand(WpsRpcClient, subreq, { noresponse: true });
 }
 
@@ -81,7 +116,7 @@ function waveEventSubscribeSingle<T extends WaveEventName>(subscription: WaveEve
         scope: subscription.scope,
     };
     subjects.push(subcont);
-    updateWaveEventSub(subscription.eventType);
+    scheduleWaveEventSub(subscription.eventType);
     return () => waveEventUnsubscribe({ id, eventType: subscription.eventType });
 }
 
@@ -104,7 +139,7 @@ function waveEventUnsubscribe(...unsubscribes: WaveEventUnsubscribe[]) {
     }
 
     for (const eventType of eventTypeSet) {
-        updateWaveEventSub(eventType);
+        scheduleWaveEventSub(eventType);
     }
 }
 
