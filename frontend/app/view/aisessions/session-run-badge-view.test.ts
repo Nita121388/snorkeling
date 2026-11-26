@@ -9,7 +9,7 @@
 
 import type { AgentStatus } from "@/app/agent-status/agent-status-types";
 import { describe, expect, it } from "vitest";
-import { buildSessionRunBadgeView } from "./session-run-badge-view";
+import { buildSessionRunBadgeView, mergeRowRunning } from "./session-run-badge-view";
 import type { SessionRunningState } from "./use-sessions-running";
 
 const Now = 1_700_000_000_000;
@@ -163,5 +163,27 @@ describe("buildSessionRunBadgeView — 分支 3：只有 GUI 对话", () => {
 
         expect(view!.tone).toBe("agent");
         expect(view!.label).toBe("Thinking");
+    });
+});
+
+// 行级运行态合流：块内运行（可跳转）优先，声明式 provider 的外部运行态兜底。
+describe("mergeRowRunning", () => {
+    it("块内运行优先于外部运行态（origin=block，可跳转）", () => {
+        expect(mergeRowRunning(RunningState, "running")).toEqual({ running: true, origin: "block" });
+    });
+
+    it("无活块时外部运行态兜底（origin=external，不可跳转）", () => {
+        expect(mergeRowRunning(null, "running")).toEqual({ running: true, origin: "external" });
+    });
+
+    it("两者皆无不显示", () => {
+        expect(mergeRowRunning(null, "")).toEqual({ running: false, origin: null });
+        expect(mergeRowRunning(null, undefined)).toEqual({ running: false, origin: null });
+        expect(mergeRowRunning(null, null)).toEqual({ running: false, origin: null });
+    });
+
+    it("未知 runState 值不当运行态（只认后端归一化后的 running）", () => {
+        expect(mergeRowRunning(null, "CASCADE_RUN_STATUS_RUNNING")).toEqual({ running: false, origin: null });
+        expect(mergeRowRunning(null, "idle")).toEqual({ running: false, origin: null });
     });
 });

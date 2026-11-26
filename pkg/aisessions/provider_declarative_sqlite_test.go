@@ -438,6 +438,129 @@ func TestDeclarativeCellTime(t *testing.T) {
 	}
 }
 
+func TestNormalizeRunState(t *testing.T) {
+	now := time.Now().UnixMilli()
+	cases := []struct {
+		name          string
+		status        string
+		lastModified int64
+		want          string
+	}{
+		{"running fresh", "CASCADE_RUN_STATUS_RUNNING", now - time.Minute.Milliseconds(), RunStateRunning},
+		{"running case-insensitive", "cascade_run_status_running", now - time.Minute.Milliseconds(), RunStateRunning},
+		{"running exactly at ttl edge", "CASCADE_RUN_STATUS_RUNNING", now - declarativeRunStateTTL.Milliseconds(), RunStateRunning},
+		{"running stale past ttl", "CASCADE_RUN_STATUS_RUNNING", now - declarativeRunStateTTL.Milliseconds() - 1, ""},
+		{"running without updated mapping", "CASCADE_RUN_STATUS_RUNNING", 0, ""},
+		{"idle", "CASCADE_RUN_STATUS_IDLE", now, ""},
+		{"empty", "", now, ""},
+		{"unknown value", "CASCADE_RUN_STATUS_SOMETHING", now, ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := normalizeRunState(tc.status, tc.lastModified, now); got != tc.want {
+				t.Errorf("normalizeRunState(%q, %d, now) = %q, want %q", tc.status, tc.lastModified, got, tc.want)
+			}
+		})
+	}
+}
+
+// declarativeFixtureFreshTime returns a last_modified_time value in the observed
+// Antigravity timestamp shape but at "now", so a RUNNING row is provably inside
+// the TTL regardless of when the test runs.
+func declarativeFixtureFreshTime() string {
+	return time.Now().UTC().Format("2006-01-02 15:04:05.999999999+00:00")
+}
+
+func TestDeclarativeProviderRunStateFromList(t *testing.T) {
+	dbPath := createDeclarativeFixtureDB(t)
+	db, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Newest row: RUNNING with a fresh last_modified_time → "running".
+	if _, err := db.Exec(`UPDATE conversation_summaries SET status = ?, last_modified_time = ? WHERE conversation_id = ?`,
+		"CASCADE_RUN_STATUS_RUNNING", declarativeFixtureFreshTime(), fixtureIndexPlanID); err != nil {
+		t.Fatal(err)
+	}
+	// Older row: RUNNING but the fixture's hours-old last_modified_time → stale → "".
+	if _, err := db.Exec(`UPDATE conversation_summaries SET status = ? WHERE conversation_id = ?`,
+		"CASCADE_RUN_STATUS_RUNNING", fixtureGreetingID); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := normalizeSessionProviderConfig(wconfig.AgentSessionProviderConfigType{}, wconfig.AgentSessionProviderConfigType{
+		Type:  SessionProviderTypeSQLite,
+		DB:    dbPath,
+		Table: "conversation_summaries",
+		Columns: wconfig.AgentSessionProviderColumnsType{
+			ID:     "conversation_id",
+			Title:  "title",
+			Updated: "last_modified_time",
+			Status: "status",
+		},
+	})
+	provider := NewDeclarativeSQLiteProvider("runstate", cfg)
+	summaries, err := provider.List(context.Background())
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	runStates := map[string]string{}
+	for _, summary := range summaries {
+		runStates[summary.ID] = summary.RunState
+	}
+	if runStates[fixtureIndexPlanID] != RunStateRunning {
+		t.Errorf("fresh RUNNING row RunState = %q, want %q", runStates[fixtureIndexPlanID], RunStateRunning)
+	}
+	if runStates[fixtureGreetingID] != "" {
+		t.Errorf("stale RUNNING row RunState = %q, want empty (TTL guard)", runStates[fixtureGreetingID])
+	}
+}
+
+func TestDeclarativeProviderRunStateNonRunningValues(t *testing.T) {
+	dbPath := createDeclarativeFixtureDB(t)
+	db, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// IDLE and an unknown value both normalize to "" (fresh timestamps prove the
+	// difference is the status value, not the TTL guard).
+	if _, err := db.Exec(`UPDATE conversation_summaries SET status = ?, last_modified_time = ? WHERE conversation_id = ?`,
+		"CASCADE_RUN_STATUS_IDLE", declarativeFixtureFreshTime(), fixtureIndexPlanID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`UPDATE conversation_summaries SET status = ?, last_modified_time = ? WHERE conversation_id = ?`,
+		"CASCADE_RUN_STATUS_SOMETHING", declarativeFixtureFreshTime(), fixtureGreetingID); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := normalizeSessionProviderConfig(wconfig.AgentSessionProviderConfigType{}, wconfig.AgentSessionProviderConfigType{
+		Type:  SessionProviderTypeSQLite,
+		DB:    dbPath,
+		Table: "conversation_summaries",
+		Columns: wconfig.AgentSessionProviderColumnsType{
+			ID:      "conversation_id",
+			Updated: "last_modified_time",
+			Status:  "status",
+		},
+	})
+	provider := NewDeclarativeSQLiteProvider("runstate", cfg)
+	summaries, err := provider.List(context.Background())
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	for _, summary := range summaries {
+		if summary.RunState != "" {
+			t.Errorf("row %q RunState = %q, want empty for a non-running status", summary.ID, summary.RunState)
+		}
+	}
+}
+
 func TestQuoteSQLiteIdentEscapes(t *testing.T) {
 	if got := quoteSQLiteIdent(`we"ird`); got != `"we""ird"` {
 		t.Errorf("quoteSQLiteIdent = %q", got)

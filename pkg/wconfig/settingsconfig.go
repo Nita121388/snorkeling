@@ -86,6 +86,9 @@ type AgentSessionProviderColumnsType struct {
 	Created  string `json:"created,omitempty"`
 	Project  string `json:"project,omitempty"`
 	ParentID string `json:"parentid,omitempty"`
+	// Status maps the run-state column (a value containing "RUNNING" marks the
+	// session as running; see normalizeRunState in pkg/aisessions).
+	Status string `json:"status,omitempty"`
 }
 
 // AgentSessionProviderConfigType declares one external agent session store so

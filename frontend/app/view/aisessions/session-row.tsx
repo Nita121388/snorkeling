@@ -29,6 +29,7 @@ import {
     stripSessionTagHashes,
 } from "./session-tags";
 import { getChatSource } from "./sources";
+import { mergeRowRunning } from "./session-run-badge-view";
 import { TitleSourceBadge } from "./title-source-badge";
 import type { SessionRunningState } from "./use-sessions-running";
 import {
@@ -146,14 +147,42 @@ function isRowActionTarget(event: { target: EventTarget | null }): boolean {
  */
 export function RunningDot({
     runningState,
+    externalRunning = false,
     onJumpToBlock,
 }: {
     runningState: SessionRunningState | null;
+    /** 外部会话运行态（声明式 provider，无 Snorkeling 块，不可跳转）。 */
+    externalRunning?: boolean;
     onJumpToBlock: (runningState: SessionRunningState) => void;
 }): ReactElement | null {
     // 不用 useTranslation：这个组件会被单测直接当作函数调用（见 session-row.test.tsx），
     // hook 在 React 渲染器之外会抛 useContext 错误。翻译走单例，切换语言后下一帧即生效。
-    if (runningState == null || runningState.status !== "running") return null;
+    if (runningState == null || runningState.status !== "running") {
+        // 外部运行：复用同一个点（同 class、同位置，不加新元素行）；
+        // 无块可跳，不包 button、不带 data-running-dot 点击语义。
+        if (!externalRunning) return null;
+        return (
+            <Tooltip
+                placement="top"
+                openDelay={200}
+                hideOnClick
+                divClassName="mt-0.5 inline-flex h-4 w-4 shrink-0"
+                content={
+                    <div className="max-w-[420px] whitespace-pre-wrap break-words text-[11px] leading-4">
+                        <div className="text-secondary">{i18n.t("aisessions:row.runningExternal")}</div>
+                    </div>
+                }
+            >
+                <span
+                    className="session-row-live-dot-slot relative inline-flex h-4 w-4 shrink-0"
+                    data-external-running="true"
+                    aria-label={i18n.t("aisessions:row.runningExternal")}
+                >
+                    <span className="session-row-live-dot" aria-hidden="true" />
+                </span>
+            </Tooltip>
+        );
+    }
     return (
         <Tooltip
             placement="top"
@@ -323,6 +352,8 @@ export function SessionRow({
     const dateInfo = describeSessionDates(session.createdAt ?? 0, session.updatedAt ?? 0);
     // snippet 的字体/行数策略：机器产出单行等宽，散文父子行分别 2 / 1 行。
     const snippetKind = classifySnippet(session.snippet);
+    // 行级运行态合流：块内优先（可跳转），外部声明式 provider 运行态兜底（不可跳转）。
+    const rowRunning = mergeRowRunning(runningState ?? null, session.runState);
     // 右侧运行徽章是否会有内容：没内容就不留空 span（否则 row-meta 末尾多一个
     // 零宽元素，`ml-auto` 也没有意义，还会让 DOM 断言误以为"徽章已渲染"）。
     const hasRunBadge = runningState != null || chatRunning;
@@ -569,7 +600,11 @@ export function SessionRow({
                     >
                         <i className={cn("fa-sharp", session.marked ? "fa-solid fa-star" : "fa-regular fa-star")} />
                     </button>
-                    <RunningDot runningState={runningState} onJumpToBlock={onJumpToBlock} />
+                    <RunningDot
+                        runningState={runningState}
+                        externalRunning={rowRunning.origin === "external"}
+                        onJumpToBlock={onJumpToBlock}
+                    />
                 </div>
                 <div className={cn("min-w-0 flex-1 border-l border-border/60 pl-3", isChild && "border-none pl-0")}>
                     <div className="flex min-w-0 items-center gap-2">

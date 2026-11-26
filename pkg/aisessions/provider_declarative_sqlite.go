@@ -28,7 +28,51 @@ const (
 	declarativeFieldCreated = "created"
 	declarativeFieldProject = "project"
 	declarativeFieldParent  = "parent"
+	declarativeFieldStatus  = "status"
 )
+
+// declarativeRunStateTTL bounds how long a "RUNNING" status stays trusted.
+// The owning agent updates last_modified_time while a run is alive, so a
+// RUNNING row whose last_modified_time is older than the TTL means the agent
+// died without resetting its status — the session must not stay "running"
+// forever. No timer is involved: the check runs whenever the provider reads the
+// row (initial scan + mtime-driven incremental refresh).
+const declarativeRunStateTTL = 5 * time.Minute
+
+// RunStateRunning is the only non-empty normalized external run state. The
+// frontend treats any other value as "not running".
+const RunStateRunning = "running"
+
+// normalizeRunState maps a raw status cell onto the external run state. It is a
+// pure function (clock injected as nowMs) so the TTL rule is unit-testable:
+//
+//   - value contains "RUNNING" (case-insensitive) and lastModifiedMs is within
+//     the TTL of nowMs → "running";
+//   - everything else (IDLE, empty, unknown values, stale RUNNING) → "".
+//
+// Unknown values are logged at debug level only — a status column drift must
+// never fail the List query. lastModifiedMs <= 0 means the updated column is
+// unmapped or unparseable: freshness cannot be proven, so a RUNNING claim is
+// not trusted either.
+func normalizeRunState(statusValue string, lastModifiedMs int64, nowMs int64) string {
+	value := strings.ToUpper(strings.TrimSpace(statusValue))
+	if value == "" {
+		return ""
+	}
+	if !strings.Contains(value, "RUNNING") {
+		if !strings.Contains(value, "IDLE") {
+			debugf("declarative provider: unknown run status %q", statusValue)
+		}
+		return ""
+	}
+	if lastModifiedMs <= 0 {
+		return ""
+	}
+	if nowMs-lastModifiedMs > declarativeRunStateTTL.Milliseconds() {
+		return ""
+	}
+	return RunStateRunning
+}
 
 // declarativeTimeLayouts are the accepted text timestamp shapes, most specific
 // first. The first one is the observed Antigravity shape
@@ -131,6 +175,7 @@ func (p *DeclarativeSQLiteProvider) selectColumns() []declarativeSelectColumn {
 	add(declarativeFieldCreated, columns.Created)
 	add(declarativeFieldProject, columns.Project)
 	add(declarativeFieldParent, columns.ParentID)
+	add(declarativeFieldStatus, columns.Status)
 	return out
 }
 
@@ -174,6 +219,9 @@ func (p *DeclarativeSQLiteProvider) List(ctx context.Context) ([]SessionSummary,
 	defer rows.Close()
 
 	summaries := make([]SessionSummary, 0, 16)
+	// One clock read per List call: every row is normalized against the same
+	// nowMs (the pure normalizeRunState takes it as an argument for tests).
+	nowMs := time.Now().UnixMilli()
 	for rows.Next() {
 		if ctx.Err() != nil {
 			return summaries, ctx.Err()
@@ -182,7 +230,7 @@ func (p *DeclarativeSQLiteProvider) List(ctx context.Context) ([]SessionSummary,
 		if err != nil {
 			return summaries, err
 		}
-		summary := p.rowToSummary(values, columns)
+		summary := p.rowToSummary(values, columns, nowMs)
 		if summary.ID == "" {
 			continue
 		}
@@ -234,7 +282,7 @@ func (p *DeclarativeSQLiteProvider) ParseSummary(ctx context.Context, file Sessi
 	if err != nil {
 		return SessionSummary{}, false
 	}
-	summary := p.rowToSummary(values, columns)
+	summary := p.rowToSummary(values, columns, time.Now().UnixMilli())
 	if summary.ID == "" {
 		return SessionSummary{}, false
 	}
@@ -287,12 +335,13 @@ func (p *DeclarativeSQLiteProvider) sessionIDFromFilePath(filePath string) strin
 	return strings.TrimSuffix(base, filepath.Ext(base))
 }
 
-func (p *DeclarativeSQLiteProvider) rowToSummary(values []any, columns []declarativeSelectColumn) SessionSummary {
+func (p *DeclarativeSQLiteProvider) rowToSummary(values []any, columns []declarativeSelectColumn, nowMs int64) SessionSummary {
 	var (
 		id        string
 		title     string
 		project   string
 		parentID  string
+		status    string
 		updatedAt int64
 		createdAt int64
 	)
@@ -313,6 +362,8 @@ func (p *DeclarativeSQLiteProvider) rowToSummary(values []any, columns []declara
 			project = decodeWorkspaceURIs(declarativeCellString(values[i]))
 		case declarativeFieldParent:
 			parentID = declarativeCellString(values[i])
+		case declarativeFieldStatus:
+			status = declarativeCellString(values[i])
 		}
 	}
 	id = strings.TrimSpace(id)
@@ -338,6 +389,9 @@ func (p *DeclarativeSQLiteProvider) rowToSummary(values []any, columns []declara
 		CreatedAt:   createdAt,
 		UpdatedAt:   updatedAt,
 		FilePath:    p.filePathForID(id),
+		// TTL-guarded external run state; reuses the already-parsed updated value
+		// (last_modified_time) instead of parsing the timestamp a second time.
+		RunState: normalizeRunState(status, updatedAt, nowMs),
 	}
 	if parentID != "" && parentID != id {
 		summary.Kind = SessionKindSubagent

@@ -593,6 +593,7 @@
     },
     "row": {
         "liveBlock": "This session has a live block in the app.",
+        "runningExternal": "Running (external session) — this agent is active outside Snorkeling.",
         "jumpToBlock": "Click to jump to block",
         "jumpAria": "Jump to live block",
         "attachParent": "Parent context session (does not match this filter)",

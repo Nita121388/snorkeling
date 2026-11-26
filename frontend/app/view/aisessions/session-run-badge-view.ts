@@ -19,6 +19,37 @@ import { formatAgentChipRuntime, needsAgentChipRuntime } from "@/app/agent-statu
 import type { AgentStatus } from "@/app/agent-status/agent-status-types";
 import type { SessionRunningState } from "./use-sessions-running";
 
+/**
+ * mergeRowRunning —— 行级运行态合流（块内优先）。
+ *
+ * 两条输入：
+ *   blockRunning  「有活着的块」（useSessionsRunning 的 block 投影，可跳转到 block）。
+ *   runState      外部会话运行态（SessionSummary.runState，声明式 provider 从
+ *                 agent 自身的 summary db 读出，如 antigravity 的 status 列）。
+ *
+ * 块内优先：它有 blockId 可跳转；外部态只做兜底，且不可点击（无块可跳）。
+ * 值域收敛：runState 只认 "running"（后端 normalizeRunState 的唯一非空产出）。
+ */
+export type RowRunningOrigin = "block" | "external";
+
+export type RowRunningView = {
+    running: boolean;
+    origin: RowRunningOrigin | null;
+};
+
+export function mergeRowRunning(
+    blockRunning: SessionRunningState | null,
+    runState: string | null | undefined
+): RowRunningView {
+    if (blockRunning != null && blockRunning.status === "running") {
+        return { running: true, origin: "block" };
+    }
+    if (runState === "running") {
+        return { running: true, origin: "external" };
+    }
+    return { running: false, origin: null };
+}
+
 export type SessionRunBadgeTone = "agent" | "live" | "chat";
 
 export type SessionRunBadgeView = {

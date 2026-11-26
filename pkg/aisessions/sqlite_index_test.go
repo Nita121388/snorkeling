@@ -5,6 +5,7 @@ package aisessions
 
 import (
 	"context"
+	"database/sql"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -1286,5 +1287,185 @@ func TestManagerSetPropsNormalizesRetiredStatusType(t *testing.T) {
 	}
 	if cell, ok := props["phase"]; !ok || cell.Type != "select" {
 		t.Fatalf("expected persisted type select, got %#v found=%v", cell, ok)
+	}
+}
+
+// A database written by a pre-run_state binary has ai_sessions WITHOUT the
+// run_state column. Opening it must add the column in place, existing rows must
+// read back as "not observed running" (empty, never NULL), and the summary-scan
+// marker must be invalidated so one full pass fills run_state for already
+// indexed sessions.
+func TestSQLiteSchemaMigrationAddsRunStateColumn(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "index-v4.sqlite")
+
+	before, err := sql.Open("sqlite", "file:"+dbPath+"?mode=rwc")
+	if err != nil {
+		t.Fatal(err)
+	}
+	stmts := []string{
+		`CREATE TABLE ai_schema_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)`,
+		`INSERT INTO ai_schema_meta(key, value) VALUES('schema_version', '4')`,
+		`INSERT INTO ai_schema_meta(key, value) VALUES('summaries_scanned_at', '2026-11-26T00:00:00Z')`,
+		`INSERT INTO ai_schema_meta(key, value) VALUES('summary_parser_version', '3')`,
+		`CREATE TABLE ai_sessions (
+			key TEXT PRIMARY KEY,
+			id TEXT NOT NULL,
+			source TEXT NOT NULL,
+			title TEXT,
+			title_source TEXT,
+			project_path TEXT,
+			created_at INTEGER,
+			updated_at INTEGER,
+			message_count INTEGER,
+			file_path TEXT NOT NULL,
+			vendor_id TEXT,
+			config_dir TEXT,
+			snippet TEXT,
+			mtime INTEGER,
+			size INTEGER,
+			missing INTEGER NOT NULL DEFAULT 0,
+			parent_key TEXT NOT NULL DEFAULT '',
+			kind TEXT NOT NULL DEFAULT '',
+			indexed_at INTEGER NOT NULL
+		)`,
+		`INSERT INTO ai_sessions(key, id, source, title, title_source, project_path, created_at, updated_at, message_count, file_path, vendor_id, config_dir, snippet, mtime, size, missing, parent_key, kind, indexed_at)
+		 VALUES('antigravity:legacy:/tmp/summary.db#legacy', 'legacy', 'antigravity', 'Legacy row', 'source_title', '/tmp', 0, 0, 0, '/tmp/summary.db#legacy', '', '', '', 1, 2, 0, '', '', 3)`,
+	}
+	for _, stmt := range stmts {
+		if _, err := before.ExecContext(context.Background(), stmt); err != nil {
+			t.Fatalf("seed pre-run_state db: %v", err)
+		}
+	}
+	if err := before.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	idx, err := openSQLiteIndex(dbPath, "")
+	if err != nil {
+		t.Fatalf("openSQLiteIndex: %v", err)
+	}
+	defer idx.Close()
+
+	var rows []struct {
+		Name string `db:"name"`
+	}
+	if err := idx.db.SelectContext(context.Background(), &rows, `SELECT name FROM pragma_table_info('ai_sessions')`); err != nil {
+		t.Fatal(err)
+	}
+	hasRunState := false
+	for _, row := range rows {
+		if row.Name == "run_state" {
+			hasRunState = true
+		}
+	}
+	if !hasRunState {
+		t.Fatalf("run_state column missing after migration; columns=%v", rows)
+	}
+
+	// The legacy row must read back as empty (not NULL): the projection scans
+	// run_state into a non-nullable string.
+	var nullCount int
+	if err := idx.db.GetContext(context.Background(), &nullCount,
+		`SELECT count(*) FROM ai_sessions WHERE run_state IS NULL`); err != nil {
+		t.Fatal(err)
+	}
+	if nullCount != 0 {
+		t.Fatalf("migrated rows hold NULL run_state: %d", nullCount)
+	}
+	var runState string
+	if err := idx.db.QueryRowxContext(context.Background(),
+		`SELECT run_state FROM ai_sessions WHERE key = ?`,
+		"antigravity:legacy:/tmp/summary.db#legacy",
+	).Scan(&runState); err != nil {
+		t.Fatalf("read migrated row: %v", err)
+	}
+	if runState != "" {
+		t.Fatalf("migrated row run_state = %q, want empty", runState)
+	}
+
+	// The migration must trigger exactly one full summary re-scan: without
+	// clearing the marker the next List only refreshes changed files and
+	// run_state stays empty on untouched rows.
+	hasScan, err := idx.HasSummaryScan(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hasScan {
+		t.Fatal("summary-scan marker survived the run_state migration; next List would skip the full pass")
+	}
+
+	// List must survive the migrated shape too.
+	summaries, err := idx.List(context.Background(), ListOptions{})
+	if err != nil {
+		t.Fatalf("List on a migrated index must not fail: %v", err)
+	}
+	if len(summaries) != 1 || summaries[0].RunState != "" {
+		t.Fatalf("migrated row = %#v, want one row with empty RunState", summaries)
+	}
+}
+
+// New rows must round-trip run_state through saveSummaryTx and every row→
+// summary projection (GetSession + List), including clearing the state again.
+func TestSQLiteSaveSummaryPersistsRunState(t *testing.T) {
+	dir := t.TempDir()
+	idx, err := openSQLiteIndex(filepath.Join(dir, "index.sqlite"), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer idx.Close()
+
+	ctx := context.Background()
+	running := SessionSummary{
+		Key:      "antigravity:running:/tmp/summary.db#running",
+		ID:       "running",
+		Source:   SourceAntigravity,
+		FilePath: "/tmp/summary.db#running",
+		MTime:    10,
+		Size:     20,
+		RunState: RunStateRunning,
+	}
+	if err := idx.SaveSummary(ctx, running); err != nil {
+		t.Fatalf("SaveSummary: %v", err)
+	}
+
+	got, err := idx.GetSession(ctx, running.Key)
+	if err != nil {
+		t.Fatalf("GetSession: %v", err)
+	}
+	if got.RunState != RunStateRunning {
+		t.Fatalf("GetSession RunState = %q, want %q", got.RunState, RunStateRunning)
+	}
+
+	summaries, err := idx.List(ctx, ListOptions{})
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(summaries) != 1 || summaries[0].RunState != RunStateRunning {
+		t.Fatalf("List row lost run_state: %#v", summaries)
+	}
+
+	// Raw column value proves the mapping, not just the struct copy.
+	var raw string
+	if err := idx.db.QueryRowxContext(ctx,
+		`SELECT run_state FROM ai_sessions WHERE source = ?`, SourceAntigravity,
+	).Scan(&raw); err != nil {
+		t.Fatalf("read run_state column: %v", err)
+	}
+	if raw != RunStateRunning {
+		t.Fatalf("ai_sessions.run_state = %q, want %q", raw, RunStateRunning)
+	}
+
+	// An update that clears the state must persist the clearing too.
+	running.RunState = ""
+	if err := idx.SaveSummary(ctx, running); err != nil {
+		t.Fatalf("SaveSummary (clear): %v", err)
+	}
+	got, err = idx.GetSession(ctx, running.Key)
+	if err != nil {
+		t.Fatalf("GetSession after clear: %v", err)
+	}
+	if got.RunState != "" {
+		t.Fatalf("RunState after clear = %q, want empty", got.RunState)
 	}
 }

@@ -1006,6 +1006,7 @@ declare global {
         created?: string;
         project?: string;
         parentid?: string;
+        status?: string;
     };
 
     // wconfig.AgentSessionProviderConfigType
@@ -2986,17 +2987,17 @@ declare global {
         "waveai:maxoutputtokens"?: number;
     };
 
-    // hero.Origin
-    type Origin = {
-        deviceId?: string;
-        deviceName?: string;
-        platform?: string;
-    };
-
     // syncproto.Origin
     type Origin = {
         deviceid?: string;
         devicename?: string;
+        platform?: string;
+    };
+
+    // hero.Origin
+    type Origin = {
+        deviceId?: string;
+        deviceName?: string;
         platform?: string;
     };
 
@@ -3831,6 +3832,7 @@ declare global {
         live?: boolean;
         parentKey?: string;
         kind?: string;
+        runState?: string;
         attached?: string;
         size?: number;
         props?: {[key: string]: PropertyCell};

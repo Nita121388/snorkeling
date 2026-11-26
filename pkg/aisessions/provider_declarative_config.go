@@ -48,6 +48,7 @@ func defaultSessionProviderColumns() wconfig.AgentSessionProviderColumnsType {
 		Created:  "last_user_input_time",
 		Project:  "workspace_uris",
 		ParentID: "parent_conversation_id",
+		Status:   "status",
 	}
 }
 
@@ -159,6 +160,9 @@ func mergeSessionProviderColumns(base, override wconfig.AgentSessionProviderColu
 	}
 	if v := strings.TrimSpace(override.ParentID); v != "" {
 		out.ParentID = v
+	}
+	if v := strings.TrimSpace(override.Status); v != "" {
+		out.Status = v
 	}
 	return out
 }

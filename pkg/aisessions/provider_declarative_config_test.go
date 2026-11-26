@@ -46,6 +46,9 @@ func TestMergeSessionProviderConfigsBuiltinDefault(t *testing.T) {
 	if cfg.Columns != wantColumns {
 		t.Errorf("columns = %+v, want %+v", cfg.Columns, wantColumns)
 	}
+	if cfg.Columns.Status != "status" {
+		t.Errorf("status column = %q, want the built-in %q mapping", cfg.Columns.Status, "status")
+	}
 	if cfg.Disabled {
 		t.Error("built-in entry must not be disabled by default")
 	}
@@ -98,6 +101,11 @@ func TestMergeSessionProviderConfigsUserOverride(t *testing.T) {
 	}
 	if antigravity.Columns.Title != "summary_title" {
 		t.Errorf("title column = %q, want the user override", antigravity.Columns.Title)
+	}
+	// The user only changed the db path / title column: the built-in run-state
+	// mapping must survive the merge (a partial override never drops a field).
+	if antigravity.Columns.Status != "status" {
+		t.Errorf("status column = %q, want the built-in mapping to survive a partial override", antigravity.Columns.Status)
 	}
 
 	myagent, ok := merged["myagent"]

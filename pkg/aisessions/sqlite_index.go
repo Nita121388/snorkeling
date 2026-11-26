@@ -207,6 +207,7 @@ func (idx *SQLiteIndex) init(ctx context.Context, existedBeforeOpen bool) error 
 			missing INTEGER NOT NULL DEFAULT 0,
 			parent_key TEXT NOT NULL DEFAULT '',
 			kind TEXT NOT NULL DEFAULT '',
+			run_state TEXT NOT NULL DEFAULT '',
 			indexed_at INTEGER NOT NULL
 		)`,
 		`CREATE TABLE IF NOT EXISTS ai_session_messages (
@@ -341,6 +342,9 @@ func (idx *SQLiteIndex) init(ctx context.Context, existedBeforeOpen bool) error 
 	if err := idx.ensureAISessionParentColumns(ctx); err != nil {
 		return err
 	}
+	if err := idx.ensureAISessionRunStateColumn(ctx); err != nil {
+		return err
+	}
 	if err := idx.ensureMetaTitleColumn(ctx); err != nil {
 		return err
 	}
@@ -451,6 +455,29 @@ func (idx *SQLiteIndex) ensureAISessionParentColumns(ctx context.Context) error 
 		}
 	}
 	return idx.backfillParentColumns(ctx)
+}
+
+// ensureAISessionRunStateColumn adds the external run-state column to
+// ai_sessions. NOT NULL with an empty default is required (same reason as
+// parent_key/kind): pre-column rows must read back as "not observed running"
+// and the SELECT projection scans run_state into a non-nullable string.
+//
+// No backfill is needed: empty run_state is the correct value for every old row
+// (the previous build never observed an external status). The summary-scan
+// marker IS invalidated when the column is added, so the next List runs one
+// full pass and fills run_state for already-indexed sessions instead of waiting
+// for each file to change.
+func (idx *SQLiteIndex) ensureAISessionRunStateColumn(ctx context.Context) error {
+	added, err := idx.ensureAISessionColumns(ctx, map[string]string{
+		"run_state": "TEXT NOT NULL DEFAULT ''",
+	})
+	if err != nil {
+		return err
+	}
+	if added {
+		return idx.invalidateSummaryScanMarker(ctx)
+	}
+	return nil
 }
 
 // invalidateSummaryScanMarker drops the "a complete summary scan has run" markers
@@ -2102,7 +2129,7 @@ func (idx *SQLiteIndex) GetSession(ctx context.Context, identifier string) (Sess
 	return SessionSummary{}, fmt.Errorf("session not found: %s", identifier)
 }
 
-const sessionSummaryColumns = `key, id, source, title, title_source, project_path, created_at, updated_at, message_count, file_path, vendor_id, config_dir, snippet, mtime, size, missing, parent_key, kind`
+const sessionSummaryColumns = `key, id, source, title, title_source, project_path, created_at, updated_at, message_count, file_path, vendor_id, config_dir, snippet, mtime, size, missing, parent_key, kind, run_state`
 
 type sqliteSessionRow struct {
 	Key          string `db:"key"`
@@ -2123,6 +2150,7 @@ type sqliteSessionRow struct {
 	Missing      bool   `db:"missing"`
 	ParentKey    string `db:"parent_key"`
 	Kind         string `db:"kind"`
+	RunState     string `db:"run_state"`
 }
 
 func (row sqliteSessionRow) summary() SessionSummary {
@@ -2145,13 +2173,14 @@ func (row sqliteSessionRow) summary() SessionSummary {
 		Missing:      row.Missing,
 		ParentKey:    row.ParentKey,
 		Kind:         row.Kind,
+		RunState:     row.RunState,
 	}
 }
 
 func (idx *SQLiteIndex) saveSummaryTx(ctx context.Context, tx *sqlx.Tx, summary SessionSummary, messageIndexed bool) error {
 	now := time.Now().UnixMilli()
-	_, err := tx.ExecContext(ctx, `INSERT INTO ai_sessions(key, id, source, title, title_source, project_path, created_at, updated_at, message_count, file_path, vendor_id, config_dir, snippet, mtime, size, missing, parent_key, kind, indexed_at)
-		VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	_, err := tx.ExecContext(ctx, `INSERT INTO ai_sessions(key, id, source, title, title_source, project_path, created_at, updated_at, message_count, file_path, vendor_id, config_dir, snippet, mtime, size, missing, parent_key, kind, run_state, indexed_at)
+		VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(key) DO UPDATE SET
 			id = excluded.id,
 			source = excluded.source,
@@ -2174,10 +2203,11 @@ func (idx *SQLiteIndex) saveSummaryTx(ctx context.Context, tx *sqlx.Tx, summary 
 			missing = excluded.missing,
 			parent_key = excluded.parent_key,
 			kind = excluded.kind,
+			run_state = excluded.run_state,
 			indexed_at = excluded.indexed_at`,
 		summary.Key, summary.ID, summary.Source, summary.Title, summary.TitleSource, summary.ProjectPath, summary.CreatedAt, summary.UpdatedAt,
 		summary.MessageCount, summary.FilePath, summary.VendorID, summary.ConfigDir, summary.Snippet, summary.MTime, summary.Size, boolToInt(summary.Missing),
-		summary.ParentKey, summary.Kind, now,
+		summary.ParentKey, summary.Kind, summary.RunState, now,
 		boolToInt(messageIndexed))
 	if err != nil {
 		return err

@@ -94,6 +94,12 @@ type SessionSummary struct {
 	// Kind is SessionKindSession / SessionKindSubagent / SessionKindFork. Empty
 	// is treated as a top-level session (rows indexed by older binaries).
 	Kind string `json:"kind,omitempty"`
+	// RunState is the external (declarative provider) run state observed in the
+	// source db's status column, normalized by the provider: "running" or empty.
+	// It is a derived display field that follows the summary lifecycle; block-
+	// scoped agent status (AgentStatusStore) is a separate channel and stays
+	// authoritative for in-block sessions.
+	RunState string `json:"runState,omitempty"`
 	// Attached is empty when the row itself matched the list filter. "parent"
 	// means it was pulled in because a matching child needs its parent to hang
 	// under; "child" means it was pulled in because a matching parent needs its

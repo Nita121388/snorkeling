@@ -593,6 +593,7 @@
     },
     "row": {
         "liveBlock": "该会话在应用里有正在运行的块。",
+        "runningExternal": "运行中（外部会话）——该 agent 正在 Snorkeling 之外活动。",
         "jumpToBlock": "点击跳到该块",
         "jumpAria": "跳到运行中的块",
         "attachParent": "上下文父会话（未命中本次筛选）",
