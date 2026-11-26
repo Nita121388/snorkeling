@@ -57,7 +57,7 @@ const (
 )
 
 const HttpReadTimeout = 5 * time.Second
-const HttpWriteTimeout = 21 * time.Second
+const HttpWriteTimeout = 65 * time.Second
 const HttpMaxHeaderBytes = 60000
 const HttpTimeoutDuration = 21 * time.Second
 
@@ -524,6 +524,12 @@ func MakeWshRpcListener() (net.Listener, error) {
 const schemaPrefix = "/schema/"
 
 // blocking
+func dynamicTimeoutHandler(h http.Handler, timeoutFn func() time.Duration, msg string) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.TimeoutHandler(h, timeoutFn(), msg).ServeHTTP(w, r)
+	})
+}
+
 func RunWebServer(listener net.Listener) {
 	gr := mux.NewRouter()
 
@@ -545,9 +551,8 @@ func RunWebServer(listener net.Listener) {
 	vdomRouter := mux.NewRouter()
 	vdomRouter.HandleFunc("/vdom/{uuid}/{path:.*}", WebFnWrap(WebFnOpts{AllowCaching: true}, handleVDom))
 
-	serviceTimeout := serviceTimeoutDuration()
-	gr.PathPrefix("/wave/").Handler(http.TimeoutHandler(waveRouter, serviceTimeout, "Timeout"))
-	gr.PathPrefix("/vdom/").Handler(http.TimeoutHandler(vdomRouter, serviceTimeout, "Timeout"))
+	gr.PathPrefix("/wave/").Handler(dynamicTimeoutHandler(waveRouter, serviceTimeoutDuration, "Timeout"))
+	gr.PathPrefix("/vdom/").Handler(dynamicTimeoutHandler(vdomRouter, serviceTimeoutDuration, "Timeout"))
 
 	// Other routes without timeout
 	gr.PathPrefix(schemaPrefix).Handler(http.StripPrefix(schemaPrefix, schema.GetSchemaHandler()))

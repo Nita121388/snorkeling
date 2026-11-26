@@ -759,6 +759,16 @@ func (m *Manager) LoadDelta(ctx context.Context, identifier string, opts LoadDel
 		}
 	}
 	if opts.LoadAll {
+		if (summary.MTime <= 0 || summary.Size <= 0) && strings.TrimSpace(summary.FilePath) != "" {
+			if info, statErr := os.Stat(summary.FilePath); statErr == nil && !info.IsDir() {
+				if summary.MTime <= 0 {
+					summary.MTime = info.ModTime().UnixMilli()
+				}
+				if summary.Size <= 0 {
+					summary.Size = info.Size()
+				}
+			}
+		}
 		return m.loadAllDelta(ctx, identifier, summary, opts)
 	}
 	provider := providerBySource(m.Providers, summary.Source)
@@ -1526,12 +1536,12 @@ func (m *Manager) refreshSummariesInBackground(identifier string) {
 			SQLitePath: sqlitePath,
 			MetaPath:   metaPath,
 		})
-		stats, errs := manager.Refresh(ctx)
+		summaries, errs, partial := manager.refreshAllSummaries(ctx, ScanOptions{Budget: backgroundSummaryRefreshTimeout})
 		if len(errs) > 0 {
-			debugf("Manager.Summary background refresh error id=%q path=%q summaries=%d errors=%d firstErr=%v", identifier, sqlitePath, stats.Summaries, len(errs), errs[0])
+			debugf("Manager.Summary background refresh error id=%q path=%q summaries=%d errors=%d firstErr=%v", identifier, sqlitePath, len(summaries), len(errs), errs[0])
 			return
 		}
-		debugf("Manager.Summary background refresh success id=%q path=%q summaries=%d", identifier, sqlitePath, stats.Summaries)
+		debugf("Manager.Summary background refresh success id=%q path=%q summaries=%d partial=%v", identifier, sqlitePath, len(summaries), partial)
 	}()
 }
 
@@ -1552,6 +1562,16 @@ func (r *summaryRefreshTracker) done(key string) {
 	r.lock.Lock()
 	defer r.lock.Unlock()
 	delete(r.inflight, key)
+}
+
+const summaryMissWaitBudget = 1500 * time.Millisecond
+
+func (m *Manager) hasActiveScanFlight() bool {
+	key := m.scanKey()
+	scanFlights.mu.Lock()
+	_, ok := scanFlights.m[key]
+	scanFlights.mu.Unlock()
+	return ok
 }
 
 func (m *Manager) resolveSession(ctx context.Context, identifier string, refresh bool, allowStale bool) (SessionSummary, error) {
@@ -1583,7 +1603,13 @@ func (m *Manager) resolveSession(ctx context.Context, identifier string, refresh
 		}
 	}
 
-	summaries, errs, partial := m.refreshAllSummaries(ctx, ScanOptions{})
+	scanWaitCtx := ctx
+	var scanCancel context.CancelFunc
+	if allowStale && m.hasActiveScanFlight() {
+		scanWaitCtx, scanCancel = context.WithTimeout(ctx, summaryMissWaitBudget)
+		defer scanCancel()
+	}
+	summaries, errs, partial := m.refreshAllSummaries(scanWaitCtx, ScanOptions{})
 	if len(errs) > 0 && len(summaries) == 0 {
 		debugf("Manager.resolveSession scan error id=%q duration=%s err=%v", identifier, time.Since(start), errs[0])
 		return SessionSummary{}, errs[0]

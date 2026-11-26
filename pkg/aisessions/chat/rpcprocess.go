@@ -5,6 +5,7 @@ package chat
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -107,6 +108,18 @@ func (p *JsonlRpcProcess) OnEvent(cb func(RpcEvent)) (unsubscribe func()) {
 // response is matched. timeout <= 0 disables the timeout (long jobs). Returns
 // the resolved response (or an error: timeout / process exited / closed).
 func (p *JsonlRpcProcess) Send(requestID, command string, data map[string]any, timeout time.Duration) (*RpcResponse, error) {
+	return p.SendContext(context.Background(), requestID, command, data, timeout)
+}
+
+// SendContext issues a JSONL-RPC command and aborts waiting if ctx is canceled
+// or exceeds its deadline before the response arrives.
+func (p *JsonlRpcProcess) SendContext(ctx context.Context, requestID, command string, data map[string]any, timeout time.Duration) (*RpcResponse, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	if !p.tryAcquire() {
 		return nil, fmt.Errorf("rpc process already closed")
 	}
@@ -147,14 +160,22 @@ func (p *JsonlRpcProcess) Send(requestID, command string, data map[string]any, t
 			return &resp, nil
 		case err := <-pr.errCh:
 			return nil, err
+		case <-ctx.Done():
+			p.removePending(id, ctx.Err())
+			return nil, ctx.Err()
 		}
 	}
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
 	select {
 	case resp := <-pr.respCh:
 		return &resp, nil
 	case err := <-pr.errCh:
 		return nil, err
-	case <-time.After(timeout):
+	case <-ctx.Done():
+		p.removePending(id, ctx.Err())
+		return nil, ctx.Err()
+	case <-timer.C:
 		p.removePending(id, fmt.Errorf("request %q timed out after %s", id, timeout))
 		return nil, fmt.Errorf("request %q timed out after %s", id, timeout)
 	}

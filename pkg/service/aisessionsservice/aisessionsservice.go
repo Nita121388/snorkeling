@@ -1318,6 +1318,8 @@ func (svc *AISessionsService) DetailDelta(ctx context.Context, request *AISessio
 		Source:       strings.TrimSpace(request.Source),
 		FilePath:     strings.TrimSpace(request.FilePath),
 		MessageCount: request.MessageCount,
+		MTime:        request.Cursor.MTime,
+		Size:         request.Cursor.FileSize,
 	}
 	delta, err := manager.LoadDelta(ctx, request.ID, aisessions.LoadDeltaOptions{
 		Summary:       summary,

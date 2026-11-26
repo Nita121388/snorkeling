@@ -37,3 +37,10 @@ func TestClampServiceTimeoutMsKeepsDefaultAboveMin(t *testing.T) {
 		t.Fatalf("default HttpTimeoutDuration %s out of [%s, %s]", HttpTimeoutDuration, time.Duration(HttpServiceTimeoutMinMs)*time.Millisecond, time.Duration(HttpServiceTimeoutMaxMs)*time.Millisecond)
 	}
 }
+
+func TestHttpServerWriteTimeoutExceedsMaxServiceTimeout(t *testing.T) {
+	maxServiceTimeout := time.Duration(HttpServiceTimeoutMaxMs) * time.Millisecond
+	if HttpWriteTimeout <= maxServiceTimeout {
+		t.Fatalf("HttpWriteTimeout (%s) must exceed max configurable web:servicetimeoutms (%s) so configured timeouts do not abort with ERR_EMPTY_RESPONSE", HttpWriteTimeout, maxServiceTimeout)
+	}
+}

@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/wavetermdev/waveterm/pkg/aisessions"
 	"github.com/wavetermdev/waveterm/pkg/tsgen/tsgenmeta"
@@ -90,18 +91,27 @@ func (svc *AISessionsService) LiveSessionState_Meta() tsgenmeta.MethodMeta {
 // For terminal/TUI agent blocks there may be no live GUI chat session; when
 // possible, fall back to the persisted AI session record to resolve the last
 // assistant model so agent cards can display a real model.
+const (
+	liveGetStateTimeout     = 1500 * time.Millisecond
+	liveSessionStateTimeout = 10 * time.Second
+)
+
 func (svc *AISessionsService) LiveSessionState(ctx context.Context, request *AISessionsLiveSessionStateRequest) (*AISessionsLiveSessionStateResponse, error) {
 	resp := &AISessionsLiveSessionStateResponse{Live: false}
 	if request == nil || request.SessionID == "" {
 		return resp, nil
 	}
+	boundedCtx, cancel := context.WithTimeout(ctx, liveSessionStateTimeout)
+	defer cancel()
 	source := request.Source
 	if source == "" {
 		source = "pi"
 	}
 	s := chatManager.Get(source, request.SessionID)
 	if s != nil {
-		st, err := s.GetState(ctx)
+		getStateCtx, getStateCancel := context.WithTimeout(boundedCtx, liveGetStateTimeout)
+		st, err := s.GetState(getStateCtx)
+		getStateCancel()
 		if err == nil {
 			resp.Live = true
 			if st.Model != nil {
@@ -116,7 +126,7 @@ func (svc *AISessionsService) LiveSessionState(ctx context.Context, request *AIS
 	}
 
 	// Disk fallback: resolve from persisted AI session (terminal agents).
-	manager, err := svc.managerForIdentifier(ctx, request.SessionID)
+	manager, err := svc.managerForIdentifier(boundedCtx, request.SessionID)
 	if err != nil || manager == nil {
 		return resp, nil
 	}
@@ -124,7 +134,7 @@ func (svc *AISessionsService) LiveSessionState(ctx context.Context, request *AIS
 	// effect now (latest model_change / turn_context on the active branch), so a
 	// /model switch without a new reply still shows the new model. A hit must
 	// return immediately — never fall through to a full Load.
-	if state, ok := manager.CurrentModelState(ctx, request.SessionID); ok {
+	if state, ok := manager.CurrentModelState(boundedCtx, request.SessionID); ok {
 		resp.ModelID = state.Model
 		resp.ModelName = state.Model
 		// ModelProvider is the session-level supplier only; never summary.Source
@@ -134,8 +144,11 @@ func (svc *AISessionsService) LiveSessionState(ctx context.Context, request *AIS
 		}
 		return resp, nil
 	}
+	if boundedCtx.Err() != nil {
+		return resp, nil
+	}
 	// Miss: legacy fallback — last assistant message that carries a model.
-	detail, err := manager.Load(ctx, request.SessionID, aisessions.LoadOptions{})
+	detail, err := manager.Load(boundedCtx, request.SessionID, aisessions.LoadOptions{})
 	if err != nil {
 		return resp, nil
 	}

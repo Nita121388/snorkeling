@@ -1,0 +1,23 @@
+﻿=== RUN   TestHttpServerWriteTimeoutExceedsMaxServiceTimeout
+    web_timeout_test.go:44: HttpWriteTimeout (21s) must exceed max configurable web:servicetimeoutms (1m0s) so configured timeouts do not abort with ERR_EMPTY_RESPONSE
+--- FAIL: TestHttpServerWriteTimeoutExceedsMaxServiceTimeout (0.00s)
+FAIL
+FAIL	github.com/wavetermdev/waveterm/pkg/web	4.095s
+=== RUN   TestSessionGetStateHonorsContextDeadline
+    getstate_ctx_test.go:49: Session.GetState ignored 100ms context deadline (still waiting on 30s timeout)
+--- FAIL: TestSessionGetStateHonorsContextDeadline (0.60s)
+FAIL
+FAIL	github.com/wavetermdev/waveterm/pkg/aisessions/chat	3.732s
+=== RUN   TestSummaryMissRespectsShortBudgetWhileSharedScanContinues
+    w1_2_rpc_loadall_test.go:72: Summary(false) miss waited 2.461678s on shared scan flight (expected bounded wait <= 1.5s)
+--- FAIL: TestSummaryMissRespectsShortBudgetWhileSharedScanContinues (2.53s)
+=== RUN   TestLoadAllContinuationPreservesFreshnessAndZeroExtraLoads
+    w1_2_rpc_loadall_test.go:155: expected 0 redundant provider.LoadMessages calls after frame 0 (total=1), got 2
+--- FAIL: TestLoadAllContinuationPreservesFreshnessAndZeroExtraLoads (0.15s)
+=== RUN   TestSaveSummaryDoesNotZeroFreshness
+    w1_2_rpc_loadall_test.go:205: saveSummaryTx overwrote real freshness with zero: session=(0,0) file=(0,0)
+--- FAIL: TestSaveSummaryDoesNotZeroFreshness (0.02s)
+FAIL
+FAIL	github.com/wavetermdev/waveterm/pkg/aisessions	5.778s
+FAIL
+

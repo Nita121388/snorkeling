@@ -295,7 +295,7 @@ func (s *Session) GetState(ctx context.Context) (*SessionStateInfo, error) {
 	if rpc == nil {
 		return nil, fmt.Errorf("session rpc not initialized")
 	}
-	resp, err := rpc.Send("", "get_state", nil, defaultRequestTimeout)
+	resp, err := rpc.SendContext(ctx, "", "get_state", nil, defaultRequestTimeout)
 	if err != nil {
 		return nil, err
 	}

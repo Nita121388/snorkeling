@@ -2162,15 +2162,15 @@ func (idx *SQLiteIndex) saveSummaryTx(ctx context.Context, tx *sqlx.Tx, summary 
 			updated_at = excluded.updated_at,
 			message_count = CASE
 				WHEN ? = 1 THEN excluded.message_count
-				WHEN ai_sessions.mtime != excluded.mtime OR ai_sessions.size != excluded.size THEN 0
+				WHEN (excluded.mtime > 0 AND ai_sessions.mtime != excluded.mtime) OR (excluded.size > 0 AND ai_sessions.size != excluded.size) THEN 0
 				ELSE ai_sessions.message_count
 			END,
 			file_path = excluded.file_path,
 			vendor_id = excluded.vendor_id,
 			config_dir = excluded.config_dir,
 			snippet = excluded.snippet,
-			mtime = excluded.mtime,
-			size = excluded.size,
+			mtime = CASE WHEN excluded.mtime > 0 THEN excluded.mtime ELSE ai_sessions.mtime END,
+			size = CASE WHEN excluded.size > 0 THEN excluded.size ELSE ai_sessions.size END,
 			missing = excluded.missing,
 			parent_key = excluded.parent_key,
 			kind = excluded.kind,
@@ -2186,12 +2186,12 @@ func (idx *SQLiteIndex) saveSummaryTx(ctx context.Context, tx *sqlx.Tx, summary 
 		VALUES(?, ?, ?, ?, ?, ?)
 		ON CONFLICT(file_path) DO UPDATE SET
 			source = excluded.source,
-			mtime = excluded.mtime,
-			size = excluded.size,
+			mtime = CASE WHEN excluded.mtime > 0 THEN excluded.mtime ELSE ai_files.mtime END,
+			size = CASE WHEN excluded.size > 0 THEN excluded.size ELSE ai_files.size END,
 			indexed_at = excluded.indexed_at,
 			message_indexed = CASE
 				WHEN excluded.message_indexed = 1 THEN 1
-				WHEN ai_files.mtime != excluded.mtime OR ai_files.size != excluded.size THEN 0
+				WHEN (excluded.mtime > 0 AND ai_files.mtime != excluded.mtime) OR (excluded.size > 0 AND ai_files.size != excluded.size) THEN 0
 				ELSE ai_files.message_indexed
 			END`,
 		summary.FilePath, summary.Source, summary.MTime, summary.Size, now, boolToInt(messageIndexed))
