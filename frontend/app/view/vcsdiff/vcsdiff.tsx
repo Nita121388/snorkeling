@@ -4,7 +4,7 @@
 import { globalStore } from "@/app/store/jotaiStore";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
 import { DiffViewer } from "@/app/view/codeeditor/diffviewer";
-import { getFileLanguage } from "@/app/view/preview/preview-edit";
+import { getFileLanguage } from "@/app/view/preview/preview-file-language";
 import type { WaveEnv } from "@/app/waveenv/waveenv";
 import { useWaveEnv } from "@/app/waveenv/waveenv";
 import { i18n } from "@/i18n/config";

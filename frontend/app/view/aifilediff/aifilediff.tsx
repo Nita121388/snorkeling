@@ -5,7 +5,7 @@ import type { BlockNodeModel } from "@/app/block/blocktypes";
 import type { TabModel } from "@/app/store/tab-model";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
 import { DiffViewer } from "@/app/view/codeeditor/diffviewer";
-import { getFileLanguage } from "@/app/view/preview/preview-edit";
+import { getFileLanguage } from "@/app/view/preview/preview-file-language";
 import type { WaveEnv, WaveEnvSubset } from "@/app/waveenv/waveenv";
 import { i18n } from "@/i18n/config";
 import { localeTextAtom } from "@/i18n/i18nmodel";

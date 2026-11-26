@@ -1,6 +1,13 @@
 // Copyright 2025, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+// W2-1 follow-up（性能）：文件名→语言的纯映射拆到 preview-file-language.ts（零重型依赖），
+// 这里 re-export 保持既有 import 方兼容；aifilediff / vcsdiff 已改为直接引新模块——
+// 否则它们会把静态 import monaco-editor 的 preview-edit 拖进每个终端 Tab 的入口 chunk。
+import { getFileLanguage } from "./preview-file-language";
+
+export { getFileLanguage, shellFileMap } from "./preview-file-language";
+
 import {
     captureMarkdownFoldSnapshot,
     resolveMarkdownFoldLines,
@@ -89,41 +96,6 @@ function editorSearchLog(message: string, details: Record<string, unknown> = {})
     console.info("[preview-edit-search]", message, payload);
 }
 
-export const shellFileMap: Record<string, string> = {
-    ".bashrc": "shell",
-    ".bash_profile": "shell",
-    ".bash_login": "shell",
-    ".bash_logout": "shell",
-    ".profile": "shell",
-    ".zshrc": "shell",
-    ".zprofile": "shell",
-    ".zshenv": "shell",
-    ".zlogin": "shell",
-    ".zlogout": "shell",
-    ".kshrc": "shell",
-    ".cshrc": "shell",
-    ".tcshrc": "shell",
-    ".xonshrc": "python",
-    ".shrc": "shell",
-    ".aliases": "shell",
-    ".functions": "shell",
-    ".exports": "shell",
-    ".direnvrc": "shell",
-    ".vimrc": "shell",
-    ".gvimrc": "shell",
-};
-
-const extensionLanguageMap: Record<string, string> = {
-    ".astro": "html",
-    ".cts": "typescript",
-    ".j2": "html",
-    ".jinja": "html",
-    ".jinja2": "html",
-    ".jsonc": "json",
-    ".svelte": "html",
-    ".vue": "html",
-};
-
 function joinAbsolutePath(dir: string, name: string): string {
     if (!dir) {
         return name;
@@ -145,24 +117,6 @@ function getAbsoluteFilePath(fileInfo: FileInfo | null): string {
         return fileInfo.path;
     }
     return fileInfo.name ?? "";
-}
-
-export function getFileLanguage(fileName: string | null): string | undefined {
-    const baseName = fileName ? fileName.split("/").pop() : null;
-    if (!baseName) {
-        return undefined;
-    }
-    if (shellFileMap[baseName]) {
-        return shellFileMap[baseName];
-    }
-    const extensionMatch = baseName.toLowerCase().match(/(\.[^.]+)$/);
-    if (!extensionMatch) {
-        return "plaintext";
-    }
-    if ([".md", ".markdown", ".mdx"].includes(extensionMatch[1])) {
-        return "markdown";
-    }
-    return extensionLanguageMap[extensionMatch[1]];
 }
 
 function buildCopyContextText(

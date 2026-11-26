@@ -146,14 +146,17 @@ export default defineConfig({
                 output: {
                     manualChunks(id) {
                         const p = id.replace(/\\/g, "/");
-                        if (p.includes("node_modules/monaco") || p.includes("node_modules/@monaco")) return "monaco";
-                        if (p.includes("node_modules/mermaid") || p.includes("node_modules/@mermaid")) return "mermaid";
-                        if (p.includes("node_modules/katex") || p.includes("node_modules/@katex")) return "katex";
-                        if (p.includes("node_modules/shiki") || p.includes("node_modules/@shiki")) {
+                        // W2-1 follow-up：Monaco 组只收 monaco 本体（收窄匹配面，避免把
+                        // vscode-uri / monaco-languageserver-* 之类共享小包一起吞进来）。
+                        if (p.includes("node_modules/monaco-editor/") || p.includes("node_modules/monaco-yaml/")) {
+                            return "monaco";
+                        }
+                        if (p.includes("node_modules/shiki/") || p.includes("node_modules/@shiki/")) {
                             return "shiki";
                         }
-                        if (p.includes("node_modules/cytoscape") || p.includes("node_modules/@cytoscape"))
-                            return "cytoscape";
+                        // Vite 的 preload helper 单开：否则它被分进 monaco/shiki chunk，
+                        // 入口为了拿这个 1KB helper 必须静态加载整个重型 chunk。
+                        if (p.includes("vite/preload-helper")) return "vite-helper";
                         return undefined;
                     },
                 },

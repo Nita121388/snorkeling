@@ -1,0 +1,7 @@
+ × frontend/app/view/preview/chunk-layout.test.ts > 入口 chunk 布局（W2-1 follow-up） > aifilediff 不再静态 import preview-edit（getFileLanguage 走零依赖的 preview-file-language） 4ms
+ × frontend/app/view/preview/chunk-layout.test.ts > 入口 chunk 布局（W2-1 follow-up） > vcsdiff 不再静态 import preview-edit（同上） 0ms
+ × frontend/app/view/preview/chunk-layout.test.ts > 入口 chunk 布局（W2-1 follow-up） > manualChunks：vite preload-helper 单开（不得落进 monaco/shiki 重型 chunk） 0ms
+ × frontend/app/view/preview/chunk-layout.test.ts > 入口 chunk 布局（W2-1 follow-up） > manualChunks：monaco 组只收 monaco 本体（monaco-editor/monaco-yaml），不再按前缀吞 vscode-uri 等共享包 0ms
+ × frontend/app/view/preview/chunk-layout.test.ts > 入口 chunk 布局（W2-1 follow-up） > manualChunks：不再给已是动态 import 的 mermaid/cytoscape/katex 强制分组（强制分组会因执行顺序被入口整包拖入） 0ms
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 5 ⎯⎯⎯⎯⎯⎯⎯
+      Tests  5 failed (5)
