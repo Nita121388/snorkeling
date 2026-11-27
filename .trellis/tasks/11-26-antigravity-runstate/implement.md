@@ -66,5 +66,6 @@ scripts/verify/README.md
 - [x] 步骤 4 前端合流：`mergeRowRunning()` 纯函数 + RunningDot `externalRunning` 分支（复用同点同位置、不可点击、`data-external-running`）+ i18n en/zh
 - [x] 步骤 5 验证台 `scripts/verify/antigravity-runstate/verify.mjs`（2026-11-26 夜完成：fixture provider 经 settings 预埋注入 + node:sqlite 造数，RUNNING/IDLE/陈旧 TTL 三判据；--dry 本机 PASS；README 已登记。注意 --attach 模式无法注入 fixture，判据整体 skip）
 - [ ] 真机验证 —— 移机待跑（本机性能不足）
+- [x] spec 回写：`aisessions-declarative-provider-contract.md` 增「外部会话运行态」小节（6dc3b203d 完成）
 
 验证现状（本机已跑）：`npx vitest run session-run-badge-view.test.ts session-row.test.tsx` → 4 文件 / 82 用例全过（含 4 条 mergeRowRunning 新用例）。Go 侧 `go test ./pkg/wconfig` 通过；`pkg/aisessions` 有 2 条既有失败（`TestSQLiteIndexEmojiTablesCreatedIdempotently` / `TestSQLiteMigratePropTypeStatus`，git stash 基线同样失败，与本任务无关）。tsc 全量未跑完（本机性能不足，用户指示跳过）。

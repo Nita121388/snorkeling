@@ -32,9 +32,9 @@
 
 ## Acceptance Criteria
 
-- [ ] 本机 `~/.gemini/antigravity-cli` 存在 → 扫描后 SQLite 索引出现 `source=antigravity` 会话 ≥2 条，title 为真实标题（如 "Index Performance Plan Handoff"），项目归属 `E:\code\snorkeling`。
-- [ ] settings.json 写一个自定义 `agent:sessionproviders` 条目（指向测试 fixture db）→ 无需改代码即可在列表出现其会话；`disabled: true` → 条目消失。
-- [ ] `~/.gemini` 不存在的机器 → 不注册、无扫描错误（os.Stat 门）。
+- [x] 本机 `~/.gemini/antigravity-cli` 存在 → 扫描后 SQLite 索引出现 `source=antigravity` 会话 ≥2 条，title 为真实标题（如 "Index Performance Plan Handoff"），项目归属 `E:\code\snorkeling`。（2026-11-26 实测：DefaultProviders 返回 antigravity，List 2 条真实标题，Manager.ScanListResult 2 行，走既有 single-flight 链路）
+- [x] settings.json 写一个自定义 `agent:sessionproviders` 条目（指向测试 fixture db）→ 无需改代码即可在列表出现其会话；`disabled: true` → 条目消失。
+- [x] `~/.gemini` 不存在的机器 → 不注册、无扫描错误（os.Stat 门）。
 - [ ] 前端：来源筛选面板出现 Antigravity 选项；选中只出 antigravity 会话；来源徽标显示配置 label；打开 antigravity 会话详情不崩，无正文时展示占位/摘要信息。（真机验证待性能充足机器执行；本机已过验证台 --dry + 单测，2026-11-26 用户指示本机不跑）
 - [x] `go test ./pkg/aisessions ./pkg/wconfig ./pkg/service/aisessionsservice` 全绿（含新增 provider 单测：列映射 / 时间解析 / URI 解码 / override+disable 合并）。（实测 2026-11-26：3 包 ok；vitest 829/829；tsc 新增 0）
 - [ ] 真机验证跑对应 verify area，台账入库一行（`docs/project/verify-ledger.md`）。（**移机待跑**：本机性能不足）

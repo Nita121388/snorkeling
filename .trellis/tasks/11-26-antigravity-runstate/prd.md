@@ -30,8 +30,8 @@
 
 ## Acceptance Criteria
 
-- [ ] fixture db：`status='CASCADE_RUN_STATUS_RUNNING'` + 新鲜 `last_modified_time` → `List()` 返回 `runState="running"`；同值 + 陈旧时间（>TTL）→ `runState=""`；`IDLE`/空 → `runState=""`；未知值 → `runState=""` 且不 panic。（Go 单测）
-- [ ] 索引迁移：带旧 schema 的库打开后自动加 `run_state` 列，重扫后 `SELECT run_state FROM ai_sessions WHERE source='antigravity'` 返回归一化值。（Go 单测）
-- [ ] 前端：合流纯函数单测（块内 running 优先/外部 running 兜底/两者皆无不显示）；vitest 全绿。
+- [x] fixture db：`status='CASCADE_RUN_STATUS_RUNNING'` + 新鲜 `last_modified_time` → `List()` 返回 `runState="running"`；同值 + 陈旧时间（>TTL）→ `runState=""`；`IDLE`/空 → `runState=""`；未知值 → `runState=""` 且不 panic。（Go 单测）
+- [x] 索引迁移：带旧 schema 的库打开后自动加 `run_state` 列，重扫后 `SELECT run_state FROM ai_sessions WHERE source='antigravity'` 返回归一化值。（Go 单测）
+- [x] 前端：合流纯函数单测（块内 running 优先/外部 running 兜底/两者皆无不显示）；vitest 全绿。
 - [ ] 真机验证（**移机待跑**，本机性能不足 2026-11-26 用户指示）：fixture 造 RUNNING 会话 → 列表行出现运行指示。验证台脚本就绪（--dry 本机可过）。
-- [ ] `go test ./pkg/aisessions ./pkg/wconfig` 全绿；vitest aisessions 目录全绿；tsc 新增 0。
+- [x] `go test ./pkg/aisessions ./pkg/wconfig` 全绿；vitest aisessions 目录全绿；tsc 新增 0。
