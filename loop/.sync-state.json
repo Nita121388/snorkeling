@@ -1,7 +1,7 @@
 {
-  "lastAttemptAt": "2026-11-25T08:52:25.963Z",
+  "lastAttemptAt": "2026-11-25T08:53:47.537Z",
   "lastOkAt": "2026-11-25T03:00:25.417Z",
-  "failures": 1138,
+  "failures": 1141,
   "error": "hub 拒收（400）：{\"error\":\"不在同步白名单内：map/features/acs.md\"}",
   "lastOkManifest": [
     {
