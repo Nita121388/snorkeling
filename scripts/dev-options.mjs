@@ -32,6 +32,7 @@ export function parseDevOptions(args, baseEnv = process.env) {
     let vitePort = parsePort(baseEnv.SNORKELING_VITE_PORT || DefaultVitePort, "Vite port");
     let cdpPort = baseEnv.SNORKELING_CDP_PORT ? parsePort(baseEnv.SNORKELING_CDP_PORT, "CDP port") : null;
     let strictPort = baseEnv.SNORKELING_STRICT_PORT === "1";
+    let sharedAiIndex = baseEnv.SNORKELING_SHARED_AI_INDEX === "1";
 
     for (let index = 0; index < args.length; index++) {
         const arg = args[index];
@@ -41,6 +42,10 @@ export function parseDevOptions(args, baseEnv = process.env) {
         }
         if (arg === "--strict-port") {
             strictPort = true;
+            continue;
+        }
+        if (arg === "--shared-ai-index") {
+            sharedAiIndex = true;
             continue;
         }
 
@@ -68,5 +73,5 @@ export function parseDevOptions(args, baseEnv = process.env) {
     if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(profile)) {
         throw new Error("profile must contain only letters, numbers, dot, underscore, or hyphen");
     }
-    return { profile, vitePort, cdpPort, strictPort, taskArgs };
+    return { profile, vitePort, cdpPort, strictPort, sharedAiIndex, taskArgs };
 }
