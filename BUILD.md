@@ -134,6 +134,10 @@ If you're on Linux ARM64, run the following:
 USE_SYSTEM_FPM=1 task package
 ```
 
+## Cross-building the Windows package on Linux
+
+To build the Windows zip on a Linux server (and copy it back to a Windows machine for testing), see [BUILD.crossbuild-linux-to-windows.md](BUILD.crossbuild-linux-to-windows.md).
+
 ## Debugging
 
 ### Frontend logs
