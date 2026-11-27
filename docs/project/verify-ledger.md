@@ -347,3 +347,7 @@
 | 2026-11-24 16:45 | scheduled-hero | ✅ 22/22 | launch+reset | `20261124T16445-scheduled-hero` | 56c0b8100 |
 | 2026-11-25 04:30 | commontext-send-agent-block | ❌ fatal（未跑） | launch+reset | `20261125T04241-commontext-send-agent-block` | b60eea589 |
 | 2026-11-25 04:39 | commontext-send-agent-block | ❌ fatal（未跑） | attach | `20261125T04383-commontext-send-agent-block` | b60eea589 |
+| 2026-11-27 | overview-board（W2-2 收口：30s tick 回流 / 15s 轮询抖动 / chip 闪烁 / GetAgentStatus 收口） | ⏳ 待跑（G7 归 nita，机器判据已 green） | launch+reset | `—` | 3a5b6f29c |
+| 2026-11-27 | antigravity-runstate（RUNNING/IDLE/陈旧 TTL 三判据） | ⏳ 待跑（台已备 `scripts/verify/antigravity-runstate/verify.mjs`，--dry 本机 PASS） | launch+reset | `—` | 6dc3b203d |
+| 2026-11-27 | W2-1 / W2-3 冷切对比（冷启动/冷切 Tab 卡顿与内存、大目录滚动、`term:*` 热更新不重建、隐藏页 CPU） | ⏳ 待跑（G7 归 nita，契约与回归机器判据已 green） | launch+reset | `—` | f52e95dd5 / 92218ac3b |
+| 2026-11-27 | commontext-send-agent-block（此前 2 次 fatal 环境失败） | ⏳ 待跑（重试） | launch+reset | `—` | b60eea589 |
