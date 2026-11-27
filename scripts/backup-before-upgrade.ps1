@@ -20,6 +20,9 @@
 # copies -wal/-shm sidecars, but a live SQLite file copy is only best-effort).
 #
 # Usage:
+#   Double-click scripts\backup-before-upgrade.cmd  (defaults to E:\backup,
+#   keeps the window open and prints the outcome).
+#   Or from a shell:
 #   powershell -NoProfile -ExecutionPolicy Bypass -File scripts\backup-before-upgrade.ps1 `
 #       -Destination E:\backup -Label pre-0.0.141
 #   Add -DryRun to list what would be copied without copying.
